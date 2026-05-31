@@ -1,0 +1,62 @@
+{
+  "title": "Image Studio",
+  "cloudTasks": "{count} cloud tasks",
+  "refresh": "Refresh",
+  "searchPlaceholder": "Search prompt or model",
+  "taskTypes": {
+    "generation": "Generate image",
+    "edit": "Edit image"
+  },
+  "filters": {
+    "all": "All",
+    "favorites": "Favorites",
+    "success": "Done",
+    "error": "Failed"
+  },
+  "empty": {
+    "title": "No image tasks yet",
+    "description": "Create or edit an image from the composer below."
+  },
+  "streaming": "Streaming",
+  "asset": {
+    "loading": "Loading image",
+    "failed": "Failed to load image"
+  },
+  "composer": {
+    "upload": "Upload image",
+    "removeFile": "Remove image",
+    "generationPlaceholder": "Describe the image...",
+    "editPlaceholder": "Describe the edit...",
+    "run": "Run",
+    "running": "Running"
+  },
+  "status": {
+    "queued": "Queued",
+    "running": "Running",
+    "success": "Done",
+    "error": "Failed",
+    "unknown": "Unknown"
+  },
+  "card": {
+    "favorite": "Favorite",
+    "delete": "Delete",
+    "imageCount": "{count} img"
+  },
+  "detail": {
+    "title": "Image task",
+    "model": "Model",
+    "provider": "Provider",
+    "latency": "Latency",
+    "created": "Created",
+    "inputs": "Inputs",
+    "favorite": "Favorite",
+    "favorited": "Favorited",
+    "download": "Download",
+    "delete": "Delete"
+  },
+  "toast": {
+    "completed": "Image task completed",
+    "failed": "Image task failed",
+    "uploadFailed": "Upload failed"
+  }
+}

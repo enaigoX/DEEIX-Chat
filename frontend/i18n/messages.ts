@@ -12,6 +12,7 @@ import enCommon from "@/i18n/messages/en-US/common.json";
 import enErrors from "@/i18n/messages/en-US/errors.json";
 import enFiles from "@/i18n/messages/en-US/files.json";
 import enGuide from "@/i18n/messages/en-US/guide.json";
+import enImageStudio from "@/i18n/messages/en-US/image-studio.json";
 import enLogin from "@/i18n/messages/en-US/login.json";
 import enRecent from "@/i18n/messages/en-US/recent.json";
 import enSettings from "@/i18n/messages/en-US/settings.json";
@@ -29,6 +30,7 @@ export const DEFAULT_MESSAGES = {
   recent: enRecent,
   share: enShare,
   files: enFiles,
+  imageStudio: enImageStudio,
   settings: enSettings,
   adminUsers: enAdminUsers,
   adminChannels: enAdminChannels,
@@ -55,6 +57,7 @@ export async function loadLocaleMessages(locale: AppLocale): Promise<AppMessages
     recent,
     share,
     files,
+    imageStudio,
     settings,
     adminUsers,
     adminChannels,
@@ -74,6 +77,7 @@ export async function loadLocaleMessages(locale: AppLocale): Promise<AppMessages
     import("@/i18n/messages/zh-CN/recent.json"),
     import("@/i18n/messages/zh-CN/share.json"),
     import("@/i18n/messages/zh-CN/files.json"),
+    import("@/i18n/messages/zh-CN/image-studio.json"),
     import("@/i18n/messages/zh-CN/settings.json"),
     import("@/i18n/messages/zh-CN/admin-users.json"),
     import("@/i18n/messages/zh-CN/admin-channels.json"),
@@ -95,6 +99,7 @@ export async function loadLocaleMessages(locale: AppLocale): Promise<AppMessages
     recent: recent.default,
     share: share.default,
     files: files.default,
+    imageStudio: imageStudio.default,
     settings: settings.default,
     adminUsers: adminUsers.default,
     adminChannels: adminChannels.default,

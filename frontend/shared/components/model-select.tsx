@@ -112,7 +112,7 @@ export function OptionSelect<TOption extends OptionSelectOption>({
     <Combobox
       id={id}
       items={options}
-      value={selectedItem}
+      value={selectedItem ?? null}
       onValueChange={(item) => onChange(item?.value ?? fallbackValue ?? "")}
       itemToStringLabel={(item) => item?.label ?? ""}
       disabled={disabled}

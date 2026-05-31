@@ -19,6 +19,7 @@ import (
 	billinghttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/billing"
 	channelhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/channel"
 	conversationhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/conversation"
+	imagestudiohttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/imagestudio"
 	mcphttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/mcp"
 	memoryhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/memory"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/middleware"
@@ -50,6 +51,7 @@ type Modules struct {
 	AuthService  middleware.SessionValidator
 	Channel      *channelhttp.Module
 	Conversation *conversationhttp.Module
+	ImageStudio  *imagestudiohttp.Module
 	MCP          *mcphttp.Module
 	Memory       *memoryhttp.Module
 	Billing      *billinghttp.Module
@@ -127,6 +129,9 @@ func NewEngine(cfg *config.Runtime, log *zap.Logger, modules Modules, hc HealthC
 	}
 	if modules.Conversation != nil {
 		modules.Conversation.RegisterRoutes(authRequired)
+	}
+	if modules.ImageStudio != nil {
+		modules.ImageStudio.RegisterRoutes(authRequired)
 	}
 	if modules.Channel != nil {
 		modules.Channel.RegisterRoutes(authRequired)

@@ -125,6 +125,8 @@ func migrate(db *gorm.DB, cfg config.Config) error {
 		"chat_attachments":               "多模态附件元信息表",
 		"file_objects":                   "文件对象与处理结果表",
 		"file_storage_quotas":            "用户文件配额表",
+		"image_studio_tasks":             "独立生图工作台任务历史表",
+		"image_studio_task_assets":       "独立生图工作台任务资产关联表",
 		"chat_runs":                      "会话运行日志表",
 		"chat_run_events":                "会话运行轨迹与工具事件表",
 		"chat_context_records":           "会话上下文快照与证据表",
@@ -167,6 +169,9 @@ func migrate(db *gorm.DB, cfg config.Config) error {
 	if err := applyBillingBaselineIndexes(db); err != nil {
 		return err
 	}
+	if err := applyImageStudioBaselineIndexes(db); err != nil {
+		return err
+	}
 	if err := applyVectorBaseline(db, vectorBaselineRequired(cfg)); err != nil {
 		return err
 	}
@@ -202,6 +207,8 @@ func applySchemaBaseline(db *gorm.DB) error {
 		&model.Attachment{},
 		&model.FileObject{},
 		&model.UserStorageQuota{},
+		&model.ImageStudioTask{},
+		&model.ImageStudioTaskAsset{},
 		&model.ConversationRun{},
 		&model.ChatRunEvent{},
 		&model.ChatContextRecord{},

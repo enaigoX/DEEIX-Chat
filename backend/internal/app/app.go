@@ -18,6 +18,7 @@ import (
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/conversation"
 	appembedding "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/embedding"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/extraction"
+	appimagestudio "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/imagestudio"
 	appmcp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/mcp"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/memory"
 	appstorage "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/objectstorage"
@@ -41,6 +42,7 @@ import (
 	billingrepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/billing"
 	channelrepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/channel"
 	conversationrepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/conversation"
+	imagestudiorepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/imagestudio"
 	mcprepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/mcp"
 	memoryrepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/memory"
 	settingsrepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/settings"
@@ -54,6 +56,7 @@ import (
 	billinghttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/billing"
 	channelhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/channel"
 	conversationhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/conversation"
+	imagestudiohttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/imagestudio"
 	mcphttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/mcp"
 	memoryhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/memory"
 	settingshttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/settings"
@@ -214,6 +217,11 @@ func NewApp() (*App, error) {
 	memoryService.SetCacheInvalidator(conversationService.InvalidateMemoryCache)
 	conversationHandler := conversationhttp.NewHandler(conversationService, runtimeCfg)
 	conversationModule := conversationhttp.NewModule(conversationHandler)
+	imageStudioRepo := imagestudiorepo.NewRepo(db)
+	imageStudioService := appimagestudio.NewServiceWithRuntime(runtimeCfg, imageStudioRepo, conversationService.UploadService(), channelService, llmClient, billingService, log)
+	imageStudioService.SetObjectStoreProvider(objectStoreProvider)
+	imageStudioHandler := imagestudiohttp.NewHandler(imageStudioService)
+	imageStudioModule := imagestudiohttp.NewModule(imageStudioHandler)
 	mcpService := appmcp.NewServiceWithRuntime(runtimeCfg, mcpRepo, mcpClient)
 	mcpService.SetSystemEventWriter(systemEventService)
 	mcpHandler := mcphttp.NewHandler(mcpService)
@@ -237,6 +245,7 @@ func NewApp() (*App, error) {
 		AuthService:  authService,
 		Channel:      channelModule,
 		Conversation: conversationModule,
+		ImageStudio:  imageStudioModule,
 		MCP:          mcpModule,
 		Memory:       memoryModule,
 		Billing:      billingModule,
