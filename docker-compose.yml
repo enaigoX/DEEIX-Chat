@@ -2,7 +2,6 @@ name: deeix-chat
 
 services:
   app:
-    image: ghcr.io/deeix-ai/deeix-chat:latest
     build:
       context: .
       dockerfile: Dockerfile
