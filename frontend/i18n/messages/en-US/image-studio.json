@@ -30,6 +30,72 @@
     "run": "Run",
     "running": "Running"
   },
+  "params": {
+    "advanced": "Advanced",
+    "reset": "Reset",
+    "count": "Images",
+    "compression": "Compression",
+    "disabled": "Unavailable",
+    "partialImages": "Partials",
+    "provider": {
+      "openai": "OpenAI image",
+      "google": "Google image",
+      "xai": "xAI image",
+      "generic": "Compatible image"
+    },
+    "size": {
+      "label": "Size",
+      "title": "Image size",
+      "description": "Choose image size, aspect ratio, or custom resolution.",
+      "auto": "Auto",
+      "autoDetail": "Chosen by model",
+      "tier": "Tier",
+      "customRatio": "Custom ratio",
+      "width": "Width",
+      "height": "Height",
+      "invalid": "Invalid"
+    },
+    "ratio": {
+      "square": "Square",
+      "landscape": "Landscape",
+      "portrait": "Portrait",
+      "wide": "Wide",
+      "vertical": "Vertical",
+      "classic": "Classic",
+      "poster": "Poster",
+      "ultrawide": "Ultrawide"
+    },
+    "quality": {
+      "label": "Quality",
+      "auto": "Auto",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "format": {
+      "label": "Format",
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "webp": "WebP"
+    },
+    "background": {
+      "label": "Background",
+      "auto": "Auto",
+      "transparent": "Transparent",
+      "opaque": "Opaque"
+    },
+    "moderation": {
+      "label": "Moderation",
+      "auto": "Auto",
+      "low": "Low"
+    },
+    "inputFidelity": {
+      "label": "Input fidelity",
+      "auto": "Auto",
+      "low": "Low",
+      "high": "High"
+    }
+  },
   "status": {
     "queued": "Queued",
     "running": "Running",
@@ -44,6 +110,7 @@
   },
   "detail": {
     "title": "Image task",
+    "description": "Review generated assets, input images, and task metadata.",
     "model": "Model",
     "provider": "Provider",
     "latency": "Latency",

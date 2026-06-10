@@ -16,6 +16,12 @@ import type { ImageStudioStreamEvent, ImageStudioTaskDTO, ImageStudioTaskType } 
 import type { PublicModelDTO } from "@/shared/api/model.types";
 import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
 import { imageModelOptions, outputAssets } from "@/features/image-studio/utils/image-studio-display";
+import {
+  buildImageStudioOptions,
+  defaultImageStudioParamsForModel,
+  normalizeImageStudioParams,
+  type ImageStudioParams,
+} from "@/features/image-studio/model/image-studio-params";
 
 export type ImageStudioDraftFile = {
   fileID: string;
@@ -24,11 +30,6 @@ export type ImageStudioDraftFile = {
 };
 
 export type ImageStudioFilter = "all" | "favorites" | "success" | "error";
-
-const DEFAULT_OPTIONS: Record<string, unknown> = {
-  size: "1024x1024",
-  quality: "auto",
-};
 
 export function useImageStudioPage() {
   const t = useTranslations("imageStudio.toast");
@@ -41,6 +42,7 @@ export function useImageStudioPage() {
   const [uploading, setUploading] = React.useState(false);
   const [taskType, setTaskType] = React.useState<ImageStudioTaskType>("image_generation");
   const [model, setModel] = React.useState("");
+  const [params, setParams] = React.useState<ImageStudioParams>(() => defaultImageStudioParamsForModel(null, "image_generation"));
   const [prompt, setPrompt] = React.useState("");
   const [filter, setFilter] = React.useState<ImageStudioFilter>("all");
   const [query, setQuery] = React.useState("");
@@ -53,6 +55,10 @@ export function useImageStudioPage() {
 
   const modelOptions = React.useMemo(() => imageModelOptions(models, taskType), [models, taskType]);
   const selectedModel = model || modelOptions[0]?.value || "";
+  const selectedModelInfo = React.useMemo(
+    () => models.find((item) => item.platformModelName === selectedModel) ?? null,
+    [models, selectedModel],
+  );
 
   React.useEffect(() => {
     if (!modelOptions.length) {
@@ -63,6 +69,11 @@ export function useImageStudioPage() {
       setModel(modelOptions[0].value);
     }
   }, [model, modelOptions]);
+
+  React.useEffect(() => {
+    if (!selectedModelInfo) return;
+    setParams((current) => normalizeImageStudioParams(current, selectedModelInfo, taskType));
+  }, [selectedModelInfo, taskType]);
 
   const loadModels = React.useCallback(async () => {
     const accessToken = await resolveAccessToken();
@@ -168,7 +179,7 @@ export function useImageStudioPage() {
           taskType,
           prompt: trimmedPrompt,
           model: selectedModel,
-          options: DEFAULT_OPTIONS,
+          options: buildImageStudioOptions(params, selectedModelInfo, taskType),
           fileIDs: taskType === "image_edit" ? draftFiles.map((file) => file.fileID) : [],
         },
         {
@@ -206,7 +217,7 @@ export function useImageStudioPage() {
     } finally {
       setRunning(false);
     }
-  }, [draftFiles, loadTasks, prompt, running, selectedModel, t, taskType]);
+  }, [draftFiles, loadTasks, params, prompt, running, selectedModel, selectedModelInfo, t, taskType]);
 
   const onToggleFavorite = React.useCallback(async (task: ImageStudioTaskDTO) => {
     const accessToken = await resolveAccessToken();
@@ -232,12 +243,14 @@ export function useImageStudioPage() {
     models,
     modelOptions,
     selectedModel,
+    selectedModelInfo,
     loading,
     syncing,
     running,
     uploading,
     taskType,
     model,
+    params,
     prompt,
     filter,
     query,
@@ -247,6 +260,7 @@ export function useImageStudioPage() {
     partialImages,
     setTaskType,
     setModel,
+    setParams,
     setPrompt,
     setFilter,
     setQuery,

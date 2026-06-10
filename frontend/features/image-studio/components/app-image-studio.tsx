@@ -18,7 +18,7 @@ import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,6 +35,7 @@ import {
   inputAssets,
   outputAssets,
 } from "@/features/image-studio/utils/image-studio-display";
+import { ImageStudioParamsToolbar } from "@/features/image-studio/components/image-studio-params-toolbar";
 
 const FILTERS: ImageStudioFilter[] = ["all", "favorites", "success", "error"];
 
@@ -61,12 +62,14 @@ export function AppImageStudio() {
     total,
     modelOptions,
     selectedModel,
+    selectedModelInfo,
     loading,
     syncing,
     running,
     uploading,
     taskType,
     model,
+    params,
     prompt,
     filter,
     query,
@@ -76,6 +79,7 @@ export function AppImageStudio() {
     partialImages: partialImageMap,
     setTaskType,
     setModel,
+    setParams,
     setPrompt,
     setFilter,
     setQuery,
@@ -246,6 +250,13 @@ export function AppImageStudio() {
               ))}
             </div>
           ) : null}
+          <ImageStudioParamsToolbar
+            params={params}
+            model={selectedModelInfo}
+            taskType={taskType}
+            disabled={running || modelOptions.length === 0}
+            onChange={setParams}
+          />
           <div className="grid gap-2 md:grid-cols-[auto_1fr_auto] md:items-end">
             <Button
               type="button"
@@ -421,6 +432,7 @@ function TaskDetailDialog({
       <DialogContent className="max-w-[calc(100vw-2rem)] gap-3 p-4 sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription className="sr-only">{t("description")}</DialogDescription>
         </DialogHeader>
         {task ? (
           <div className="grid min-h-0 gap-4 md:grid-cols-[minmax(0,1fr)_320px]">

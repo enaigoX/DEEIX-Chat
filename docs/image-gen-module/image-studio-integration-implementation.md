@@ -35,6 +35,7 @@
 - 任务列表、详情、收藏、删除。
 - 生成和编辑共用流式任务接口。
 - 复用 channel 路由、LLM 图片适配器、upload service、billing service。
+- Image Studio options 按实际路由协议执行路径级白名单过滤，复用系统的模型参数透传配置。
 - 输出图片保存到 DEEIX file objects 和对象存储。
 - Image Studio task/assets 表保存云端历史和文件关联。
 - 失败任务记录错误摘要，不污染对话表。
@@ -43,6 +44,7 @@
 
 - 将 Image Studio 任务 ID 控制在历史字段限制内，并把相关数据库字段扩展到 `varchar(64)`。
 - 生成结果仍进入文件库，因此可在“文件”页正常查看和复用。
+- 扩展 Image Studio 自身的 options policy，支持 OpenAI、Google Gemini、xAI 图片协议各自的参数路径，同时继续拦截 `model`、`prompt`、`headers`、`api_key` 等高风险字段。
 
 ## 前端落地
 
@@ -70,12 +72,33 @@
 - 接入系统 i18n，新增简体中文和英文 Image Studio 文案。
 - 接入系统主题 token，保持深色/浅色主题一致。
 - 任务图片预览复用文件页的鉴权 blob 加载链路，避免开发环境前后端端口分离时断图。
+- 新增紧凑参数工具条和高级参数弹层，支持尺寸、质量、输出格式、张数、背景、审核强度、输入保真、压缩率、流式过程图等参数。
+- 尺寸选择器支持自动、1K/2K/4K 常用比例、自定义比例和自定义分辨率，并复用参考项目的 16 倍数、最大边、像素预算和比例约束。
+- 参数提交会按当前模型协议自动转换：OpenAI 使用 `size`、`quality`、`output_format` 等；Gemini 使用 `aspect_ratio` 和 `image_size`；xAI 使用 `aspect_ratio`、`resolution` 和 `n`。
+- 模型 `capabilitiesJSON.defaultOptions` 可作为 Image Studio 参数默认值来源，并在提交前继续交给服务端 policy 过滤。
 
 关键修正：
 
 - 修复 Base UI Combobox 从 uncontrolled 切换到 controlled 的 warning。
 - 修复模型图标把 `openai` 等标识直接当 URL 导致断图的问题。
 - 修复 Image Studio 卡片和详情弹窗图片裸用 `/api/v1/files/:id/content` 导致预览失败的问题。
+
+本次参数增强新增或重点修改文件：
+
+- `frontend/features/image-studio/model/image-studio-params.ts`
+- `frontend/features/image-studio/components/image-studio-params-toolbar.tsx`
+- `frontend/features/image-studio/components/image-studio-size-picker.tsx`
+- `frontend/features/image-studio/hooks/use-image-studio-page.ts`
+- `backend/internal/application/imagestudio/model_option_policy.go`
+- `backend/internal/application/imagestudio/model_option_policy_test.go`
+
+参考项目参数相关文件：
+
+- `/Users/kai/self/code/git-project/gpt_image_playground/src/types.ts`
+- `/Users/kai/self/code/git-project/gpt_image_playground/src/components/InputBar.tsx`
+- `/Users/kai/self/code/git-project/gpt_image_playground/src/components/SizePickerModal.tsx`
+- `/Users/kai/self/code/git-project/gpt_image_playground/src/lib/size.ts`
+- `/Users/kai/self/code/git-project/gpt_image_playground/src/lib/paramCompatibility.ts`
 
 ## 数据与历史隔离
 
@@ -104,6 +127,8 @@ flowchart LR
 - `go test ./...`
 - `corepack pnpm lint`
 - `corepack pnpm build`
+- `go test ./internal/application/imagestudio`
+- `go test ./internal/application/imagestudio ./internal/infra/llm`
 
 浏览器验证：
 
@@ -130,7 +155,6 @@ flowchart LR
 - 蒙版编辑完整工作流。
 - Lightbox。
 - 重试、再次编辑、批量下载。
-- 更细粒度的参数面板。
 - 服务端缩略图。
 - 管理员用量日志中的 Image Studio 来源标识。
 

@@ -30,6 +30,72 @@
     "run": "运行",
     "running": "运行中"
   },
+  "params": {
+    "advanced": "高级参数",
+    "reset": "重置",
+    "count": "张数",
+    "compression": "压缩",
+    "disabled": "不可用",
+    "partialImages": "过程图",
+    "provider": {
+      "openai": "OpenAI 图片",
+      "google": "Google 图片",
+      "xai": "xAI 图片",
+      "generic": "兼容图片"
+    },
+    "size": {
+      "label": "尺寸",
+      "title": "图片尺寸",
+      "description": "选择图片尺寸、比例或自定义分辨率。",
+      "auto": "自动",
+      "autoDetail": "由模型选择",
+      "tier": "档位",
+      "customRatio": "自定义比例",
+      "width": "宽度",
+      "height": "高度",
+      "invalid": "无效"
+    },
+    "ratio": {
+      "square": "方图",
+      "landscape": "横图",
+      "portrait": "竖图",
+      "wide": "宽屏",
+      "vertical": "手机竖屏",
+      "classic": "经典横幅",
+      "poster": "海报",
+      "ultrawide": "超宽屏"
+    },
+    "quality": {
+      "label": "质量",
+      "auto": "自动",
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "format": {
+      "label": "格式",
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "webp": "WebP"
+    },
+    "background": {
+      "label": "背景",
+      "auto": "自动",
+      "transparent": "透明",
+      "opaque": "不透明"
+    },
+    "moderation": {
+      "label": "审核",
+      "auto": "自动",
+      "low": "低限制"
+    },
+    "inputFidelity": {
+      "label": "输入保真",
+      "auto": "自动",
+      "low": "低",
+      "high": "高"
+    }
+  },
   "status": {
     "queued": "排队中",
     "running": "运行中",
@@ -44,6 +110,7 @@
   },
   "detail": {
     "title": "生图任务",
+    "description": "查看生图任务结果、输入图片和任务信息。",
     "model": "模型",
     "provider": "提供商",
     "latency": "耗时",
