@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/models"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/schema"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -31,7 +31,7 @@ func New(cfg config.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	if err = seedBillingCatalog(db); err != nil {
+	if err = schema.SeedBillingCatalog(db); err != nil {
 		return nil, err
 	}
 
@@ -137,10 +137,14 @@ func migrate(db *gorm.DB, cfg config.Config) error {
 		"billing_payment_orders":         "支付订单表",
 		"billing_accounts":               "按量计费余额账户表",
 		"billing_balance_transactions":   "按量计费余额流水表",
+		"billing_redemption_codes":       "计费兑换码定义表",
+		"billing_redemptions":            "计费兑换记录表",
 		"billing_model_prices":           "平台模型按量单价配置表",
 		"billing_usage_ledgers":          "按量用量账本表",
 		"audit_logs":                     "可追溯审计日志表",
 		"system_events":                  "后台系统事件表",
+		"system_announcements":           "站点公告表",
+		"announcement_user_states":       "用户公告展示状态表",
 		"system_settings":                "系统动态配置表",
 		"user_settings":                  "用户个人偏好配置表",
 		"file_chunks":                    "RAG文件分片表",
@@ -155,6 +159,9 @@ func migrate(db *gorm.DB, cfg config.Config) error {
 	}
 
 	if err := applyIdentityBaselineConstraints(db); err != nil {
+		return err
+	}
+	if err := applyIdentitySessionBaseline(db); err != nil {
 		return err
 	}
 	if err := applyIdentityProviderBaseline(db); err != nil {
@@ -172,10 +179,13 @@ func migrate(db *gorm.DB, cfg config.Config) error {
 	if err := applyImageStudioBaselineIndexes(db); err != nil {
 		return err
 	}
+	if err := applyAnnouncementBaseline(db); err != nil {
+		return err
+	}
 	if err := applyVectorBaseline(db, vectorBaselineRequired(cfg)); err != nil {
 		return err
 	}
-	if err := seedLLMSettings(db); err != nil {
+	if err := schema.SeedLLMSettings(db); err != nil {
 		return err
 	}
 
@@ -183,60 +193,7 @@ func migrate(db *gorm.DB, cfg config.Config) error {
 }
 
 func applySchemaBaseline(db *gorm.DB) error {
-	models := []interface{}{
-		&model.User{},
-		&model.UserContactVerification{},
-		&model.UserCredential{},
-		&model.UserSession{},
-		&model.UserAuthEvent{},
-		&model.AuthIdentityProvider{},
-		&model.UserIdentity{},
-		&model.UserTwoFactor{},
-		&model.TrustedDevice{},
-		&model.LLMUpstream{},
-		&model.LLMUpstreamModel{},
-		&model.LLMPlatformModel{},
-		&model.LLMPlatformModelRoute{},
-		&model.MCPServer{},
-		&model.MCPTool{},
-		&model.Conversation{},
-		&model.ConversationProject{},
-		&model.ConversationShare{},
-		&model.Message{},
-		&model.ConversationMessageFeedback{},
-		&model.Attachment{},
-		&model.FileObject{},
-		&model.UserStorageQuota{},
-		&model.ImageStudioTask{},
-		&model.ImageStudioTaskAsset{},
-		&model.ConversationRun{},
-		&model.ChatRunEvent{},
-		&model.ChatContextRecord{},
-		&model.UserMemory{},
-		&model.BillingPlan{},
-		&model.BillingPrice{},
-		&model.Subscription{},
-		&model.PaymentOrder{},
-		&model.BillingAccount{},
-		&model.BalanceTransaction{},
-		&model.ModelPricing{},
-		&model.UsageLedger{},
-		&model.AuditLog{},
-		&model.SystemEvent{},
-		&model.SystemSetting{},
-		&model.UserSetting{},
-		&model.FileChunk{},
-		&model.MessageChunk{},
-	}
-	for _, item := range models {
-		if db.Migrator().HasTable(item) {
-			continue
-		}
-		if err := db.Migrator().CreateTable(item); err != nil {
-			return err
-		}
-	}
-	return nil
+	return schema.Migrate(db)
 }
 
 func escapeSQLLiteral(input string) string {
@@ -251,6 +208,11 @@ func applyLLMBaselineIndexes(db *gorm.DB) error {
 		`ALTER TABLE "llm_platform_models"
 		ADD COLUMN IF NOT EXISTS "system_prompt" text NOT NULL DEFAULT ''`,
 		`COMMENT ON COLUMN "llm_platform_models"."system_prompt" IS '模型级系统提示词'`,
+		`ALTER TABLE "llm_platform_models"
+		ADD COLUMN IF NOT EXISTS "access_scope" varchar(32) NOT NULL DEFAULT 'public'`,
+		`COMMENT ON COLUMN "llm_platform_models"."access_scope" IS '模型使用范围: public用户可用 internal仅内部任务'`,
+		`CREATE INDEX IF NOT EXISTS idx_llm_platform_models_access_scope
+			ON "llm_platform_models" ("access_scope")`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_upstream_models_upstream_name
 			ON "llm_upstream_models" ("upstream_id", "upstream_model_name")`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_upstream_models_binding_code
@@ -283,6 +245,47 @@ func applyBillingBaselineIndexes(db *gorm.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_balance_transactions_usage_ref
 		ON "billing_balance_transactions" ("user_id", "type", "ref_no")
 		WHERE ref_no <> '' AND type IN ('usage_reserve', 'usage_refund')`,
+		`ALTER TABLE "billing_redemption_codes"
+		ADD COLUMN IF NOT EXISTS "code_encrypted" text NOT NULL DEFAULT ''`,
+		`COMMENT ON COLUMN "billing_redemption_codes"."code_encrypted" IS 'AES-GCM加密后的兑换码明文'`,
+		`UPDATE "billing_redemption_codes"
+		SET "code_hint" = replace("code_hint", '...', '***')
+		WHERE "code_hint" LIKE '%...%'`,
+		`CREATE INDEX IF NOT EXISTS idx_billing_redemption_codes_status_mode
+		ON "billing_redemption_codes" ("status", "mode", "id")`,
+		`CREATE INDEX IF NOT EXISTS idx_billing_redemptions_code_user_created
+		ON "billing_redemptions" ("code_id", "user_id", "created_at")`,
+	}
+
+	for _, statement := range statements {
+		if err := db.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyAnnouncementBaseline(db *gorm.DB) error {
+	statements := []string{
+		`ALTER TABLE "system_announcements"
+		ADD COLUMN IF NOT EXISTS "type" varchar(32) NOT NULL DEFAULT 'general'`,
+		`COMMENT ON COLUMN "system_announcements"."type" IS '公告类型(critical/warning/info/normal/general)'`,
+		`ALTER TABLE "system_announcements"
+		ADD COLUMN IF NOT EXISTS "pinned" boolean NOT NULL DEFAULT false`,
+		`COMMENT ON COLUMN "system_announcements"."pinned" IS '是否置顶'`,
+		`CREATE INDEX IF NOT EXISTS idx_system_announcements_sort
+		ON "system_announcements" ("pinned", "priority", "updated_at", "id")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_announcement_user_states_version
+		ON "announcement_user_states" ("announcement_id", "user_id", "announcement_updated_at")`,
+		`ALTER TABLE "announcement_user_states"
+		ADD COLUMN IF NOT EXISTS "closed_at" timestamptz`,
+		`COMMENT ON COLUMN "announcement_user_states"."closed_at" IS '关闭时间'`,
+		`CREATE INDEX IF NOT EXISTS idx_announcement_user_states_user_dismissed
+		ON "announcement_user_states" ("user_id", "dismissed_until")
+		WHERE "dismissed_until" IS NOT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_announcement_user_states_user_closed
+		ON "announcement_user_states" ("user_id", "closed_at")
+		WHERE "closed_at" IS NOT NULL`,
 	}
 
 	for _, statement := range statements {
@@ -300,6 +303,26 @@ func applyIdentityBaselineConstraints(db *gorm.DB) error {
 		`COMMENT ON COLUMN "identity_users"."appearance_preferences" IS '外观偏好JSON'`,
 		`DROP INDEX IF EXISTS uk_identity_users_single_superadmin`,
 	}
+	for _, statement := range statements {
+		if err := db.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyIdentitySessionBaseline(db *gorm.DB) error {
+	statements := []string{
+		`ALTER TABLE "identity_sessions"
+		ADD COLUMN IF NOT EXISTS "previous_refresh_token_hash" varchar(255) NOT NULL DEFAULT ''`,
+		`COMMENT ON COLUMN "identity_sessions"."previous_refresh_token_hash" IS '上一枚刷新令牌哈希'`,
+		`ALTER TABLE "identity_sessions"
+		ADD COLUMN IF NOT EXISTS "refresh_rotated_at" timestamptz`,
+		`COMMENT ON COLUMN "identity_sessions"."refresh_rotated_at" IS '刷新令牌轮换时间'`,
+		`CREATE INDEX IF NOT EXISTS idx_identity_sessions_refresh_rotated_at
+		ON "identity_sessions" ("refresh_rotated_at")`,
+	}
+
 	for _, statement := range statements {
 		if err := db.Exec(statement).Error; err != nil {
 			return err
@@ -328,6 +351,9 @@ func applyConversationBaselineIndexes(db *gorm.DB) error {
 		`ALTER TABLE "chat_conversations"
 		ADD COLUMN IF NOT EXISTS "project_id" bigint`,
 		`COMMENT ON COLUMN "chat_conversations"."project_id" IS '项目分组ID'`,
+		`ALTER TABLE "chat_conversation_projects"
+		ADD COLUMN IF NOT EXISTS "system_prompt" text NOT NULL DEFAULT ''`,
+		`COMMENT ON COLUMN "chat_conversation_projects"."system_prompt" IS '项目级系统提示词'`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_conversations_user_status_starred_updated_at
 		ON "chat_conversations" ("user_id", "status", "is_starred", "updated_at" DESC, "id" DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_conversations_user_status_starred_starred_at
@@ -346,11 +372,25 @@ func applyConversationBaselineIndexes(db *gorm.DB) error {
 		WHERE status = 'active'`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_conversation_shares_user_status_updated_at
 		ON "chat_conversation_shares" ("user_id", "status", "updated_at" DESC, "id" DESC)`,
+		`ALTER TABLE "chat_messages"
+		ADD COLUMN IF NOT EXISTS "edited_at" timestamptz`,
+		`COMMENT ON COLUMN "chat_messages"."edited_at" IS '用户编辑时间'`,
+		`CREATE INDEX IF NOT EXISTS idx_chat_messages_edited_at
+		ON "chat_messages" ("edited_at")`,
 		`ALTER TABLE "chat_runs"
 		ADD COLUMN IF NOT EXISTS "task_type" varchar(32) NOT NULL DEFAULT 'chat'`,
 		`COMMENT ON COLUMN "chat_runs"."task_type" IS '任务类型'`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_runs_task_type
 		ON "chat_runs" ("task_type")`,
+		`ALTER TABLE "chat_run_events"
+		ALTER COLUMN "event_id" TYPE varchar(255),
+		ALTER COLUMN "parent_event_id" TYPE varchar(255),
+		ALTER COLUMN "title" TYPE varchar(255),
+		ALTER COLUMN "tool_call_id" TYPE varchar(255)`,
+		`COMMENT ON COLUMN "chat_run_events"."event_id" IS '事件ID'`,
+		`COMMENT ON COLUMN "chat_run_events"."parent_event_id" IS '父事件ID'`,
+		`COMMENT ON COLUMN "chat_run_events"."title" IS '轨迹标题'`,
+		`COMMENT ON COLUMN "chat_run_events"."tool_call_id" IS '工具调用ID'`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_file_objects_active_user_content
 		ON "file_objects" ("user_id", "sha256", "size_bytes")
 		WHERE status = 'active' AND deleted_at IS NULL AND sha256 <> ''`,
@@ -430,154 +470,4 @@ func handleOptionalVectorBaselineError(required bool, operation string, err erro
 	}
 	log.Printf("postgres vector baseline skipped: %s failed: %v", operation, err)
 	return nil
-}
-
-func seedLLMSettings(db *gorm.DB) error {
-	settings := []model.SystemSetting{
-		{
-			Namespace:   "llm",
-			Key:         "circuit_breaker.error_classification",
-			Value:       `{"circuit_errors":["5xx","timeout","connection_error"],"rate_limit_errors":["429"],"ignore_errors":["4xx"]}`,
-			ValueType:   "json",
-			Description: "熔断错误分类配置",
-		},
-		{
-			Namespace:   "llm",
-			Key:         "circuit_breaker.defaults",
-			Value:       `{"model_failure_threshold":5,"model_duration_min":15,"model_window_min":3,"upstream_failure_threshold":20,"upstream_model_threshold":3,"upstream_threshold_logic":"or","upstream_duration_min":30,"upstream_window_min":5}`,
-			ValueType:   "json",
-			Description: "熔断默认参数",
-		},
-		{
-			Namespace:   "llm",
-			Key:         "rate_limit.defaults",
-			Value:       `{"backoff_base_sec":5,"backoff_max_sec":60,"backoff_multiplier":2}`,
-			ValueType:   "json",
-			Description: "限流退避默认参数",
-		},
-		{
-			Namespace:   "llm",
-			Key:         "load_balance.defaults",
-			Value:       `{"algorithm":"weighted_random"}`,
-			ValueType:   "json",
-			Description: "负载均衡默认参数",
-		},
-	}
-
-	for i := range settings {
-		if err := db.Where("namespace = ? AND key = ?", settings[i].Namespace, settings[i].Key).
-			FirstOrCreate(&settings[i]).Error; err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func seedBillingCatalog(db *gorm.DB) error {
-	var planCount int64
-	if err := db.Model(&model.BillingPlan{}).Count(&planCount).Error; err != nil {
-		return err
-	}
-	var priceCount int64
-	if err := db.Model(&model.BillingPrice{}).Count(&priceCount).Error; err != nil {
-		return err
-	}
-	if planCount > 0 || priceCount > 0 {
-		return nil
-	}
-
-	plans := []model.BillingPlan{
-		{
-			Code:                "free",
-			Name:                "Free",
-			Description:         "默认免费套餐",
-			FeatureJSON:         `{"priority":"shared"}`,
-			PeriodCreditNanousd: 1000000000,
-			DiscountPercent:     0,
-			SortOrder:           10,
-			IsActive:            true,
-		},
-		{
-			Code:                "pro",
-			Name:                "Pro",
-			Description:         "轻度使用套餐",
-			FeatureJSON:         `{"priority":"standard"}`,
-			PeriodCreditNanousd: 30000000000,
-			DiscountPercent:     0,
-			SortOrder:           20,
-			IsActive:            true,
-		},
-		{
-			Code:                "max",
-			Name:                "Max",
-			Description:         "中度使用套餐",
-			FeatureJSON:         `{"priority":"advanced"}`,
-			PeriodCreditNanousd: 75000000000,
-			DiscountPercent:     0,
-			SortOrder:           30,
-			IsActive:            true,
-		},
-		{
-			Code:                "ultra",
-			Name:                "Ultra",
-			Description:         "重度使用套餐",
-			FeatureJSON:         `{"priority":"premium"}`,
-			PeriodCreditNanousd: 300000000000,
-			DiscountPercent:     0,
-			SortOrder:           40,
-			IsActive:            true,
-		},
-	}
-
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&plans).Error; err != nil {
-			return err
-		}
-
-		planIDByCode := make(map[string]uint, len(plans))
-		for _, item := range plans {
-			planIDByCode[item.Code] = item.ID
-		}
-
-		prices := []model.BillingPrice{
-			{
-				PlanID:          planIDByCode["free"],
-				Code:            "free-default",
-				BillingInterval: model.BillingIntervalLifetime,
-				Currency:        "USD",
-				AmountCents:     0,
-				IsActive:        true,
-				IsDefault:       true,
-			},
-			{
-				PlanID:          planIDByCode["pro"],
-				Code:            "pro-monthly",
-				BillingInterval: model.BillingIntervalMonth,
-				Currency:        "USD",
-				AmountCents:     2000,
-				IsActive:        true,
-				IsDefault:       true,
-			},
-			{
-				PlanID:          planIDByCode["max"],
-				Code:            "max-monthly",
-				BillingInterval: model.BillingIntervalMonth,
-				Currency:        "USD",
-				AmountCents:     5000,
-				IsActive:        true,
-				IsDefault:       true,
-			},
-			{
-				PlanID:          planIDByCode["ultra"],
-				Code:            "ultra-monthly",
-				BillingInterval: model.BillingIntervalMonth,
-				Currency:        "USD",
-				AmountCents:     20000,
-				IsActive:        true,
-				IsDefault:       true,
-			},
-		}
-
-		return tx.Create(&prices).Error
-	})
 }

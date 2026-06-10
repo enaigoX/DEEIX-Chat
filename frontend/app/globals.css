@@ -51,6 +51,7 @@
   --font-heiti: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", sans-serif;
   --font-chat: var(--font-sans);
   --font-chat-weight: 400;
+  --font-chat-strong-weight: 700;
   --ui-font-scale: 1;
   --chat-font-scale: 1;
   --radius: 0.5rem;
@@ -115,6 +116,7 @@
   --font-heiti: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", sans-serif;
   --font-chat: var(--font-sans);
   --font-chat-weight: 400;
+  --font-chat-strong-weight: 700;
   --radius: 0.5rem;
   --shadow-x: 0;
   --shadow-y: 1px;
@@ -1006,6 +1008,10 @@
   [role="button"] {
     touch-action: manipulation;
   }
+  button:not(:disabled):not([aria-disabled="true"]),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
   body {
     @apply bg-background text-foreground;
   }
@@ -1029,7 +1035,7 @@
 
   tbody .data-table-row[data-tone="muted"] {
     --data-table-row-bg: color-mix(in oklch, var(--muted) 20%, var(--background));
-    --data-table-row-hover-bg: var(--accent);
+    --data-table-row-hover-bg: color-mix(in oklch, var(--muted) 30%, var(--background));
   }
 
   tbody .data-table-row[data-selected="true"] {
@@ -1037,7 +1043,7 @@
     --data-table-row-hover-bg: var(--accent);
   }
 
-  tbody .data-table-row:hover {
+  tbody .data-table-row:not([data-interactive="false"]):hover {
     --data-table-row-bg: var(--data-table-row-hover-bg);
   }
 
@@ -1064,14 +1070,17 @@
 
 :root[data-chat-font-weight="medium"] {
   --font-chat-weight: 500;
+  --font-chat-strong-weight: 700;
 }
 
 :root[data-chat-font-weight="semibold"] {
   --font-chat-weight: 600;
+  --font-chat-strong-weight: 800;
 }
 
 :root[data-chat-font-weight="bold"] {
   --font-chat-weight: 700;
+  --font-chat-strong-weight: 900;
 }
 
 :root[data-font-size="small"] {
@@ -1200,43 +1209,23 @@
     th,
     ul,
     ol
-  ):not(pre *):not(code):not(code *) {
+  ):not(pre *):not(code):not(code *):not(.katex):not(.katex *) {
     font-family: var(--font-chat);
     font-weight: var(--font-chat-weight);
   }
 
-  .chat-font-content .katex,
-  .chat-font-content .katex
-    :where(
-      .mathnormal,
-      .mathit,
-      .mathrm,
-      .mathbf,
-      .boldsymbol,
-      .textrm,
-      .mainrm,
-      .textbf,
-      .textit,
-      .mord,
-      .mop,
-      .mbin,
-      .mrel,
-      .mopen,
-      .mclose,
-      .mpunct,
-      .minner
-    ) {
-    font-family: "Times New Roman", Times, serif !important;
+  .chat-font-content[data-chat-markdown-scope] :where(strong, strong *, b, b *):not(pre *):not(code):not(code *):not(.katex):not(.katex *) {
+    font-weight: var(--font-chat-strong-weight);
   }
 
   .chat-font-content .katex,
-  .chat-font-content .katex :where(.base, .strut, .mord, .mop, .mbin, .mrel, .mopen, .mclose, .mpunct, .minner) {
-    font-weight: 400 !important;
+  .chat-font-content .katex * {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
   }
 
-  .chat-font-content .katex
-    :where(.textbf, .mathbf, .boldsymbol, .mathboldfrak, .textboldfrak, .mathboldsf, .textboldsf) {
-    font-weight: 700 !important;
+  .chat-font-content .katex {
+    white-space: nowrap !important;
   }
 
   .from-bg-200\/5 {

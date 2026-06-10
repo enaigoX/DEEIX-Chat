@@ -9,6 +9,7 @@ type Conversation struct {
 	ProjectID             *uint
 	ProjectPublicID       string
 	ProjectName           string
+	ProjectSystemPrompt   string
 	PublicID              string
 	Title                 string
 	LabelsJSON            string
@@ -33,26 +34,28 @@ type Conversation struct {
 
 // ConversationProject 表示用户会话项目分组。
 type ConversationProject struct {
-	ID          uint
-	UserID      uint
-	PublicID    string
-	Name        string
-	Description string
-	Color       string
-	Icon        string
-	SortOrder   int
-	Status      string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID           uint
+	UserID       uint
+	PublicID     string
+	Name         string
+	Description  string
+	SystemPrompt string
+	Color        string
+	Icon         string
+	SortOrder    int
+	Status       string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // ConversationProjectPatch 表示项目分组的局部更新。
 type ConversationProjectPatch struct {
-	Name        *string
-	Description *string
-	Color       *string
-	Icon        *string
-	Status      *string
+	Name         *string
+	Description  *string
+	SystemPrompt *string
+	Color        *string
+	Icon         *string
+	Status       *string
 }
 
 // ConversationShare 表示会话公开分享快照。
@@ -182,6 +185,7 @@ type Message struct {
 	ThumbsUpCount    int64
 	ThumbsDownCount  int64
 	ProcessTrace     *MessageProcessTrace
+	EditedAt         *time.Time
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -396,6 +400,38 @@ type MessageTraceEventRow struct {
 	ContentMarkdown string
 	PayloadJSON     string
 	Seq             int
+	StartedAt       time.Time
+	EndedAt         *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// EventLog 表示后台日志中心展示的对话运行事件。
+type EventLog struct {
+	ID              uint
+	MessageID       uint
+	ConversationID  uint
+	UserID          uint
+	RunID           string
+	EventScope      string
+	EventID         string
+	EventType       string
+	Phase           string
+	Stage           string
+	RoundID         string
+	ParentEventID   string
+	Status          string
+	Title           string
+	Summary         string
+	ContentMarkdown string
+	PayloadJSON     string
+	Seq             int
+	ToolCallID      string
+	ToolName        string
+	LatencyMS       int64
+	InputJSON       string
+	OutputJSON      string
+	ErrorJSON       string
 	StartedAt       time.Time
 	EndedAt         *time.Time
 	CreatedAt       time.Time

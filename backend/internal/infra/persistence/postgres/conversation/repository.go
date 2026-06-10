@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	domainconversation "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
 	domainuser "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/user"
 	models "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/models"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/sqlitevec"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -66,6 +68,17 @@ type Repo struct {
 // NewRepo 创建仓储。
 func NewRepo(db *gorm.DB) *Repo {
 	return &Repo{db: db}
+}
+
+func (r *Repo) sqliteDialect() bool {
+	return r != nil && r.db != nil && r.db.Dialector != nil && r.db.Dialector.Name() == "sqlite"
+}
+
+func (r *Repo) trimFunctionName() string {
+	if r.sqliteDialect() {
+		return "trim"
+	}
+	return "btrim"
 }
 
 // CreateConversation 创建会话。
@@ -261,6 +274,7 @@ func (r *Repo) hydrateConversationProjectSummaries(ctx context.Context, items []
 		}
 		items[index].ProjectPublicID = project.PublicID
 		items[index].ProjectName = project.Name
+		items[index].ProjectSystemPrompt = project.SystemPrompt
 	}
 	return nil
 }
@@ -450,8 +464,8 @@ func (r *Repo) UpdateConversationMetadata(ctx context.Context, conversationID ui
 	updates := map[string]interface{}{}
 	if strings.TrimSpace(title) != "" {
 		updates["title"] = gorm.Expr(
-			"CASE WHEN lower(btrim(title)) IN ? THEN ? ELSE title END",
-			[]string{"", "new conversation", "untitled", "新会话", "新对话", "新的对话"},
+			fmt.Sprintf("CASE WHEN lower(%s(title)) IN ? THEN ? ELSE title END", r.trimFunctionName()),
+			[]string{"", "new conversation", "new chat", "untitled", "新会话", "新对话", "新的对话"},
 			strings.TrimSpace(title),
 		)
 	}
@@ -817,6 +831,9 @@ func (r *Repo) GetMessageByPublicID(
 		return nil, translateError(err)
 	}
 	single := []models.Message{item}
+	if err := r.hydrateMessageRefs(ctx, single); err != nil {
+		return nil, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, single); err != nil {
 		return nil, err
 	}
@@ -834,6 +851,9 @@ func (r *Repo) GetMessageByPublicIDForUser(ctx context.Context, userID uint, pub
 		return nil, translateError(err)
 	}
 	single := []models.Message{item}
+	if err := r.hydrateMessageRefs(ctx, single); err != nil {
+		return nil, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, single); err != nil {
 		return nil, err
 	}
@@ -887,6 +907,97 @@ func (r *Repo) UpdateMessageState(
 			"error_message": errorMessage,
 		}).
 		Error)
+}
+
+// UpdateAssistantMessageContent 更新当前用户 assistant 消息正文并标记编辑时间。
+func (r *Repo) UpdateAssistantMessageContent(
+	ctx context.Context,
+	userID uint,
+	publicID string,
+	content string,
+	editedAt time.Time,
+) (*domainconversation.Message, error) {
+	normalizedPublicID := strings.TrimSpace(publicID)
+	if userID == 0 || normalizedPublicID == "" {
+		return nil, repository.ErrInvalidInput
+	}
+
+	var item models.Message
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.
+			Where("user_id = ? AND public_id = ? AND role = ?", userID, normalizedPublicID, "assistant").
+			First(&item).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.Message{}).
+			Where("id = ?", item.ID).
+			Updates(map[string]interface{}{
+				"content":   content,
+				"edited_at": editedAt,
+			}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", item.ID).First(&item).Error
+	})
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	single := []models.Message{item}
+	if err = r.hydrateMessageRefs(ctx, single); err != nil {
+		return nil, err
+	}
+	if err = r.hydrateMessageAttachments(ctx, single); err != nil {
+		return nil, err
+	}
+	item = single[0]
+	result := toMessageDomain(item)
+	return &result, nil
+}
+
+// CancelPendingGenerationMessagesByRunID 将用户显式取消的 pending 回合更新为稳定终态。
+func (r *Repo) CancelPendingGenerationMessagesByRunID(
+	ctx context.Context,
+	userID uint,
+	runID string,
+	errorCode string,
+	errorMessage string,
+) (bool, error) {
+	normalizedRunID := strings.TrimSpace(runID)
+	if userID == 0 || normalizedRunID == "" {
+		return false, repository.ErrInvalidInput
+	}
+	normalizedErrorCode := strings.TrimSpace(errorCode)
+	normalizedErrorMessage := truncateText(strings.TrimSpace(errorMessage), 255)
+	returnedRows := int64(0)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		userResult := tx.Model(&models.Message{}).
+			Where("user_id = ? AND run_id = ? AND role = ? AND status = ?", userID, normalizedRunID, "user", "pending").
+			Updates(map[string]interface{}{
+				"status":        "success",
+				"error_code":    "",
+				"error_message": "",
+			})
+		if userResult.Error != nil {
+			return userResult.Error
+		}
+		assistantResult := tx.Model(&models.Message{}).
+			Where("user_id = ? AND run_id = ? AND role = ? AND status = ?", userID, normalizedRunID, "assistant", "pending").
+			Updates(map[string]interface{}{
+				"status":        "canceled",
+				"error_code":    normalizedErrorCode,
+				"error_message": normalizedErrorMessage,
+			})
+		if assistantResult.Error != nil {
+			return assistantResult.Error
+		}
+		returnedRows = userResult.RowsAffected + assistantResult.RowsAffected
+		return nil
+	})
+	if err != nil {
+		return false, translateError(err)
+	}
+	return returnedRows > 0, nil
 }
 
 // InterruptPendingAssistantMessageByRunID 将失去活跃生成流的 pending assistant 标记为错误。
@@ -1063,7 +1174,43 @@ func (r *Repo) ListMessages(ctx context.Context, conversationID uint, offset int
 		Find(&items).Error; err != nil {
 		return nil, 0, translateError(err)
 	}
-	hydrateMessageRefs(items)
+	if err := r.hydrateMessageRefs(ctx, items); err != nil {
+		return nil, 0, err
+	}
+	if err := r.hydrateMessageAttachments(ctx, items); err != nil {
+		return nil, 0, err
+	}
+	return toMessageDomains(items), total, nil
+}
+
+// ListMessagesBeforeID 查询指定消息 ID 之前的一页会话消息（按时间升序返回）。
+func (r *Repo) ListMessagesBeforeID(ctx context.Context, conversationID uint, beforeID uint, limit int) ([]domainconversation.Message, int64, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	items := make([]models.Message, 0, limit)
+	var total int64
+
+	if err := r.db.WithContext(ctx).
+		Model(&models.Message{}).
+		Where("conversation_id = ?", conversationID).
+		Count(&total).Error; err != nil {
+		return nil, 0, translateError(err)
+	}
+
+	if err := r.db.WithContext(ctx).
+		Where("conversation_id = ? AND id < ?", conversationID, beforeID).
+		Order("id DESC").
+		Limit(limit).
+		Find(&items).Error; err != nil {
+		return nil, 0, translateError(err)
+	}
+	for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
+		items[left], items[right] = items[right], items[left]
+	}
+	if err := r.hydrateMessageRefs(ctx, items); err != nil {
+		return nil, 0, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, items); err != nil {
 		return nil, 0, err
 	}
@@ -1080,7 +1227,9 @@ func (r *Repo) ListMessagesForShare(ctx context.Context, conversationID uint, pu
 	if err := query.Order("id ASC").Find(&items).Error; err != nil {
 		return nil, translateError(err)
 	}
-	hydrateMessageRefs(items)
+	if err := r.hydrateMessageRefs(ctx, items); err != nil {
+		return nil, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, items); err != nil {
 		return nil, err
 	}
@@ -1112,7 +1261,9 @@ func (r *Repo) ListAllMessages(ctx context.Context, conversationID uint) ([]doma
 		Find(&items).Error; err != nil {
 		return nil, translateError(err)
 	}
-	hydrateMessageRefs(items)
+	if err := r.hydrateMessageRefs(ctx, items); err != nil {
+		return nil, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, items); err != nil {
 		return nil, err
 	}
@@ -1378,6 +1529,73 @@ func (r *Repo) ListConversationRuns(
 	return toConversationRunDomains(items), total, nil
 }
 
+// ListConversationEventLogs 分页查询管理员对话事件日志。
+func (r *Repo) ListConversationEventLogs(
+	ctx context.Context,
+	filter repository.ConversationEventLogListFilter,
+	offset int,
+	limit int,
+) ([]domainconversation.EventLog, int64, error) {
+	items := make([]models.ChatRunEvent, 0)
+	var total int64
+	query := r.db.WithContext(ctx).Model(&models.ChatRunEvent{})
+	if filter.UserID > 0 {
+		query = query.Where("user_id = ?", filter.UserID)
+	}
+	if filter.ConversationID > 0 {
+		query = query.Where("conversation_id = ?", filter.ConversationID)
+	}
+	if search := strings.TrimSpace(filter.Query); search != "" {
+		like := "%" + strings.ToLower(search) + "%"
+		query = query.Where(
+			"LOWER(run_id) LIKE ? OR LOWER(event_id) LIKE ? OR LOWER(event_type) LIKE ? OR LOWER(phase) LIKE ? OR LOWER(stage) LIKE ? OR LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(tool_name) LIKE ?",
+			like,
+			like,
+			like,
+			like,
+			like,
+			like,
+			like,
+			like,
+		)
+	}
+	if eventScope := strings.TrimSpace(filter.EventScope); eventScope != "" {
+		query = query.Where("event_scope = ?", eventScope)
+	}
+	if eventType := strings.TrimSpace(filter.EventType); eventType != "" {
+		query = query.Where("event_type = ?", eventType)
+	}
+	if status := strings.TrimSpace(filter.Status); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if filter.CreatedFrom != nil {
+		query = query.Where("created_at >= ?", *filter.CreatedFrom)
+	}
+	if filter.CreatedTo != nil {
+		query = query.Where("created_at <= ?", *filter.CreatedTo)
+	}
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, translateError(err)
+	}
+	order := "created_at DESC, id DESC"
+	switch strings.TrimSpace(filter.Sort) {
+	case "created_asc":
+		order = "created_at ASC, id ASC"
+	case "latency_desc":
+		order = "latency_ms DESC, id DESC"
+	case "seq_asc":
+		order = "run_id ASC, seq ASC, id ASC"
+	}
+	if err := query.
+		Order(order).
+		Offset(offset).
+		Limit(limit).
+		Find(&items).Error; err != nil {
+		return nil, 0, translateError(err)
+	}
+	return toConversationEventLogDomains(items), total, nil
+}
+
 // ListConversationRunsByRunIDs 按运行 ID 查询会话运行快照。
 func (r *Repo) ListConversationRunsByRunIDs(
 	ctx context.Context,
@@ -1407,6 +1625,9 @@ func (r *Repo) GetMessageByID(ctx context.Context, conversationID uint, messageI
 		return nil, translateError(err)
 	}
 	single := []models.Message{item}
+	if err := r.hydrateMessageRefs(ctx, single); err != nil {
+		return nil, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, single); err != nil {
 		return nil, err
 	}
@@ -1426,6 +1647,9 @@ func (r *Repo) GetLatestMessage(ctx context.Context, conversationID uint) (*doma
 		return nil, translateError(err)
 	}
 	single := []models.Message{item}
+	if err := r.hydrateMessageRefs(ctx, single); err != nil {
+		return nil, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, single); err != nil {
 		return nil, err
 	}
@@ -1461,7 +1685,7 @@ SELECT id, conversation_id, user_id, public_id, parent_message_id, run_id,
        role, content_type, content, branch_reason, source_message_id,
        token_usage, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens,
        latency_ms, billed_currency, billed_nanousd, pricing_snapshot,
-       status, error_code, error_message, is_compacted,
+       status, error_code, error_message, is_compacted, edited_at,
        created_at, updated_at, deleted_at
 FROM ancestors
 ORDER BY id ASC`
@@ -1471,7 +1695,9 @@ ORDER BY id ASC`
 		return nil, translateError(err)
 	}
 
-	hydrateMessageRefs(path)
+	if err := r.hydrateMessageRefs(ctx, path); err != nil {
+		return nil, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, path); err != nil {
 		return nil, err
 	}
@@ -1503,7 +1729,9 @@ func (r *Repo) ListRecentMessages(ctx context.Context, conversationID uint, limi
 		Find(&items).Error; err != nil {
 		return nil, 0, translateError(err)
 	}
-	hydrateMessageRefs(items)
+	if err := r.hydrateMessageRefs(ctx, items); err != nil {
+		return nil, 0, err
+	}
 	if err := r.hydrateMessageAttachments(ctx, items); err != nil {
 		return nil, 0, err
 	}
@@ -1879,7 +2107,7 @@ func (r *Repo) CreateFileObjectAndConsumeQuota(
 		}
 
 		nextUsed := quota.UsedBytes + entity.SizeBytes
-		if nextUsed+quota.ReservedBytes > quota.QuotaBytes {
+		if quota.QuotaBytes > 0 && nextUsed+quota.ReservedBytes > quota.QuotaBytes {
 			return ErrStorageQuotaExceeded
 		}
 
@@ -2027,8 +2255,8 @@ func getOrInitQuotaForUpdate(tx *gorm.DB, userID uint, defaultQuotaBytes int64) 
 		return nil, query.Error
 	}
 	if query.RowsAffected == 0 {
-		if defaultQuotaBytes <= 0 {
-			defaultQuotaBytes = 104857600
+		if defaultQuotaBytes < 0 {
+			defaultQuotaBytes = 0
 		}
 		quota = models.UserStorageQuota{
 			UserID:        userID,
@@ -2036,8 +2264,20 @@ func getOrInitQuotaForUpdate(tx *gorm.DB, userID uint, defaultQuotaBytes int64) 
 			UsedBytes:     0,
 			ReservedBytes: 0,
 		}
-		if err := tx.Create(&quota).Error; err != nil {
+		if err := tx.Select("UserID", "QuotaBytes", "UsedBytes", "ReservedBytes").Create(&quota).Error; err != nil {
 			return nil, translateError(err)
+		}
+	} else {
+		if defaultQuotaBytes < 0 {
+			defaultQuotaBytes = 0
+		}
+		if quota.QuotaBytes != defaultQuotaBytes {
+			if err := tx.Model(&models.UserStorageQuota{}).
+				Where("id = ?", quota.ID).
+				Update("quota_bytes", defaultQuotaBytes).Error; err != nil {
+				return nil, translateError(err)
+			}
+			quota.QuotaBytes = defaultQuotaBytes
 		}
 	}
 	return &quota, nil
@@ -2082,8 +2322,51 @@ func (r *Repo) CloneFileEmbeddingArtifacts(ctx context.Context, source *domainco
 			}).Error; err != nil {
 			return translateError(err)
 		}
+		if r.sqliteDialect() {
+			if err := deleteSQLiteFileChunkVectorsByFile(tx, targetEntity.ID); err != nil {
+				return err
+			}
+		}
 		if err := tx.Where("file_obj_id = ?", targetEntity.ID).Delete(&models.FileChunk{}).Error; err != nil {
 			return translateError(err)
+		}
+		if r.sqliteDialect() {
+			if err := tx.Exec(
+				`INSERT INTO "file_chunks" ("file_obj_id", "user_id", "chunk_index", "page_num", "char_offset", "content", "token_count", "created_at")
+				 SELECT ?, ?, "chunk_index", "page_num", "char_offset", "content", "token_count", CURRENT_TIMESTAMP
+				 FROM "file_chunks"
+				 WHERE "file_obj_id" = ?`,
+				targetEntity.ID,
+				targetEntity.UserID,
+				sourceEntity.ID,
+			).Error; err != nil {
+				return translateError(err)
+			}
+			result := tx.Exec(
+				fmt.Sprintf(`INSERT INTO %s (chunk_id, user_id, file_obj_id, embedding)
+					SELECT target_chunks.id, ?, ?, source_vectors.embedding
+					FROM "file_chunks" AS source_chunks
+					JOIN "file_chunks" AS target_chunks
+						ON target_chunks.file_obj_id = ?
+						AND target_chunks.chunk_index = source_chunks.chunk_index
+					JOIN %s AS source_vectors
+						ON source_vectors.chunk_id = source_chunks.id
+					WHERE source_chunks.file_obj_id = ?`,
+					sqlitevec.FileChunkVectorTable,
+					sqlitevec.FileChunkVectorTable,
+				),
+				targetEntity.UserID,
+				targetEntity.ID,
+				targetEntity.ID,
+				sourceEntity.ID,
+			)
+			if err := result.Error; err != nil {
+				return translateError(err)
+			}
+			if sourceEntity.ChunkCount > 0 && result.RowsAffected != int64(sourceEntity.ChunkCount) {
+				return fmt.Errorf("sqlite file vector copy mismatch: source_chunks=%d copied_vectors=%d", sourceEntity.ChunkCount, result.RowsAffected)
+			}
+			return nil
 		}
 		return tx.Exec(
 			`INSERT INTO "file_chunks" ("file_obj_id", "user_id", "chunk_index", "page_num", "char_offset", "content", "token_count", "embedding", "created_at")
@@ -2107,6 +2390,11 @@ func (r *Repo) ReplaceFileChunks(ctx context.Context, fileObjID uint, chunks []d
 		for i := range chunks {
 			entities = append(entities, toFileChunkModel(&chunks[i]))
 		}
+		if r.sqliteDialect() {
+			if err := deleteSQLiteFileChunkVectorsByFile(tx, fileObjID); err != nil {
+				return err
+			}
+		}
 		// 删除旧分片
 		if err := tx.Where("file_obj_id = ?", fileObjID).Delete(&models.FileChunk{}).Error; err != nil {
 			return translateError(err)
@@ -2117,6 +2405,9 @@ func (r *Repo) ReplaceFileChunks(ctx context.Context, fileObjID uint, chunks []d
 		// 插入新分片
 		if err := tx.Create(&entities).Error; err != nil {
 			return translateError(err)
+		}
+		if r.sqliteDialect() {
+			return insertSQLiteFileChunkVectors(tx, entities, embeddings)
 		}
 		// 更新 embedding（通过 raw SQL 写入 vector 值）
 		for i, chunk := range entities {
@@ -2196,7 +2487,97 @@ type fileChunkSearchRow struct {
 	Similarity float32   `gorm:"column:similarity"`
 }
 
-// SearchFileChunks 使用 pgvector 余弦距离检索最相关的文本分片（需 pgvector 扩展）。
+func deleteSQLiteFileChunkVectorsByFile(tx *gorm.DB, fileObjID uint) error {
+	return translateError(tx.Exec(
+		fmt.Sprintf(`DELETE FROM %s WHERE chunk_id IN (
+			SELECT id FROM "file_chunks" WHERE file_obj_id = ?
+		)`, sqlitevec.FileChunkVectorTable),
+		fileObjID,
+	).Error)
+}
+
+func insertSQLiteFileChunkVectors(tx *gorm.DB, entities []models.FileChunk, embeddings [][]float32) error {
+	if len(entities) != len(embeddings) {
+		return fmt.Errorf("embedding count mismatch: chunks=%d embeddings=%d", len(entities), len(embeddings))
+	}
+	for i, chunk := range entities {
+		if len(embeddings[i]) == 0 {
+			return fmt.Errorf("empty embedding vector at chunk %d", i)
+		}
+		vector, err := sqlitevec.SerializeFloat32(embeddings[i])
+		if err != nil {
+			return err
+		}
+		if err = tx.Exec(
+			fmt.Sprintf(`INSERT INTO %s (chunk_id, user_id, file_obj_id, embedding) VALUES (?, ?, ?, ?)`, sqlitevec.FileChunkVectorTable),
+			chunk.ID,
+			chunk.UserID,
+			chunk.FileObjID,
+			vector,
+		).Error; err != nil {
+			return translateError(err)
+		}
+	}
+	return nil
+}
+
+func (r *Repo) searchSQLiteFileChunks(ctx context.Context, userID uint, fileObjIDs []uint, queryEmbedding []float32, topK int) ([]domainconversation.FileChunkSearchResult, error) {
+	vector, err := sqlitevec.SerializeFloat32(queryEmbedding)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]domainconversation.FileChunkSearchResult, 0, topK)
+	seenFileObjIDs := make(map[uint]struct{}, len(fileObjIDs))
+	for _, fileObjID := range fileObjIDs {
+		if _, ok := seenFileObjIDs[fileObjID]; ok {
+			continue
+		}
+		seenFileObjIDs[fileObjID] = struct{}{}
+		var rows []fileChunkSearchRow
+		query := fmt.Sprintf(`
+			SELECT chunks.id, chunks.file_obj_id, chunks.user_id, chunks.chunk_index, chunks.page_num,
+			       chunks.char_offset, chunks.content, chunks.token_count, chunks.created_at,
+			       (1.0 - vectors.distance) AS similarity
+			FROM %s AS vectors
+			JOIN "file_chunks" AS chunks
+				ON chunks.id = vectors.chunk_id
+			WHERE vectors.embedding MATCH ?
+				AND vectors.k = ?
+				AND vectors.user_id = ?
+				AND vectors.file_obj_id = ?
+			ORDER BY vectors.distance ASC`,
+			sqlitevec.FileChunkVectorTable,
+		)
+		if err := r.db.WithContext(ctx).Raw(query, vector, topK, userID, fileObjID).Scan(&rows).Error; err != nil {
+			return nil, translateError(err)
+		}
+		for _, row := range rows {
+			results = append(results, domainconversation.FileChunkSearchResult{
+				FileChunk: domainconversation.FileChunk{
+					ID:         row.ID,
+					FileObjID:  row.FileObjID,
+					UserID:     row.UserID,
+					ChunkIndex: row.ChunkIndex,
+					PageNum:    row.PageNum,
+					CharOffset: row.CharOffset,
+					Content:    row.Content,
+					TokenCount: row.TokenCount,
+					CreatedAt:  row.CreatedAt,
+				},
+				Similarity: row.Similarity,
+			})
+		}
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		return results[i].Similarity > results[j].Similarity
+	})
+	if len(results) > topK {
+		results = results[:topK]
+	}
+	return results, nil
+}
+
+// SearchFileChunks 使用向量存储的余弦距离检索最相关的文本分片。
 // 返回结果按相似度降序排列，已携带 Similarity 分数以供阈值过滤。
 func (r *Repo) SearchFileChunks(ctx context.Context, userID uint, fileObjIDs []uint, queryEmbedding []float32, topK int) ([]domainconversation.FileChunkSearchResult, error) {
 	if len(fileObjIDs) == 0 || len(queryEmbedding) == 0 {
@@ -2204,6 +2585,9 @@ func (r *Repo) SearchFileChunks(ctx context.Context, userID uint, fileObjIDs []u
 	}
 	if topK <= 0 {
 		topK = 5
+	}
+	if r.sqliteDialect() {
+		return r.searchSQLiteFileChunks(ctx, userID, fileObjIDs, queryEmbedding, topK)
 	}
 	vec := float32SliceToPostgresVector(queryEmbedding)
 	query := `
@@ -2246,6 +2630,9 @@ func (r *Repo) BM25SearchFileChunks(ctx context.Context, userID uint, fileObjIDs
 	if topK <= 0 {
 		topK = 5
 	}
+	if r.sqliteDialect() {
+		return r.keywordSearchFileChunks(ctx, userID, fileObjIDs, query, topK)
+	}
 	// 中文字符逐字切开，空格分隔后拼成 OR 查询，提高中文召回率
 	tsQuery := buildTSQuery(query)
 	if tsQuery == "" {
@@ -2278,6 +2665,44 @@ func (r *Repo) BM25SearchFileChunks(ctx context.Context, userID uint, fileObjIDs
 				CreatedAt:  row.CreatedAt,
 			},
 			Similarity: row.Similarity,
+		})
+	}
+	return results, nil
+}
+
+func (r *Repo) keywordSearchFileChunks(ctx context.Context, userID uint, fileObjIDs []uint, query string, topK int) ([]domainconversation.FileChunkSearchResult, error) {
+	terms := strings.Fields(strings.ToLower(strings.TrimSpace(query)))
+	if len(terms) == 0 {
+		terms = []string{strings.ToLower(strings.TrimSpace(query))}
+	}
+	dbq := r.db.WithContext(ctx).
+		Model(&models.FileChunk{}).
+		Where("user_id = ? AND file_obj_id IN ?", userID, fileObjIDs)
+	for _, term := range terms {
+		if strings.TrimSpace(term) == "" {
+			continue
+		}
+		dbq = dbq.Where("LOWER(content) LIKE ?", "%"+term+"%")
+	}
+	rows := make([]models.FileChunk, 0, topK)
+	if err := dbq.Order("id ASC").Limit(topK).Find(&rows).Error; err != nil {
+		return nil, translateError(err)
+	}
+	results := make([]domainconversation.FileChunkSearchResult, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, domainconversation.FileChunkSearchResult{
+			FileChunk: domainconversation.FileChunk{
+				ID:         row.ID,
+				FileObjID:  row.FileObjID,
+				UserID:     row.UserID,
+				ChunkIndex: row.ChunkIndex,
+				PageNum:    row.PageNum,
+				CharOffset: row.CharOffset,
+				Content:    row.Content,
+				TokenCount: row.TokenCount,
+				CreatedAt:  row.CreatedAt,
+			},
+			Similarity: 0.5,
 		})
 	}
 	return results, nil
@@ -2342,15 +2767,47 @@ func (r *Repo) GetFileObjectsByInternalIDs(ctx context.Context, userID uint, ids
 	return toFileObjectDomains(items), nil
 }
 
-func hydrateMessageRefs(items []models.Message) {
+func (r *Repo) hydrateMessageRefs(ctx context.Context, items []models.Message) error {
 	if len(items) == 0 {
-		return
+		return nil
 	}
 
 	publicIDs := make(map[uint]string, len(items))
 	for i := range items {
 		publicIDs[items[i].ID] = items[i].PublicID
 	}
+
+	missingIDs := make(map[uint]struct{})
+	for i := range items {
+		if items[i].ParentMessageID != nil {
+			if _, ok := publicIDs[*items[i].ParentMessageID]; !ok {
+				missingIDs[*items[i].ParentMessageID] = struct{}{}
+			}
+		}
+		if items[i].SourceMessageID != nil {
+			if _, ok := publicIDs[*items[i].SourceMessageID]; !ok {
+				missingIDs[*items[i].SourceMessageID] = struct{}{}
+			}
+		}
+	}
+
+	if len(missingIDs) > 0 {
+		ids := make([]uint, 0, len(missingIDs))
+		for id := range missingIDs {
+			ids = append(ids, id)
+		}
+		refs := make([]models.Message, 0, len(ids))
+		if err := r.db.WithContext(ctx).
+			Select("id", "public_id").
+			Where("id IN ?", ids).
+			Find(&refs).Error; err != nil {
+			return translateError(err)
+		}
+		for i := range refs {
+			publicIDs[refs[i].ID] = refs[i].PublicID
+		}
+	}
+
 	for i := range items {
 		if items[i].ParentMessageID != nil {
 			items[i].ParentPublicID = publicIDs[*items[i].ParentMessageID]
@@ -2359,6 +2816,7 @@ func hydrateMessageRefs(items []models.Message) {
 			items[i].SourcePublicID = publicIDs[*items[i].SourceMessageID]
 		}
 	}
+	return nil
 }
 
 type messageAttachmentSnapshotRow struct {
@@ -2603,6 +3061,7 @@ func toMessageDomain(item models.Message) domainconversation.Message {
 		MyFeedback:       item.MyFeedback,
 		ThumbsUpCount:    item.ThumbsUpCount,
 		ThumbsDownCount:  item.ThumbsDownCount,
+		EditedAt:         item.EditedAt,
 		CreatedAt:        item.CreatedAt,
 		UpdatedAt:        item.UpdatedAt,
 	}
@@ -2644,6 +3103,7 @@ func toMessageModel(item *domainconversation.Message) models.Message {
 		Status:           item.Status,
 		ErrorCode:        item.ErrorCode,
 		ErrorMessage:     item.ErrorMessage,
+		EditedAt:         item.EditedAt,
 	}
 }
 
@@ -2722,6 +3182,43 @@ func toConversationRunDomains(items []models.ConversationRun) []domainconversati
 	results := make([]domainconversation.Run, 0, len(items))
 	for _, item := range items {
 		results = append(results, toConversationRunDomain(item))
+	}
+	return results
+}
+
+func toConversationEventLogDomains(items []models.ChatRunEvent) []domainconversation.EventLog {
+	results := make([]domainconversation.EventLog, 0, len(items))
+	for _, item := range items {
+		results = append(results, domainconversation.EventLog{
+			ID:              item.ID,
+			MessageID:       item.MessageID,
+			ConversationID:  item.ConversationID,
+			UserID:          item.UserID,
+			RunID:           item.RunID,
+			EventScope:      item.EventScope,
+			EventID:         item.EventID,
+			EventType:       item.EventType,
+			Phase:           item.Phase,
+			Stage:           item.Stage,
+			RoundID:         item.RoundID,
+			ParentEventID:   item.ParentEventID,
+			Status:          item.Status,
+			Title:           item.Title,
+			Summary:         item.Summary,
+			ContentMarkdown: item.ContentMarkdown,
+			PayloadJSON:     item.PayloadJSON,
+			Seq:             item.Seq,
+			ToolCallID:      item.ToolCallID,
+			ToolName:        item.ToolName,
+			LatencyMS:       item.LatencyMS,
+			InputJSON:       item.InputJSON,
+			OutputJSON:      item.OutputJSON,
+			ErrorJSON:       item.ErrorJSON,
+			StartedAt:       item.StartedAt,
+			EndedAt:         item.EndedAt,
+			CreatedAt:       item.CreatedAt,
+			UpdatedAt:       item.UpdatedAt,
+		})
 	}
 	return results
 }
@@ -3135,6 +3632,9 @@ func fileObjectProcessingStateUpdates(item *domainconversation.FileObjectProcess
 // ── MessageEmbeddingRepository ─────────────────────────────────────────────
 
 func (r *Repo) VectorStoreAvailable(ctx context.Context) (bool, error) {
+	if r.sqliteDialect() {
+		return sqlitevec.Available(ctx, r.db)
+	}
 	checks := []string{
 		`SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')`,
 		`SELECT EXISTS (
@@ -3189,6 +3689,11 @@ func (r *Repo) UpsertMessageChunks(ctx context.Context, chunks []domainconversat
 				seen[c.MessageID] = struct{}{}
 			}
 		}
+		if r.sqliteDialect() {
+			if err := deleteSQLiteMessageChunkVectorsByMessages(tx, messageIDs); err != nil {
+				return err
+			}
+		}
 		if err := tx.Where("message_id IN ?", messageIDs).Delete(&models.MessageChunk{}).Error; err != nil {
 			return translateError(err)
 		}
@@ -3208,6 +3713,9 @@ func (r *Repo) UpsertMessageChunks(ctx context.Context, chunks []domainconversat
 		if err := tx.Create(&entities).Error; err != nil {
 			return translateError(err)
 		}
+		if r.sqliteDialect() {
+			return insertSQLiteMessageChunkVectors(tx, entities, embeddings)
+		}
 		// 写入 embedding 向量。
 		for i, entity := range entities {
 			if i >= len(embeddings) || len(embeddings[i]) == 0 {
@@ -3223,22 +3731,104 @@ func (r *Repo) UpsertMessageChunks(ctx context.Context, chunks []domainconversat
 }
 
 type messageChunkSearchRow struct {
-	ID             uint
-	ConversationID uint
-	MessageID      uint
-	UserID         uint
-	Role           string
-	ChunkIndex     int
-	Content        string
-	TokenCount     int
-	CreatedAt      interface{}
-	Similarity     float64
+	ID             uint      `gorm:"column:id"`
+	ConversationID uint      `gorm:"column:conversation_id"`
+	MessageID      uint      `gorm:"column:message_id"`
+	UserID         uint      `gorm:"column:user_id"`
+	Role           string    `gorm:"column:role"`
+	ChunkIndex     int       `gorm:"column:chunk_index"`
+	Content        string    `gorm:"column:content"`
+	TokenCount     int       `gorm:"column:token_count"`
+	CreatedAt      time.Time `gorm:"column:created_at"`
+	Similarity     float64   `gorm:"column:similarity"`
+}
+
+func deleteSQLiteMessageChunkVectorsByMessages(tx *gorm.DB, messageIDs []uint) error {
+	if len(messageIDs) == 0 {
+		return nil
+	}
+	return translateError(tx.Exec(
+		fmt.Sprintf(`DELETE FROM %s WHERE chunk_id IN (
+			SELECT id FROM "chat_message_chunks" WHERE message_id IN ?
+		)`, sqlitevec.MessageChunkVectorTable),
+		messageIDs,
+	).Error)
+}
+
+func insertSQLiteMessageChunkVectors(tx *gorm.DB, entities []models.MessageChunk, embeddings [][]float32) error {
+	for i, chunk := range entities {
+		if i >= len(embeddings) || len(embeddings[i]) == 0 {
+			continue
+		}
+		vector, err := sqlitevec.SerializeFloat32(embeddings[i])
+		if err != nil {
+			return err
+		}
+		if err = tx.Exec(
+			fmt.Sprintf(`INSERT INTO %s (chunk_id, user_id, conversation_id, message_id, embedding) VALUES (?, ?, ?, ?, ?)`, sqlitevec.MessageChunkVectorTable),
+			chunk.ID,
+			chunk.UserID,
+			chunk.ConversationID,
+			chunk.MessageID,
+			vector,
+		).Error; err != nil {
+			return translateError(err)
+		}
+	}
+	return nil
+}
+
+func (r *Repo) searchSQLiteMessageChunks(ctx context.Context, conversationID uint, userID uint, queryEmbedding []float32, topK int, minSimilarity float64) ([]domainconversation.MessageChunk, error) {
+	vector, err := sqlitevec.SerializeFloat32(queryEmbedding)
+	if err != nil {
+		return nil, err
+	}
+	query := fmt.Sprintf(`
+		SELECT chunks.id, chunks.conversation_id, chunks.message_id, chunks.user_id, chunks.role,
+		       chunks.chunk_index, chunks.content, chunks.token_count, chunks.created_at,
+		       (1.0 - vectors.distance) AS similarity
+		FROM %s AS vectors
+		JOIN "chat_message_chunks" AS chunks
+			ON chunks.id = vectors.chunk_id
+		WHERE vectors.embedding MATCH ?
+			AND vectors.k = ?
+			AND vectors.user_id = ?
+			AND vectors.conversation_id = ?
+		ORDER BY vectors.distance ASC`,
+		sqlitevec.MessageChunkVectorTable,
+	)
+	var rows []messageChunkSearchRow
+	if err := r.db.WithContext(ctx).Raw(query, vector, topK, userID, conversationID).Scan(&rows).Error; err != nil {
+		return nil, translateError(err)
+	}
+	results := make([]domainconversation.MessageChunk, 0, len(rows))
+	for _, row := range rows {
+		if row.Similarity < minSimilarity {
+			continue
+		}
+		results = append(results, domainconversation.MessageChunk{
+			ID:             row.ID,
+			ConversationID: row.ConversationID,
+			MessageID:      row.MessageID,
+			UserID:         row.UserID,
+			Role:           row.Role,
+			ChunkIndex:     row.ChunkIndex,
+			Content:        row.Content,
+			TokenCount:     row.TokenCount,
+			Similarity:     row.Similarity,
+			CreatedAt:      row.CreatedAt,
+		})
+	}
+	return results, nil
 }
 
 // SearchMessageChunks 按查询向量检索最相关的历史消息分片。
 func (r *Repo) SearchMessageChunks(ctx context.Context, conversationID uint, userID uint, queryEmbedding []float32, topK int, minSimilarity float64) ([]domainconversation.MessageChunk, error) {
 	if len(queryEmbedding) == 0 || topK <= 0 {
 		return nil, nil
+	}
+	if r.sqliteDialect() {
+		return r.searchSQLiteMessageChunks(ctx, conversationID, userID, queryEmbedding, topK, minSimilarity)
 	}
 	vec := float32SliceToPostgresVector(queryEmbedding)
 	query := `

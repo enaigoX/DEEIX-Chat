@@ -35,15 +35,12 @@ func TestFilterModelOptionsAllowsOpenAIImageParams(t *testing.T) {
 
 func TestFilterModelOptionsAllowsGeminiImagePaths(t *testing.T) {
 	filtered := filterModelOptions(map[string]interface{}{
-		"aspect_ratio": "16:9",
-		"image_size":   "2K",
 		"generationConfig": map[string]interface{}{
-			"responseFormat": map[string]interface{}{
-				"image": map[string]interface{}{
-					"aspectRatio": "1:1",
-					"imageSize":   "4K",
-					"unsafe":      "drop",
-				},
+			"responseModalities": []interface{}{"IMAGE"},
+			"imageConfig": map[string]interface{}{
+				"aspectRatio": "1:1",
+				"imageSize":   "4K",
+				"unsafe":      "drop",
 			},
 		},
 		"quality": "high",
@@ -54,14 +51,11 @@ func TestFilterModelOptionsAllowsGeminiImagePaths(t *testing.T) {
 	})
 
 	want := map[string]interface{}{
-		"aspect_ratio": "16:9",
-		"image_size":   "2K",
 		"generationConfig": map[string]interface{}{
-			"responseFormat": map[string]interface{}{
-				"image": map[string]interface{}{
-					"aspectRatio": "1:1",
-					"imageSize":   "4K",
-				},
+			"responseModalities": []interface{}{"IMAGE"},
+			"imageConfig": map[string]interface{}{
+				"aspectRatio": "1:1",
+				"imageSize":   "4K",
 			},
 		},
 	}

@@ -31,10 +31,9 @@ var hardDeniedModelOptionPaths = [][]string{
 }
 
 type modelOptionPolicyConfig struct {
-	Mode                       string
-	AllowedPathsJSON           string
-	DeniedPathsJSON            string
-	NativeToolAllowedTypesJSON string
+	Mode             string
+	AllowedPathsJSON string
+	DeniedPathsJSON  string
 }
 
 func filterModelOptions(options map[string]interface{}, protocol string, cfg modelOptionPolicyConfig) map[string]interface{} {

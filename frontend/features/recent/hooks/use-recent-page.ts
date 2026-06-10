@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useLocalizedErrorMessage } from "@/i18n/use-localized-error";
 import { useLoadMoreSentinel } from "@/shared/hooks/use-load-more-sentinel";
 import { useSidebarRecents } from "@/features/recent/context/sidebar-recents-context";
+import { useChatPreferences } from "@/features/settings/hooks/use-chat-preferences";
 import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
 import {
   exportConversation,
@@ -126,6 +127,7 @@ export function useRecentPage() {
   const [renameValue, setRenameValue] = React.useState("");
   const [deleteTarget, setDeleteTarget] = React.useState<RecentDeleteTarget>(null);
   const [deleteFiles, setDeleteFiles] = React.useState(false);
+  const { deleteFilesByDefault } = useChatPreferences();
   const [shareTarget, setShareTarget] = React.useState<ConversationDTO | null>(null);
   const loadMoreRef = React.useRef<HTMLDivElement | null>(null);
   const pageRef = React.useRef(1);
@@ -434,11 +436,12 @@ export function useRecentPage() {
   );
 
   const onDelete = React.useCallback((item: ConversationDTO) => {
+    setDeleteFiles(deleteFilesByDefault);
     setDeleteTarget({
       ids: [item.publicID],
       label: t("deleteConversationLabel", { title: item.title || t("untitled") }),
     });
-  }, [t]);
+  }, [deleteFilesByDefault, t]);
 
   const onExport = React.useCallback(async (item: ConversationDTO) => {
     const token = await resolveAccessToken();
@@ -608,11 +611,12 @@ export function useRecentPage() {
       return;
     }
 
+    setDeleteFiles(deleteFilesByDefault);
     setDeleteTarget({
       ids: [...selectedConversationIDs],
       label: t("selectedConversationCountLabel", { count: selectedConversationIDs.length }),
     });
-  }, [selectedConversationIDs, t]);
+  }, [deleteFilesByDefault, selectedConversationIDs, t]);
 
   const rowStates = React.useMemo<RecentRowState[]>(
     () =>

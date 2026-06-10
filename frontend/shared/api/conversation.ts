@@ -34,6 +34,7 @@ import type {
   SetConversationProjectRequest,
   SetConversationStarRequest,
   SetMessageFeedbackRequest,
+  UpdateMessageRequest,
   UpdateConversationProjectRequest,
   StreamMessageEvent,
   TraceBlockDTO,
@@ -716,21 +717,55 @@ export async function getContextArtifact(
 }
 
 // Messages
-export async function listMessages(
+type ListMessagesOptions = {
+  page?: number;
+  pageSize?: number;
+  tail?: boolean;
+  beforeID?: number;
+};
+
+export async function listMessagesPage(
   accessToken: string,
   conversationPublicID: string,
-  page = 1,
-  pageSize = 1000,
-): Promise<MessageDTO[]> {
-  const tailQuery = page === 1 ? "&tail=true" : "";
+  options: ListMessagesOptions = {},
+): Promise<PagePayload<MessageDTO>> {
+  const page = options.page && options.page > 0 ? options.page : 1;
+  const pageSize = options.pageSize && options.pageSize > 0 ? options.pageSize : 100;
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  if (options.tail) {
+    params.set("tail", "true");
+  }
+  if (options.beforeID && options.beforeID > 0) {
+    params.set("before_id", String(options.beforeID));
+  }
   const data = await authedRequest<PagePayload<MessageDTO>>(
-    `/api/v1/conversations/${pathParam(conversationPublicID)}/messages?page=${page}&page_size=${pageSize}${tailQuery}`,
+    `/api/v1/conversations/${pathParam(conversationPublicID)}/messages?${params.toString()}`,
     {
       accessToken,
     },
     true,
   );
-  return data.results ?? [];
+  return {
+    total: data.total ?? 0,
+    results: data.results ?? [],
+  };
+}
+
+export async function listMessages(
+  accessToken: string,
+  conversationPublicID: string,
+  page = 1,
+  pageSize = 100,
+): Promise<MessageDTO[]> {
+  const data = await listMessagesPage(accessToken, conversationPublicID, {
+    page,
+    pageSize,
+    tail: page === 1,
+  });
+  return data.results;
 }
 
 export async function sendMessage(
@@ -803,6 +838,22 @@ export async function setMessageFeedback(
   );
 }
 
+export async function updateMessage(
+  accessToken: string,
+  messagePublicID: string,
+  payload: UpdateMessageRequest,
+): Promise<MessageDTO> {
+  return authedRequest<MessageDTO>(
+    `/api/v1/messages/${pathParam(messagePublicID)}`,
+    {
+      method: "PATCH",
+      accessToken,
+      body: payload,
+    },
+    true,
+  );
+}
+
 export type CompactDoneEvent = {
   method: string;
   freed_tokens: number;
@@ -840,7 +891,17 @@ async function readConversationStream(
   let completed: SendMessageResult | null = null;
 
   while (true) {
-    const { done, value } = await reader.read();
+    let readResult: ReadableStreamReadResult<Uint8Array>;
+    try {
+      readResult = await reader.read();
+    } catch (error) {
+      if (options.signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      throw error;
+    }
+
+    const { done, value } = readResult;
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
 
     const { documents, remainder } = extractJSONDocuments(buffer);

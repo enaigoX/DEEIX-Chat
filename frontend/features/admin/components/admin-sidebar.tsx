@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { CircleArrowUp } from "lucide-react";
 
@@ -17,15 +18,26 @@ import {
 } from "@/features/admin/model/update-check";
 import { cn } from "@/lib/utils";
 
+function resolveActiveSectionFromPath(pathname: string, basePath: string): AdminSection {
+  const normalizedBasePath = basePath.replace(/\/$/, "");
+  const section = ADMIN_SECTIONS.find((item) => {
+    const href = `${normalizedBasePath}${item.href}`;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  });
+
+  return section?.id ?? "accounts";
+}
+
 export function AdminSidebar({
-  activeSection,
   basePath,
 }: {
-  activeSection: AdminSection;
   basePath: string;
 }) {
   const t = useTranslations("adminUsers");
   const tAbout = useTranslations("adminUsers.aboutPage");
+  const pathname = usePathname();
+  const activeSection = resolveActiveSectionFromPath(pathname, basePath);
+  const activeLinkRef = React.useRef<HTMLAnchorElement | null>(null);
   const cachedLatestRelease = React.useSyncExternalStore(
     subscribeLatestReleaseChange,
     getCachedLatestReleaseSnapshot,
@@ -40,6 +52,7 @@ export function AdminSidebar({
         models: "sections.models",
         "tool-settings": "sections.toolSettings",
         billing: "sections.billing",
+        announcements: "sections.announcements",
         logs: "sections.logs",
         "login-settings": "sections.loginSettings",
         "conversation-settings": "sections.conversationSettings",
@@ -50,6 +63,13 @@ export function AdminSidebar({
     },
     [t],
   );
+
+  React.useEffect(() => {
+    activeLinkRef.current?.scrollIntoView({
+      block: "nearest",
+      inline: "center",
+    });
+  }, [activeSection]);
 
   return (
     <aside className="w-full shrink-0 xl:max-w-64">
@@ -68,10 +88,12 @@ export function AdminSidebar({
             return (
               <Link
                 key={item.id}
+                ref={active ? activeLinkRef : undefined}
                 href={`${basePath}${item.href}`}
+                prefetch={false}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex h-8 shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors xl:h-9 xl:w-full xl:px-3.5",
+                  "relative flex h-8 shrink-0 scroll-mx-3 items-center justify-between gap-2 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors xl:h-9 xl:w-full xl:px-3.5",
                   active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",

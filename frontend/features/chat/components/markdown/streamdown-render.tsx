@@ -31,12 +31,15 @@ import {
   MarkdownHTMLSpan,
   MarkdownHTMLSummary,
   MarkdownArtifactActionsContext,
+  MarkdownStrong,
   ThinkingHeading,
   type MarkdownArtifactActions,
   type MarkdownImageActions,
 } from "./streamdown-components";
 import {
   normalizeContent,
+  normalizeHTMLVisualBlankLines,
+  normalizeHTMLVisualMarkdownFences,
   normalizeLatexUnicodeSymbols,
   normalizeMathDelimiters,
   normalizeMermaidBlocks,
@@ -112,11 +115,9 @@ const INLINE_MATH_RE = /(^|[^\\$])\$[^$\n]{1,400}\$/;
 const BASE_MARKDOWN_CLASSNAME = cn(
   "chat-font-content min-w-0 max-w-full overflow-hidden leading-6 text-foreground [overflow-wrap:anywhere]",
   "[&>*:last-child]:after:text-muted-foreground/55",
-  "[&_*]:min-w-0",
-  "[&_p]:max-w-full [&_p]:break-words [&_p]:[overflow-wrap:anywhere]",
-  "[&_li]:max-w-full [&_li]:break-words [&_li]:[overflow-wrap:anywhere]",
-  "[&_blockquote]:max-w-full [&_blockquote]:break-words [&_blockquote]:[overflow-wrap:anywhere]",
-  "[&_span]:max-w-full [&_span]:[overflow-wrap:anywhere]",
+  "[&_p]:min-w-0 [&_p]:max-w-full [&_p]:break-words [&_p]:[overflow-wrap:anywhere]",
+  "[&_li]:min-w-0 [&_li]:max-w-full [&_li]:break-words [&_li]:[overflow-wrap:anywhere]",
+  "[&_blockquote]:min-w-0 [&_blockquote]:max-w-full [&_blockquote]:break-words [&_blockquote]:[overflow-wrap:anywhere]",
   "[&_[data-streamdown='mermaid-block']]:my-4 [&_[data-streamdown='mermaid-block']]:flex [&_[data-streamdown='mermaid-block']]:!w-full [&_[data-streamdown='mermaid-block']]:min-w-0 [&_[data-streamdown='mermaid-block']]:gap-2 [&_[data-streamdown='mermaid-block']]:rounded-none [&_[data-streamdown='mermaid-block']]:border-0 [&_[data-streamdown='mermaid-block']]:bg-transparent [&_[data-streamdown='mermaid-block']]:p-0 [&_[data-streamdown='mermaid-block']]:shadow-none",
   "[&_[data-streamdown='mermaid-block']>div:last-child]:!w-full [&_[data-streamdown='mermaid-block']>div:last-child]:min-w-0 [&_[data-streamdown='mermaid-block']>div:last-child]:rounded-none [&_[data-streamdown='mermaid-block']>div:last-child]:border-0 [&_[data-streamdown='mermaid-block']>div:last-child]:bg-transparent [&_[data-streamdown='mermaid-block']>div:last-child]:p-0 [&_[data-streamdown='mermaid-block']>div:last-child]:shadow-none",
   "[&_[data-streamdown='mermaid']]:my-0 [&_[data-streamdown='mermaid']]:block [&_[data-streamdown='mermaid']]:!w-full [&_[data-streamdown='mermaid']]:max-h-[280px] [&_[data-streamdown='mermaid']]:min-w-0 [&_[data-streamdown='mermaid']]:overflow-hidden [&_[data-streamdown='mermaid']]:rounded-none [&_[data-streamdown='mermaid']]:border-0 [&_[data-streamdown='mermaid']]:bg-transparent [&_[data-streamdown='mermaid']]:shadow-none",
@@ -154,9 +155,10 @@ const BASE_MARKDOWN_CLASSNAME = cn(
   "[&_[data-footnotes]_ol]:my-0 [&_[data-footnotes]_ol]:pl-4",
   "[&_[data-footnotes]_li]:my-1 [&_[data-footnotes]_li]:pl-1 [&_[data-footnotes]_li]:text-muted-foreground/82",
   "[&_[data-footnotes]_p]:my-0 [&_[data-footnotes]_p]:text-[13px] [&_[data-footnotes]_p]:leading-6 [&_[data-footnotes]_p]:text-muted-foreground/82",
-  "[&_.katex]:text-[1.04em] [&_.katex]:leading-[1.35]",
-  "[&_.katex-display]:my-3 [&_.katex-display]:max-w-full [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:px-1 [&_.katex-display]:py-1",
-  "[&_.katex-display>.katex]:min-w-fit [&_.katex-display>.katex]:max-w-none",
+  "[&_.katex]:text-[1.04em]",
+  "[&_.katex-display]:my-3.5 [&_.katex-display]:block [&_.katex-display]:max-w-full [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:px-1 [&_.katex-display]:py-1.5 [&_.katex-display]:text-center",
+  "[&_.katex-display>.katex]:inline-block [&_.katex-display>.katex]:min-w-fit [&_.katex-display>.katex]:max-w-none [&_.katex-display>.katex]:text-center",
+  "[&_.katex_.mfrac_.frac-line]:!inline-block [&_.katex_.mfrac_.frac-line]:!w-full [&_.katex_.mfrac_.frac-line]:min-h-px [&_.katex_.mfrac_.frac-line]:![border-bottom:0.04em_solid_currentColor]",
   "[&_[data-latex-copyable='true']]:cursor-copy [&_[data-latex-copyable='true']]:rounded-sm [&_[data-latex-copyable='true']]:outline-none [&_[data-latex-copyable='true']]:transition-colors",
   "[&_[data-latex-copyable='true']:hover]:bg-foreground/[0.035] [&_[data-latex-copyable='true']:focus-visible]:bg-foreground/[0.045] [&_[data-latex-copyable='true']:focus-visible]:ring-2 [&_[data-latex-copyable='true']:focus-visible]:ring-ring/25",
   "[&_strong]:font-semibold",
@@ -188,6 +190,7 @@ const DEFAULT_STREAMDOWN_COMPONENTS = {
   a: MarkdownLink,
   article: MarkdownHTMLArticle,
   aside: MarkdownHTMLAside,
+  b: MarkdownStrong,
   details: MarkdownHTMLDetails,
   div: MarkdownHTMLDiv,
   img: MarkdownImage,
@@ -196,6 +199,7 @@ const DEFAULT_STREAMDOWN_COMPONENTS = {
   pre: CollapsibleCodePre,
   section: MarkdownHTMLSection,
   span: MarkdownHTMLSpan,
+  strong: MarkdownStrong,
   summary: MarkdownHTMLSummary,
 } as const;
 
@@ -210,7 +214,11 @@ const THINKING_STREAMDOWN_COMPONENTS = {
 } as const;
 
 function normalizeStreamdownContent(content: unknown): string {
-  return normalizeMermaidBlocks(normalizeLatexUnicodeSymbols(normalizeMathDelimiters(normalizeContent(content))));
+  return normalizeHTMLVisualBlankLines(
+    normalizeHTMLVisualMarkdownFences(
+      normalizeMermaidBlocks(normalizeLatexUnicodeSymbols(normalizeMathDelimiters(normalizeContent(content)))),
+    ),
+  );
 }
 
 function detectStreamdownFeatures(content: string): StreamdownFeatureFlags {

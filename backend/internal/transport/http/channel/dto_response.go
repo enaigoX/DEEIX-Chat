@@ -96,6 +96,7 @@ type ModelResponse struct {
 	Icon              string `json:"icon"`
 	CapabilitiesJSON  string `json:"capabilitiesJSON"`
 	SystemPrompt      string `json:"systemPrompt"`
+	AccessScope       string `json:"accessScope"`
 	Status            string `json:"status"`
 	Description       string `json:"description"`
 	SortOrder         int    `json:"sortOrder"`
@@ -115,6 +116,7 @@ func toModelResponse(v appchannel.ModelView) ModelResponse {
 		Icon:              v.Icon,
 		CapabilitiesJSON:  v.CapabilitiesJSON,
 		SystemPrompt:      v.SystemPrompt,
+		AccessScope:       v.AccessScope,
 		Status:            v.Status,
 		Description:       v.Description,
 		SortOrder:         v.SortOrder,
@@ -403,15 +405,22 @@ func toUpstreamRemoteModelsResponse(d appchannel.UpstreamRemoteModelsData) Upstr
 			SuggestedPlatformModelName: item.SuggestedPlatformModelName,
 			SuggestedKindsJSON:         item.SuggestedKindsJSON,
 			SuggestedProtocol:          item.SuggestedProtocol,
-			SuggestedProtocols:         item.SuggestedProtocols,
+			SuggestedProtocols:         stringList(item.SuggestedProtocols),
 			BindingCode:                item.BindingCode,
-			BoundPlatformModels:        item.BoundPlatformModels,
+			BoundPlatformModels:        stringList(item.BoundPlatformModels),
 			UpstreamModelStatus:        item.UpstreamModelStatus,
 			AlreadySynced:              item.AlreadySynced,
 			AlreadyBound:               item.AlreadyBound,
 		})
 	}
 	return UpstreamRemoteModelsResponse{Total: d.Total, Items: items}
+}
+
+func stringList(items []string) []string {
+	if items == nil {
+		return []string{}
+	}
+	return items
 }
 
 // UpstreamSyncModelResponse 单个同步结果响应 DTO。

@@ -21,7 +21,7 @@ export function NavMain() {
   const pathname = usePathname()
   const { requestNewConversation } = useChatSession()
   const { items, loadingInitial } = useSidebarRecents()
-  const isCollapsed = state === "collapsed"
+  const isCollapsed = !isMobile && state === "collapsed"
   const searchLoading = loadingInitial && items.length === 0
 
   const search = useNavigationSearch({
@@ -34,7 +34,7 @@ export function NavMain() {
   }, [setOpenMobile])
 
   const onCreateConversation = React.useCallback(() => {
-    requestNewConversation()
+    requestNewConversation({ projectID: "" })
     if (pathname === "/chat") {
       window.history.pushState(null, "", "/chat")
       return

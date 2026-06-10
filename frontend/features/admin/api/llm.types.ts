@@ -1,8 +1,10 @@
 import type { PagePayload } from "@/shared/api/common.types";
 
 export type AdminLLMStatus = "active" | "inactive";
+export type AdminLLMModelAccessScope = "public" | "internal";
 export type AdminLLMAdapter =
   | "openai_responses"
+  | "openrouter_responses"
   | "openai_chat_completions"
   | "openai_image_generations"
   | "openai_image_edits"
@@ -69,6 +71,7 @@ export type AdminLLMModelDTO = {
   icon: string;
   capabilitiesJSON: string;
   systemPrompt: string;
+  accessScope: AdminLLMModelAccessScope;
   status: AdminLLMStatus;
   description: string;
   sortOrder: number;
@@ -259,6 +262,7 @@ export type CreateAdminLLMModelRequest = {
   icon?: string;
   capabilitiesJSON?: string;
   systemPrompt?: string;
+  accessScope?: AdminLLMModelAccessScope;
   status?: AdminLLMStatus;
   description?: string;
 };
@@ -270,6 +274,7 @@ export type UpdateAdminLLMModelRequest = {
   icon?: string;
   capabilitiesJSON?: string;
   systemPrompt?: string;
+  accessScope?: AdminLLMModelAccessScope;
   status?: AdminLLMStatus;
   description?: string;
 };
@@ -295,6 +300,15 @@ export type UpsertAdminLLMUpstreamModelRequest = {
 };
 
 export type UpdateAdminLLMModelUpstreamSourceRequest = {
+  protocol?: AdminLLMAdapter;
+  status?: AdminLLMStatus;
+  priority?: number;
+  weight?: number;
+};
+
+export type BindAdminLLMModelUpstreamSourceRequest = {
+  upstreamID: number;
+  upstreamModelID: number;
   protocol?: AdminLLMAdapter;
   status?: AdminLLMStatus;
   priority?: number;

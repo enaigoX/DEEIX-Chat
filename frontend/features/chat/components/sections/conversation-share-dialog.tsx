@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Copy, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
@@ -25,6 +25,7 @@ import {
 } from "@/shared/api/conversation";
 import type { ConversationShareDTO } from "@/shared/api/conversation.types";
 import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
+import { CopyActionButton } from "@/shared/components/copy-action";
 import { useLocalizedErrorMessage } from "@/i18n/use-localized-error";
 
 type ConversationShareDialogProps = {
@@ -168,18 +169,6 @@ export function ConversationShareDialog({
     [applyShare, conversationPublicID, defaultMessagePublicIDs, hasDefaultBranch, resolveErrorMessage, t, tCommon, working],
   );
 
-  const copyLink = React.useCallback(async () => {
-    if (!currentURL) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(currentURL);
-      toast.success(t("linkCopied"));
-    } catch {
-      toast.error(t("copyFailed"));
-    }
-  }, [currentURL, t]);
-
   const openLink = React.useCallback(() => {
     if (!currentURL) {
       return;
@@ -207,16 +196,16 @@ export function ConversationShareDialog({
                 value={currentURL || t("emptyLink")}
                 className={!currentURL ? "text-muted-foreground" : undefined}
               />
-              <Button
+              <CopyActionButton
                 type="button"
                 variant="ghost"
                 size="icon"
                 disabled={!active}
-                onClick={() => void copyLink()}
+                value={currentURL}
+                messages={{ copied: t("linkCopied"), failed: t("copyFailed") }}
+                iconClassName="size-4"
                 aria-label={t("copyLink")}
-              >
-                <Copy className="size-4" />
-              </Button>
+              />
               <Button
                 type="button"
                 variant="ghost"
@@ -234,9 +223,6 @@ export function ConversationShareDialog({
         <DialogFooter>
           {active ? (
             <>
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={Boolean(working)}>
-                {tCommon("cancel")}
-              </Button>
               <Button
                 type="button"
                 variant="ghost"
@@ -247,11 +233,21 @@ export function ConversationShareDialog({
               </Button>
               <Button
                 type="button"
+                variant="ghost"
                 onClick={() => void runMutation("regenerate")}
                 disabled={Boolean(working) || loading || !hasDefaultBranch}
               >
                 {working === "regenerate" ? <SpinnerLabel>{t("regenerating")}</SpinnerLabel> : t("regenerate")}
               </Button>
+              <CopyActionButton
+                type="button"
+                value={currentURL}
+                messages={{ copied: t("linkCopied"), failed: t("copyFailed") }}
+                onCopied={() => onOpenChange(false)}
+                disabled={Boolean(working) || loading || !active}
+              >
+                {t("copyAndClose")}
+              </CopyActionButton>
             </>
           ) : (
             <>

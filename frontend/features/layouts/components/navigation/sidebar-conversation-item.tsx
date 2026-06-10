@@ -118,6 +118,7 @@ export function SidebarConversationItem({
         >
           <Link
             href={item.url}
+            prefetch={false}
             className={cn("flex h-full min-w-0 flex-1 items-center pl-2 pr-9", linkClassName)}
             onClick={onNavigate}
             onMouseEnter={() => setIsRowHovered(true)}
@@ -145,7 +146,7 @@ export function SidebarConversationItem({
                   event.stopPropagation()
                 }}
               >
-                <Ellipsis size={16} strokeWidth={1.4} animate={isMenuHovered ? "default" : undefined} />
+                <Ellipsis size={16} strokeWidth={1.4} animate={isMenuHovered ? "pulse" : undefined} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-max min-w-36 max-w-[calc(100vw-2rem)]">

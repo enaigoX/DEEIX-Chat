@@ -166,10 +166,9 @@ func (s *Service) runUpstreamTask(ctx context.Context, task *domainimagestudio.T
 		AttributionTitle:    cfg.AppName,
 	}
 	filteredOptions := filterModelOptions(input.Options, route.Protocol, modelOptionPolicyConfig{
-		Mode:                       cfg.ModelOptionPolicyMode,
-		AllowedPathsJSON:           cfg.ModelOptionAllowedPaths,
-		DeniedPathsJSON:            cfg.ModelOptionDeniedPaths,
-		NativeToolAllowedTypesJSON: cfg.NativeToolAllowedTypes,
+		Mode:             cfg.ModelOptionPolicyMode,
+		AllowedPathsJSON: cfg.ModelOptionAllowedPaths,
+		DeniedPathsJSON:  cfg.ModelOptionDeniedPaths,
 	})
 	generateInput, err := s.buildGenerateInput(ctx, task, input, filteredOptions)
 	if err != nil {

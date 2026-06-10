@@ -35,6 +35,7 @@ export type ConversationProjectDTO = {
   publicID: string;
   name: string;
   description: string;
+  systemPrompt: string;
   color: string;
   icon: string;
   sortOrder: number;
@@ -77,6 +78,7 @@ export type MessageDTO = {
   thumbsUpCount: number;
   thumbsDownCount: number;
   billingCost?: MessageBillingCostDTO;
+  editedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -243,6 +245,7 @@ export type CreateConversationRequest = {
 export type CreateConversationProjectRequest = {
   name: string;
   description?: string;
+  systemPrompt?: string;
   color?: string;
   icon?: string;
 };
@@ -250,6 +253,7 @@ export type CreateConversationProjectRequest = {
 export type UpdateConversationProjectRequest = {
   name?: string;
   description?: string;
+  systemPrompt?: string;
   color?: string;
   icon?: string;
   status?: "active" | "archived";
@@ -355,6 +359,7 @@ export type PublicSharedMessageDTO = {
   modelVendor: string;
   modelIcon: string;
   processTrace?: MessageProcessTraceDTO;
+  editedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -371,6 +376,10 @@ export type PublicSharedConversationDTO = {
 
 export type SetMessageFeedbackRequest = {
   feedback?: "up" | "down";
+};
+
+export type UpdateMessageRequest = {
+  content: string;
 };
 
 export type MessageFeedbackResult = {
@@ -390,6 +399,7 @@ export type SendMessageRequest = {
   fileIDs?: string[];
   selectedToolIDs?: number[];
   htmlVisualPrompt?: boolean;
+  htmlVisualColorMode?: "light" | "dark";
   parentMessagePublicID?: string;
   sourceMessagePublicID?: string;
   branchReason?: "default" | "retry" | "edit";

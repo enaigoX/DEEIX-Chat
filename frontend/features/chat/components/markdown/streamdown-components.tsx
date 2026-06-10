@@ -1,14 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, CornerUpLeft, Download, Eye, Maximize2, WandSparkles } from "lucide-react";
+import { CornerUpLeft, Download, Eye, Maximize2, WandSparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { toast } from "sonner";
 
 import { ChevronDown } from "@/components/animate-ui/icons/chevron-down";
 import { ChevronUp } from "@/components/animate-ui/icons/chevron-up";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   downloadMarkdownImageSource,
@@ -21,6 +21,7 @@ import {
   resolveArtifactPreviewKind,
   type ArtifactPreviewKind,
 } from "@/features/chat/model/chat-artifacts";
+import { CopyActionButton } from "@/shared/components/copy-action";
 import { cn } from "@/lib/utils";
 
 const CODE_BLOCK_COLLAPSE_LINE_THRESHOLD = 16;
@@ -73,6 +74,11 @@ type MarkdownParagraphProps = React.HTMLAttributes<HTMLParagraphElement> & {
   node?: unknown;
 };
 
+type MarkdownStrongProps = React.HTMLAttributes<HTMLElement> & {
+  children?: React.ReactNode;
+  node?: unknown;
+};
+
 type MarkdownHeadingProps = React.HTMLAttributes<HTMLHeadingElement> & {
   children?: React.ReactNode;
 };
@@ -113,6 +119,7 @@ const SAFE_HTML_STYLE_PROPERTIES: ReadonlySet<string> = new Set([
   "borderInlineEnd",
   "borderInlineStart",
   "borderLeft",
+  "borderBottomWidth",
   "borderRadius",
   "borderRight",
   "borderStyle",
@@ -183,11 +190,56 @@ const SAFE_HTML_STYLE_PROPERTIES: ReadonlySet<string> = new Set([
   "placeContent",
   "placeItems",
   "placeSelf",
+  "position",
   "rowGap",
   "textAlign",
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "transform",
   "verticalAlign",
   "whiteSpace",
   "width",
+  "zIndex",
+]);
+const KATEX_SPAN_CLASS_NAMES = [
+  "katex",
+  "katex-display",
+  "katex-html",
+  "katex-mathml",
+  "base",
+  "strut",
+  "mord",
+  "mop",
+  "mbin",
+  "mrel",
+  "mopen",
+  "mclose",
+  "mpunct",
+  "minner",
+  "msupsub",
+  "vlist",
+  "vlist-t",
+  "vlist-r",
+  "vlist-s",
+  "pstrut",
+  "sizing",
+  "mtight",
+  "mspace",
+  "mfrac",
+  "frac-line",
+  "mathrm",
+  "mathnormal",
+  "mathit",
+  "mathbf",
+  "textbf",
+  "textrm",
+  "mainrm",
+] as const;
+const KATEX_SAFE_HTML_STYLE_PROPERTIES: ReadonlySet<string> = new Set([
+  ...SAFE_HTML_STYLE_PROPERTIES,
+  "top",
 ]);
 const UNSAFE_STYLE_VALUE_RE = /(?:url\s*\(|expression\s*\(|javascript:|@import|[<>{}])/i;
 
@@ -199,14 +251,17 @@ function isSafeHTMLStyleValue(value: string | number): boolean {
   return Boolean(normalizedValue) && normalizedValue.length <= 120 && !UNSAFE_STYLE_VALUE_RE.test(normalizedValue);
 }
 
-function sanitizeHTMLStyle(style: React.CSSProperties | undefined): React.CSSProperties | undefined {
+function sanitizeHTMLStyle(
+  style: React.CSSProperties | undefined,
+  safeProperties: ReadonlySet<string> = SAFE_HTML_STYLE_PROPERTIES,
+): React.CSSProperties | undefined {
   if (!style) {
     return undefined;
   }
 
   const safeStyle: Record<string, string | number> = {};
   for (const [property, value] of Object.entries(style)) {
-    if (!SAFE_HTML_STYLE_PROPERTIES.has(property)) {
+    if (!safeProperties.has(property)) {
       continue;
     }
     if (typeof value !== "string" && typeof value !== "number") {
@@ -219,6 +274,18 @@ function sanitizeHTMLStyle(style: React.CSSProperties | undefined): React.CSSPro
   }
 
   return Object.keys(safeStyle).length > 0 ? safeStyle : undefined;
+}
+
+function isKatexSpan(className: string | undefined, style: React.CSSProperties | undefined): boolean {
+  if (typeof style?.top !== "undefined") {
+    return true;
+  }
+  const classNames = className?.trim().split(/\s+/) ?? [];
+  return classNames.some((item) => (
+    KATEX_SPAN_CLASS_NAMES.includes(item as (typeof KATEX_SPAN_CLASS_NAMES)[number]) ||
+    /^reset-size\d+$/.test(item) ||
+    /^size\d+$/.test(item)
+  ));
 }
 
 function resolveLinkKind(href: string): ResolvedLinkKind {
@@ -393,6 +460,10 @@ function getLineCount(value: string): number {
   return value.replace(/\n$/, "").split("\n").length;
 }
 
+function isMermaidLanguage(language: string): boolean {
+  return language === "mermaid" || language === "mmd";
+}
+
 function CodeBlockActionButton({
   label,
   children,
@@ -432,22 +503,7 @@ function CodeBlockActions({
   const commonErrors = useTranslations("common.errors");
   const artifactCopy = useTranslations("chat.markdown.artifact");
   const artifactActions = React.useContext(MarkdownArtifactActionsContext);
-  const [copied, setCopied] = React.useState(false);
   const artifactKind = React.useMemo(() => resolveArtifactPreviewKind(language, code), [code, language]);
-
-  React.useEffect(() => {
-    setCopied(false);
-  }, [code]);
-
-  const handleCopy = React.useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      toast.success(commonActions("copied"));
-    } catch {
-      toast.error(commonErrors("copyFailed"));
-    }
-  }, [code, commonActions, commonErrors]);
 
   const handleOpenArtifact = React.useCallback(() => {
     if (!artifactActions || !artifactKind) {
@@ -466,9 +522,22 @@ function CodeBlockActions({
             <Eye className="size-4" strokeWidth={1.8} />
           </CodeBlockActionButton>
         ) : null}
-        <CodeBlockActionButton label={commonActions("copy")} onClick={() => void handleCopy()}>
-          {copied ? <Check className="size-3.5" strokeWidth={1.8} /> : <Copy className="size-3.5" strokeWidth={1.8} />}
-        </CodeBlockActionButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <CopyActionButton
+              key={`${language}:${code}`}
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="inline-flex size-6 items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+              value={code}
+              messages={{ copied: commonActions("copied"), failed: commonErrors("copyFailed") }}
+              iconClassName="size-3.5"
+              aria-label={commonActions("copy")}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top">{commonActions("copy")}</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -477,22 +546,6 @@ function CodeBlockActions({
 function ExternalLinkSafetyDialog({ isOpen, onClose, onConfirm, url }: ExternalLinkSafetyDialogProps) {
   const t = useTranslations("chat.markdown.externalLink");
   const common = useTranslations("common.actions");
-  const [copied, setCopied] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!isOpen) {
-      setCopied(false);
-    }
-  }, [isOpen]);
-
-  const handleCopy = React.useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  }, [url]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -502,29 +555,30 @@ function ExternalLinkSafetyDialog({ isOpen, onClose, onConfirm, url }: ExternalL
           <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
-          <div className="min-w-0 flex-1 break-all font-mono text-xs text-foreground/90">{url}</div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label={copied ? t("copied") : t("copy")}
-            onClick={() => void handleCopy()}
-          >
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-          </Button>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">{t("linkAddress")}</p>
+          <div className="flex items-center gap-2">
+            <Input readOnly value={url} className="font-mono" />
+            <CopyActionButton
+              key={isOpen ? url : "closed"}
+              type="button"
+              variant="ghost"
+              size="icon"
+              value={url}
+              messages={{ copied: t("copied"), failed: t("copyFailed") }}
+              iconClassName="size-4"
+              aria-label={t("copy")}
+            />
+          </div>
         </div>
 
         <DialogFooter>
-          <div className="flex items-center justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-              {common("cancel")}
-            </Button>
-            <Button type="button" size="sm" onClick={onConfirm}>
-              {common("open")}
-            </Button>
-          </div>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            {common("cancel")}
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            {common("open")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -568,9 +622,10 @@ export function CollapsibleCodePre({ children }: CollapsiblePreProps) {
   const codeContent = childElement ? getCodeTextFromChild(childElement) : "";
   const lineCount = getLineCount(codeContent);
   const language = childElement ? getCodeLanguage(childElement.props.className) : "";
+  const mermaid = isMermaidLanguage(language);
   const artifactPreviewable = Boolean(resolveArtifactPreviewKind(language, codeContent));
   const isCollapsible =
-    childElement != null && language !== "mermaid" && lineCount > CODE_BLOCK_COLLAPSE_LINE_THRESHOLD;
+    childElement != null && !mermaid && lineCount > CODE_BLOCK_COLLAPSE_LINE_THRESHOLD;
   const [expanded, setExpanded] = React.useState(false);
   const [isToggleHovered, setIsToggleHovered] = React.useState(false);
 
@@ -583,7 +638,7 @@ export function CollapsibleCodePre({ children }: CollapsiblePreProps) {
   if (!isCollapsible) {
     return (
       <div className="relative w-full">
-        <CodeBlockActions code={codeContent} language={language} previewable={artifactPreviewable} />
+        {!mermaid ? <CodeBlockActions code={codeContent} language={language} previewable={artifactPreviewable} /> : null}
         {codeBlock}
       </div>
     );
@@ -945,6 +1000,21 @@ export function MarkdownParagraph({ children, className, node: _node, style, ...
   );
 }
 
+export function MarkdownStrong({ children, className, node: _node, style, ...props }: MarkdownStrongProps) {
+  return (
+    <strong
+      {...props}
+      className={cn("font-bold text-foreground", className)}
+      style={{
+        ...sanitizeHTMLStyle(style),
+        fontWeight: "var(--font-chat-strong-weight)",
+      }}
+    >
+      {children}
+    </strong>
+  );
+}
+
 export function MarkdownHTMLDiv({ children, className, node: _node, style }: MarkdownHTMLBlockProps) {
   return (
     <div className={cn("min-w-0 max-w-full", className)} style={sanitizeHTMLStyle(style)}>
@@ -1002,6 +1072,14 @@ export function MarkdownHTMLSummary({ children, className, node: _node, style }:
 }
 
 export function MarkdownHTMLSpan({ children, className, node: _node, style }: MarkdownHTMLInlineProps) {
+  if (isKatexSpan(className, style)) {
+    return (
+      <span className={className} style={sanitizeHTMLStyle(style, KATEX_SAFE_HTML_STYLE_PROPERTIES)}>
+        {children}
+      </span>
+    );
+  }
+
   return (
     <span className={cn("min-w-0 max-w-full", className)} style={sanitizeHTMLStyle(style)}>
       {children}

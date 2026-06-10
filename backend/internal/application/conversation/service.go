@@ -134,6 +134,7 @@ type SendMessageInput struct {
 	FileIDs                 []string
 	SelectedToolIDs         []uint
 	HTMLVisualPromptEnabled bool
+	HTMLVisualColorMode     string
 	ParentMessagePublicID   string
 	SourceMessagePublicID   string
 	BranchReason            string
@@ -146,6 +147,7 @@ type SendMessageInput struct {
 type SendMessageResult struct {
 	UserMessage         model.Message
 	AssistantMessage    model.Message
+	Billable            bool
 	UpstreamID          uint
 	UpstreamName        string
 	PlatformModelName   string
@@ -155,6 +157,7 @@ type SendMessageResult struct {
 	EffectiveOptions    map[string]interface{}
 	UsageSpeed          string
 	UsageServiceTier    string
+	RawUsageJSON        string
 	CacheWrite5mTokens  int64
 	CacheWrite1hTokens  int64
 	ServerSideToolUsage map[string]int64

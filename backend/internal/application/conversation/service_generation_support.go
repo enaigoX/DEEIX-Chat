@@ -114,6 +114,7 @@ func (s *Service) callCompactLLM(ctx context.Context, platformModelName string, 
 	route, err := s.routeResolver.ResolveRoute(ctx, channel.ResolveRouteInput{
 		PlatformModelName: code,
 		TaskType:          channel.TaskTypeChat,
+		Scope:             channel.RouteScopeInternal,
 	})
 	if err != nil {
 		return "", fmt.Errorf("compact route resolve: %w", err)
@@ -240,6 +241,7 @@ func (s *Service) recordBasicServiceUsage(
 		CallCount:          item.CallCount,
 		LatencyMS:          latencyMS,
 		ServiceItems:       []appbilling.ServiceUsageInput{item},
+		RawUsageJSON:       usage.RawUsageJSON,
 	})
 	if err != nil {
 		if s.logger != nil {

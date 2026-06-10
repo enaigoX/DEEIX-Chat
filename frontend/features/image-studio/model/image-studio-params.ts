@@ -535,9 +535,17 @@ export function buildImageStudioOptions(
   if (capabilities.family === "google") {
     const sizeConfig = providerSizeConfig(normalized.size);
     if (sizeConfig) {
-      options.aspect_ratio = sizeConfig.aspectRatio;
-      options.image_size = sizeConfig.tier;
+      const generationConfig = mapOption(options, "generationConfig");
+      const imageConfig = mapOption(generationConfig, "imageConfig");
+      imageConfig.aspectRatio = sizeConfig.aspectRatio;
+      imageConfig.imageSize = sizeConfig.tier;
+      generationConfig.imageConfig = imageConfig;
+      options.generationConfig = generationConfig;
     }
+    delete options.aspect_ratio;
+    delete options.aspectRatio;
+    delete options.image_size;
+    delete options.imageSize;
     return options;
   }
 

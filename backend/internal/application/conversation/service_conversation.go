@@ -14,6 +14,7 @@ import (
 const (
 	defaultPageSize             = 20
 	maxPageSize                 = 100
+	maxMessagePageSize          = 1000
 	conversationExportVersion   = 1
 	conversationExportScopeFull = "full"
 )
@@ -39,14 +40,16 @@ func (s *Service) CreateConversation(ctx context.Context, userID uint, title str
 
 	normalizedModel := strings.TrimSpace(modelName)
 	var projectID *uint
+	var project *model.ConversationProject
 	if normalizedProjectID := strings.TrimSpace(projectPublicID); normalizedProjectID != "" {
-		project, err := s.repo.GetConversationProjectByPublicID(ctx, userID, normalizedProjectID)
+		resolvedProject, err := s.repo.GetConversationProjectByPublicID(ctx, userID, normalizedProjectID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
 				return nil, ErrConversationProjectNotFound
 			}
 			return nil, err
 		}
+		project = resolvedProject
 		projectID = &project.ID
 	}
 
@@ -67,6 +70,11 @@ func (s *Service) CreateConversation(ctx context.Context, userID uint, title str
 	}
 	if err := s.repo.CreateConversation(ctx, item); err != nil {
 		return nil, err
+	}
+	if project != nil {
+		item.ProjectPublicID = project.PublicID
+		item.ProjectName = project.Name
+		item.ProjectSystemPrompt = project.SystemPrompt
 	}
 	return item, nil
 }
@@ -92,8 +100,31 @@ func (s *Service) ListMessages(ctx context.Context, userID uint, conversationID 
 		return nil, 0, ErrConversationNotFound
 	}
 
-	offset, limit := normalizePage(page, pageSize)
+	offset, limit := normalizeMessagePage(page, pageSize)
 	items, total, err := s.repo.ListMessages(ctx, conversationID, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err = s.hydrateMessageFeedback(ctx, userID, items); err != nil {
+		return nil, 0, err
+	}
+	if err = s.hydrateMessageProcessTraces(ctx, items); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+// ListMessagesBeforeID 查询指定消息 ID 之前的一页会话消息。
+func (s *Service) ListMessagesBeforeID(ctx context.Context, userID uint, conversationID uint, beforeID uint, pageSize int) ([]model.Message, int64, error) {
+	if beforeID == 0 {
+		return []model.Message{}, 0, nil
+	}
+	if _, err := s.repo.GetConversationByUser(ctx, conversationID, userID); err != nil {
+		return nil, 0, ErrConversationNotFound
+	}
+
+	_, limit := normalizeMessagePage(1, pageSize)
+	items, total, err := s.repo.ListMessagesBeforeID(ctx, conversationID, beforeID, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -169,7 +200,7 @@ func (s *Service) ListRecentMessages(ctx context.Context, userID uint, conversat
 		return nil, 0, ErrConversationNotFound
 	}
 
-	_, normalizedLimit := normalizePage(1, limit)
+	normalizedLimit := normalizeRecentMessageLimit(limit)
 	items, total, err := s.repo.ListRecentMessages(ctx, conversationID, normalizedLimit)
 	if err != nil {
 		return nil, 0, err
@@ -248,6 +279,51 @@ func (s *Service) SetMessageFeedback(
 		ThumbsUpCount:   enriched.ThumbsUpCount,
 		ThumbsDownCount: enriched.ThumbsDownCount,
 	}, nil
+}
+
+// UpdateAssistantMessageContent 更新当前用户的一条 assistant 消息正文。
+func (s *Service) UpdateAssistantMessageContent(
+	ctx context.Context,
+	userID uint,
+	messagePublicID string,
+	content string,
+) (*model.Message, error) {
+	normalizedPublicID := strings.TrimSpace(messagePublicID)
+	if normalizedPublicID == "" {
+		return nil, ErrMessageNotFound
+	}
+	normalizedContent := strings.TrimSpace(content)
+	if normalizedContent == "" {
+		return nil, ErrInvalidMessageContent
+	}
+
+	message, err := s.repo.GetMessageByPublicIDForUser(ctx, userID, normalizedPublicID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrMessageNotFound
+		}
+		return nil, err
+	}
+	if message.Role != "assistant" {
+		return nil, ErrMessageEditTargetInvalid
+	}
+	if message.Status == "pending" {
+		return nil, ErrMessageEditStateInvalid
+	}
+
+	updated, err := s.repo.UpdateAssistantMessageContent(ctx, userID, normalizedPublicID, normalizedContent, time.Now())
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrMessageNotFound
+		}
+		return nil, err
+	}
+	items := []model.Message{*updated}
+	if err = s.hydrateMessageFeedback(ctx, userID, items); err != nil {
+		return nil, err
+	}
+	updated = &items[0]
+	return updated, nil
 }
 
 // RenameConversation 重命名会话。
@@ -331,6 +407,35 @@ func (s *Service) ListConversationRuns(
 	return s.repo.ListConversationRuns(ctx, userID, conversationID, offset, limit)
 }
 
+// EventLogListFilter 描述管理员对话事件筛选和排序条件。
+type EventLogListFilter struct {
+	Query          string
+	EventScope     string
+	EventType      string
+	Status         string
+	UserID         uint
+	ConversationID uint
+	CreatedFrom    *time.Time
+	CreatedTo      *time.Time
+	Sort           string
+}
+
+// ListConversationEventLogs 分页查询管理员对话事件。
+func (s *Service) ListConversationEventLogs(ctx context.Context, page int, pageSize int, filter EventLogListFilter) ([]model.EventLog, int64, error) {
+	offset, limit := normalizePage(page, pageSize)
+	return s.repo.ListConversationEventLogs(ctx, repository.ConversationEventLogListFilter{
+		Query:          filter.Query,
+		EventScope:     filter.EventScope,
+		EventType:      filter.EventType,
+		Status:         filter.Status,
+		UserID:         filter.UserID,
+		ConversationID: filter.ConversationID,
+		CreatedFrom:    filter.CreatedFrom,
+		CreatedTo:      filter.CreatedTo,
+		Sort:           filter.Sort,
+	}, offset, limit)
+}
+
 // ListConversationRunsByRunIDs 批量查询消息对应的运行快照。
 func (s *Service) ListConversationRunsByRunIDs(
 	ctx context.Context,
@@ -348,14 +453,27 @@ func (s *Service) ListConversationRunsByRunIDs(
 }
 
 func normalizePage(page int, pageSize int) (int, int) {
+	return normalizePageWithMax(page, pageSize, maxPageSize)
+}
+
+func normalizeMessagePage(page int, pageSize int) (int, int) {
+	return normalizePageWithMax(page, pageSize, maxMessagePageSize)
+}
+
+func normalizeRecentMessageLimit(limit int) int {
+	_, normalizedLimit := normalizeMessagePage(1, limit)
+	return normalizedLimit
+}
+
+func normalizePageWithMax(page int, pageSize int, maxAllowedPageSize int) (int, int) {
 	if page <= 0 {
 		page = 1
 	}
 	if pageSize <= 0 {
 		pageSize = defaultPageSize
 	}
-	if pageSize > maxPageSize {
-		pageSize = maxPageSize
+	if maxAllowedPageSize > 0 && pageSize > maxAllowedPageSize {
+		pageSize = maxAllowedPageSize
 	}
 	offset := (page - 1) * pageSize
 	if offset < 0 {

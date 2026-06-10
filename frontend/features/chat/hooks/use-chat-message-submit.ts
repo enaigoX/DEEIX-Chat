@@ -24,7 +24,12 @@ import {
   resolveErrorSummary,
   toConversationPatch,
 } from "@/features/chat/utils/chat-runtime";
-import { buildChildrenIndex, toBranchKey } from "@/features/chat/model/chat-thread";
+import {
+  applyBranchSelectionPath,
+  buildChildrenIndex,
+  resolveBranchSelectionPath,
+  toBranchKey,
+} from "@/features/chat/model/chat-thread";
 import { sanitizeConversationOptions } from "@/features/chat/model/conversation-options";
 import { buildMediaImagePreviewMarkdown } from "@/features/chat/model/media-image-preview";
 import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
@@ -35,18 +40,24 @@ import {
   streamImageEdit,
   streamImageGeneration,
   streamMessage as streamConversationMessage,
+  updateMessage,
   type ConversationStreamOptions,
 } from "@/shared/api/conversation";
 import type {
   ConversationDTO,
   ConversationOptions,
   MediaImageRequest,
+  MessageDTO,
   SendMessageRequest,
   SendMessageResult,
   StreamMessageEvent,
 } from "@/shared/api/conversation.types";
+import { ApiError } from "@/shared/api/http-client";
 
-const CONVERSATION_METADATA_REFRESH_DELAYS = [800, 1200, 1800, 2600, 3500, 5000] as const;
+const CONVERSATION_METADATA_REFRESH_MAX_WAIT_MS = 45_000;
+const CONVERSATION_METADATA_REFRESH_INITIAL_DELAY_MS = 800;
+const CONVERSATION_METADATA_REFRESH_MAX_DELAY_MS = 5_000;
+const CONVERSATION_METADATA_REFRESH_BACKOFF = 1.5;
 
 function resolveSubmitBlockDescription(
   reason: ChatSubmitBlockReason,
@@ -73,6 +84,13 @@ function resolveImageLoadingAspectRatio(options: ConversationOptions): ImageLoad
     return "portrait";
   }
   return "square";
+}
+
+function streamEventErrorToApiError(
+  event: Extract<StreamMessageEvent, { type: "error" }>,
+  fallback: string,
+): ApiError {
+  return new ApiError(event.message || fallback, 502, event.debug, event.errorCode);
 }
 
 function resolveInputSideUsageValue(...values: Array<number | null | undefined>): number {
@@ -130,8 +148,17 @@ function normalizeLabelsJSON(value: string | null | undefined): string {
   return normalized && normalized !== "null" ? normalized : "[]";
 }
 
-function shouldRefreshGeneratedConversationMetadata(item: ConversationDTO | null): boolean {
-  return item !== null && item.messageCount === 0;
+function isPlaceholderConversationTitle(title: string): boolean {
+  const value = title.trim().toLowerCase();
+  return ["", "new conversation", "new chat", "untitled", "新会话", "新对话", "新的对话"].includes(value);
+}
+
+function hasPendingGeneratedConversationMetadata(item: ConversationDTO | null): boolean {
+  return (
+    !item ||
+    isPlaceholderConversationTitle(item.title) ||
+    normalizeLabelsJSON(item.labelsJSON) === "[]"
+  );
 }
 
 function hasGeneratedConversationMetadataChanged(
@@ -140,7 +167,7 @@ function hasGeneratedConversationMetadataChanged(
 ): boolean {
   const previousTitle = previous?.title?.trim() ?? "";
   const nextTitle = next.title.trim();
-  if (nextTitle && nextTitle !== previousTitle) {
+  if (nextTitle && nextTitle !== previousTitle && !isPlaceholderConversationTitle(nextTitle)) {
     return true;
   }
   return normalizeLabelsJSON(next.labelsJSON) !== normalizeLabelsJSON(previous?.labelsJSON);
@@ -152,8 +179,14 @@ async function refreshGeneratedConversationMetadata(
   previous: ConversationDTO | null,
   touchByPublicID: (publicID: string, patch?: Partial<ConversationDTO>) => void,
 ): Promise<void> {
-  for (const delay of CONVERSATION_METADATA_REFRESH_DELAYS) {
-    await sleep(delay);
+  let elapsedMS = 0;
+  let delayMS = CONVERSATION_METADATA_REFRESH_INITIAL_DELAY_MS;
+
+  while (elapsedMS < CONVERSATION_METADATA_REFRESH_MAX_WAIT_MS) {
+    const nextDelayMS = Math.min(delayMS, CONVERSATION_METADATA_REFRESH_MAX_WAIT_MS - elapsedMS);
+    await sleep(nextDelayMS);
+    elapsedMS += nextDelayMS;
+
     let latest: ConversationDTO;
     try {
       latest = await getConversation(accessToken, conversationPublicID);
@@ -164,6 +197,11 @@ async function refreshGeneratedConversationMetadata(
       touchByPublicID(conversationPublicID, latest);
       return;
     }
+
+    delayMS = Math.min(
+      Math.round(delayMS * CONVERSATION_METADATA_REFRESH_BACKOFF),
+      CONVERSATION_METADATA_REFRESH_MAX_DELAY_MS,
+    );
   }
 }
 
@@ -175,6 +213,7 @@ export function useChatMessageSubmit({
   modelOptions,
   selectedToolIDs,
   htmlVisualPromptEnabled,
+  htmlVisualColorMode,
   options,
   draft,
   attachments,
@@ -185,6 +224,7 @@ export function useChatMessageSubmit({
   onConversationCreated,
   touchByPublicID,
   reload,
+  replaceMessage,
   setDraft,
   setAttachments,
   releaseAttachments,
@@ -203,6 +243,7 @@ export function useChatMessageSubmit({
   resetStreamBuffer,
   startStream,
   activeGenerationRunsRef,
+  failedGenerationRunsRef,
 }: {
   conversationID: string | null;
   resetToken: number;
@@ -211,6 +252,7 @@ export function useChatMessageSubmit({
   modelOptions: ChatModelOption[];
   selectedToolIDs: number[];
   htmlVisualPromptEnabled: boolean;
+  htmlVisualColorMode: "light" | "dark";
   options: ConversationOptions;
   draft: string;
   attachments: PendingAttachment[];
@@ -221,6 +263,7 @@ export function useChatMessageSubmit({
   onConversationCreated?: (conversationPublicID: string) => void;
   touchByPublicID: (publicID: string, patch?: Partial<ConversationDTO>) => void;
   reload: () => void;
+  replaceMessage: (message: MessageDTO) => void;
   setDraft: React.Dispatch<React.SetStateAction<string>>;
   setAttachments: React.Dispatch<React.SetStateAction<PendingAttachment[]>>;
   releaseAttachments: (items: PendingAttachment[]) => void;
@@ -239,6 +282,7 @@ export function useChatMessageSubmit({
   resetStreamBuffer: () => void;
   startStream: (exchangeKey: string) => void;
   activeGenerationRunsRef?: React.RefObject<Set<string>>;
+  failedGenerationRunsRef?: React.RefObject<Set<string>>;
 }) {
   const t = useTranslations("chat.submit");
   const [sending, setSending] = React.useState(false);
@@ -258,9 +302,8 @@ export function useChatMessageSubmit({
 
     const active = activeStreamRef.current;
     if (active) {
-      if (active.accessToken) {
-        void cancelMessageGeneration(active.accessToken, active.runID).catch(() => undefined);
-      }
+      // A new chat navigation should detach this view from the active stream without
+      // canceling the server-side run. Reopening the conversation can resume it.
       active.controller.abort();
       activeGenerationRunsRefRef.current?.current.delete(active.runID);
       activeStreamRef.current = null;
@@ -277,11 +320,49 @@ export function useChatMessageSubmit({
     }
     const userPublicID = pendingExchange.userPublicID || pendingExchange.tempUserPublicID;
     const assistantPublicID = pendingExchange.assistantPublicID || pendingExchange.tempAssistantPublicID;
-    if (!serverMessagePublicIDs.has(userPublicID) || !serverMessagePublicIDs.has(assistantPublicID)) {
+    if (serverMessagePublicIDs.has(userPublicID) && serverMessagePublicIDs.has(assistantPublicID)) {
+      const serverPath = resolveBranchSelectionPath(combinedMessages, assistantPublicID);
+      if (serverPath.length > 0) {
+        setBranchSelections((prev) =>
+          applyBranchSelectionPath(
+            prev,
+            serverPath,
+            [pendingExchange.tempUserPublicID, pendingExchange.tempAssistantPublicID],
+          ),
+        );
+      }
+      setPendingExchange(null);
       return;
     }
-    setPendingExchange(null);
-  }, [pendingExchange, serverMessagePublicIDs, setPendingExchange]);
+
+    const pendingRunID = pendingExchange.runID?.trim();
+    if (!pendingRunID || pendingExchange.assistantPending) {
+      return;
+    }
+    const serverAssistant = combinedMessages.find(
+      (item) =>
+        item.role === "assistant" &&
+        item.runID === pendingRunID &&
+        serverMessagePublicIDs.has(item.publicID) &&
+        resolvePersistedPublicID(item.publicID) &&
+        !item.isPending &&
+        !item.isStreaming &&
+        item.status !== "pending",
+    );
+    if (serverAssistant) {
+      const serverPath = resolveBranchSelectionPath(combinedMessages, serverAssistant.publicID);
+      if (serverPath.length > 0) {
+        setBranchSelections((prev) =>
+          applyBranchSelectionPath(
+            prev,
+            serverPath,
+            [pendingExchange.tempUserPublicID, pendingExchange.tempAssistantPublicID],
+          ),
+        );
+      }
+      setPendingExchange(null);
+    }
+  }, [combinedMessages, pendingExchange, serverMessagePublicIDs, setBranchSelections, setPendingExchange]);
 
   const submitMessage = React.useCallback(
     async ({
@@ -424,7 +505,7 @@ export function useChatMessageSubmit({
           window.history.replaceState(null, "", `/chat?conversation_id=${created.publicID}`);
           onConversationCreated?.(created.publicID);
         }
-        const shouldRefreshConversationMetadata = shouldRefreshGeneratedConversationMetadata(targetConversation);
+        const shouldRefreshConversationMetadata = hasPendingGeneratedConversationMetadata(targetConversation);
 
         const commonStreamPayload = {
           model: requestPlatformModelName,
@@ -545,6 +626,7 @@ export function useChatMessageSubmit({
             content: payloadContent,
             selectedToolIDs: selectedToolIDs.length > 0 ? selectedToolIDs : undefined,
             htmlVisualPrompt: htmlVisualPromptEnabled || undefined,
+            htmlVisualColorMode: htmlVisualPromptEnabled ? htmlVisualColorMode : undefined,
           };
           completed = await streamConversationMessage(token, targetConversationID, chatPayload, streamOptions);
         } else {
@@ -558,14 +640,31 @@ export function useChatMessageSubmit({
               : await streamImageEdit(token, targetConversationID, mediaPayload, streamOptions);
         }
 
+        failedGenerationRunsRef?.current.delete(clientRunID);
         sentSuccessfully = true;
         flushStreamTextNow();
         resetStreamBuffer();
+        const assistantMessageStatus = completed.assistantMessage.status || "success";
+        const assistantMessageSucceeded = assistantMessageStatus === "success";
         setPendingExchange((prev) => {
           if (!prev || prev.key !== exchangeKey) {
             return prev;
           }
           const streamedText = prev.assistantText;
+          const terminalErrorMessage = terminalStreamError
+            ? resolveErrorMessage(streamEventErrorToApiError(terminalStreamError, t("retryLater")), terminalStreamError.message || t("retryLater"))
+            : "";
+          const completedErrorMessage = completed.assistantMessage.errorCode
+            ? resolveErrorMessage(
+                new ApiError(
+                  completed.assistantMessage.errorMessage || t("retryLater"),
+                  502,
+                  terminalStreamError?.debug,
+                  completed.assistantMessage.errorCode,
+                ),
+                completed.assistantMessage.errorMessage || t("retryLater"),
+              )
+            : completed.assistantMessage.errorMessage;
           return {
             ...prev,
             userPublicID: completed.userMessage.publicID,
@@ -601,14 +700,14 @@ export function useChatMessageSubmit({
             assistantReasoningTokens: completed.assistantMessage.reasoningTokens,
             assistantLatencyMS: completed.assistantMessage.latencyMS,
             assistantProcessTrace: toPendingProcessTrace(completed.assistantMessage.processTrace),
-            assistantStatus: completed.assistantMessage.status || "success",
+            assistantStatus: assistantMessageStatus,
             assistantErrorCode: completed.assistantMessage.errorCode,
             assistantErrorMessage: completed.assistantMessage.errorMessage,
             assistantInlineAlert:
               completed.assistantMessage.status === "error" || completed.assistantMessage.status === "interrupted"
                 ? {
                     title: t("generationInterrupted"),
-                    message: terminalStreamError?.message || completed.assistantMessage.errorMessage || t("retryLater"),
+                    message: terminalErrorMessage || completedErrorMessage || t("retryLater"),
                     details: terminalStreamError?.debug,
                   }
                 : undefined,
@@ -618,18 +717,27 @@ export function useChatMessageSubmit({
                 : completed.assistantMessage.content,
           };
         });
-        setBranchSelections((prev) => {
-          const next = { ...prev };
-          next[toBranchKey(resolvedParentPublicID)] = completed.userMessage.publicID;
-          delete next[tempUserPublicID];
-          next[completed.userMessage.publicID] = completed.assistantMessage.publicID;
-          return next;
-        });
+        setBranchSelections((prev) =>
+          applyBranchSelectionPath(
+            prev,
+            [
+              {
+                parentPublicID: completed.userMessage.parentPublicID || resolvedParentPublicID,
+                publicID: completed.userMessage.publicID,
+              },
+              {
+                parentPublicID: completed.userMessage.publicID,
+                publicID: completed.assistantMessage.publicID,
+              },
+            ],
+            [tempUserPublicID, tempAssistantPublicID],
+          ),
+        );
         touchByPublicID(
           targetConversationID,
           toConversationPatch(targetConversation, requestPlatformModelName),
         );
-        if (shouldRefreshConversationMetadata) {
+        if (assistantMessageSucceeded && shouldRefreshConversationMetadata) {
           void refreshGeneratedConversationMetadata(
             token,
             targetConversationID,
@@ -640,7 +748,7 @@ export function useChatMessageSubmit({
           });
         }
         releaseAttachments(effectiveAttachments);
-        if ((completed.assistantMessage.status || "success") === "success") {
+        if (assistantMessageSucceeded) {
           notifyResponseCompletion({
             content: completed.assistantMessage.content,
             conversationPublicID: targetConversationID,
@@ -649,6 +757,7 @@ export function useChatMessageSubmit({
         }
         reload();
       } catch (error) {
+        flushStreamTextNow();
         resetStreamBuffer();
         if (streamAbortController.signal.aborted) {
           shouldKeepConversationLayout = true;
@@ -670,6 +779,7 @@ export function useChatMessageSubmit({
         const errorMessage = resolveErrorMessage(error, t("retryLater"));
         const errorDetails = resolveErrorDetails(error);
         const errorSummary = resolveErrorSummary(error, t("retryLater"));
+        failedGenerationRunsRef?.current.add(clientRunID);
         shouldKeepConversationLayout = true;
         if (resetComposer && restoreDraftOnFailure) {
           setDraft(content);
@@ -713,6 +823,7 @@ export function useChatMessageSubmit({
     [
       activeConversation,
       activeGenerationRunsRef,
+      failedGenerationRunsRef,
       conversationID,
       enqueueStreamText,
       flushStreamTextNow,
@@ -726,6 +837,7 @@ export function useChatMessageSubmit({
       modelOptions,
       selectedToolIDs,
       htmlVisualPromptEnabled,
+      htmlVisualColorMode,
       selectedPlatformModelName,
       sending,
       setAttachments,
@@ -756,28 +868,36 @@ export function useChatMessageSubmit({
 
   const onSendMessage = React.useCallback(async () => {
     const content = draft.trim();
-    const parentMessage = resolveDefaultSubmissionParentMessage(visibleMessages);
+    const parentMessagePublicID =
+      resolvePersistedPublicID(currentLeafMessage?.publicID) ??
+      resolveDefaultSubmissionParentMessage(visibleMessages)?.publicID ??
+      null;
     await submitMessage({
       content,
       currentAttachments: attachments,
       resetComposer: true,
-      parentMessagePublicID: parentMessage?.publicID ?? currentLeafMessage?.publicID ?? null,
+      parentMessagePublicID,
       branchReason: "default",
     });
   }, [attachments, currentLeafMessage?.publicID, draft, submitMessage, visibleMessages]);
 
   const onRetryUserMessage = React.useCallback(
     async (message: ChatAreaMessage) => {
+      const sourceMessagePublicID = resolvePersistedPublicID(message.publicID);
+      if (!sourceMessagePublicID) {
+        toast.error(t("retryReplyFailed"), { description: t("continueReplyUnavailable") });
+        return;
+      }
       await submitMessage({
         content: message.content.trim(),
         currentAttachments: toPendingAttachments(message),
         resetComposer: false,
         parentMessagePublicID: message.parentPublicID,
-        sourceMessagePublicID: message.publicID,
+        sourceMessagePublicID,
         branchReason: "retry",
       });
     },
-    [submitMessage],
+    [submitMessage, t],
   );
 
   const onRetryAssistantMessage = React.useCallback(
@@ -787,12 +907,17 @@ export function useChatMessageSubmit({
         toast.error(t("retryReplyFailed"), { description: t("retryReplyMissingUser") });
         return;
       }
+      const sourceMessagePublicID = resolvePersistedPublicID(parentUser.publicID);
+      if (!sourceMessagePublicID) {
+        toast.error(t("retryReplyFailed"), { description: t("continueReplyUnavailable") });
+        return;
+      }
       await submitMessage({
         content: parentUser.content.trim(),
         currentAttachments: toPendingAttachments(parentUser),
         resetComposer: false,
         parentMessagePublicID: parentUser.parentPublicID,
-        sourceMessagePublicID: parentUser.publicID,
+        sourceMessagePublicID,
         branchReason: "retry",
       });
     },
@@ -820,17 +945,47 @@ export function useChatMessageSubmit({
 
   const onEditUserMessage = React.useCallback(
     async (message: ChatAreaMessage, content: string) => {
+      const sourceMessagePublicID = resolvePersistedPublicID(message.publicID);
+      if (!sourceMessagePublicID) {
+        toast.error(t("retryReplyFailed"), { description: t("continueReplyUnavailable") });
+        return false;
+      }
       const ok = await submitMessage({
         content: content.trim(),
         currentAttachments: toPendingAttachments(message),
         resetComposer: false,
         parentMessagePublicID: message.parentPublicID,
-        sourceMessagePublicID: message.publicID,
+        sourceMessagePublicID,
         branchReason: "edit",
       });
       return ok;
     },
-    [submitMessage],
+    [submitMessage, t],
+  );
+
+  const onEditAssistantMessage = React.useCallback(
+    async (message: ChatAreaMessage, content: string) => {
+      const messagePublicID = resolvePersistedPublicID(message.publicID);
+      const nextContent = content.trim();
+      if (!messagePublicID || !nextContent) {
+        toast.error(t("editReplyFailed"), { description: t("continueReplyUnavailable") });
+        return false;
+      }
+      const token = await resolveAccessToken();
+      if (!token) {
+        toast.error(t("editReplyFailed"), { description: t("signInRequired") });
+        return false;
+      }
+      try {
+        const updated = await updateMessage(token, messagePublicID, { content: nextContent });
+        replaceMessage(updated);
+        return true;
+      } catch {
+        toast.error(t("editReplyFailed"), { description: t("retryLater") });
+        return false;
+      }
+    },
+    [replaceMessage, t],
   );
 
   const onCycleMessageBranch = React.useCallback(
@@ -861,6 +1016,7 @@ export function useChatMessageSubmit({
 
   return {
     onCycleMessageBranch,
+    onEditAssistantMessage,
     onEditUserMessage,
     onContinueAssistantMessage,
     onRetryAssistantMessage,

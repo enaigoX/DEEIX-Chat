@@ -94,6 +94,7 @@ func (h *Handler) parseSendMessageInput(c *gin.Context) (appconversation.SendMes
 		FileIDs:                 req.FileIDs,
 		SelectedToolIDs:         req.SelectedToolIDs,
 		HTMLVisualPromptEnabled: req.HTMLVisualPromptEnabled,
+		HTMLVisualColorMode:     req.HTMLVisualColorMode,
 		ParentMessagePublicID:   req.ParentMessagePublicID,
 		SourceMessagePublicID:   req.SourceMessagePublicID,
 		BranchReason:            req.BranchReason,
@@ -298,6 +299,10 @@ func handleSendMessageError(c *gin.Context, err error) {
 	case errors.Is(err, appconversation.ErrUpstreamEmptyResponse):
 		response.Error(c, http.StatusBadGateway, "model returned empty response")
 	case errors.Is(err, appconversation.ErrUpstreamRequestFailed):
+		if code := appconversation.MessageErrorCode(err); code != "" {
+			response.ErrorWithCode(c, http.StatusBadGateway, code, mapClientErrorMessage(err))
+			return
+		}
 		response.Error(c, http.StatusBadGateway, mapClientErrorMessage(err))
 	default:
 		response.Error(c, http.StatusInternalServerError, "send message failed")
@@ -335,6 +340,14 @@ func (h *Handler) SendMessage(c *gin.Context) {
 	result, err := h.service.SendMessage(c.Request.Context(), input)
 	if err != nil {
 		if result != nil {
+			if !result.Billable {
+				if releaseErr := h.releaseSendMessageUsageReservation(reservation, "模型调用失败退回预扣"); releaseErr != nil {
+					handleSendMessageBillingError(c, releaseErr)
+					return
+				}
+				handleSendMessageError(c, err)
+				return
+			}
 			if billingErr := h.recordAndApplySendMessageBilling(c.Request.Context(), middleware.MustUserID(c), conversation, req, result, reservation); billingErr != nil {
 				if shouldReleaseReservationAfterBillingError(billingErr) {
 					_ = h.releaseSendMessageUsageReservation(reservation, "计费失败退回预扣")
@@ -439,6 +452,22 @@ func (h *Handler) StreamMessage(c *gin.Context) {
 	})
 	if err != nil {
 		if result != nil {
+			if !result.Billable {
+				if releaseErr := h.releaseSendMessageUsageReservation(reservation, "模型调用失败退回预扣"); releaseErr != nil {
+					_ = flushStreamEvent(billingStreamErrorPayload(releaseErr))
+					h.service.FinishMessageGeneration(input.ClientRunID)
+					return
+				}
+				payload := streamErrorPayload(err)
+				payload["data"] = toSendMessageResponse(result)
+				if debug := appconversation.MessageErrorDebug(err); debug != nil {
+					payload["debug"] = debug
+				}
+				_ = flushStreamEvent(payload)
+				h.service.FinishMessageGeneration(input.ClientRunID)
+				h.recordStreamSendMessageAuditAsync(c, conversation, req, result, "stream_message")
+				return
+			}
 			billingCtx, billingCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			billingErr := h.recordAndApplySendMessageBilling(billingCtx, middleware.MustUserID(c), conversation, req, result, reservation)
 			billingCancel()

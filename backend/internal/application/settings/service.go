@@ -19,11 +19,16 @@ type Service struct {
 	repo              repository.SettingsRepository
 	dataEncryptionKey string
 	authSafety        authSafetyService
+	vectorStore       vectorStoreAvailabilityService
 	auditWriter       auditWriter
 }
 
 type authSafetyService interface {
 	HasActiveSuperAdminIdentity(ctx context.Context) (bool, error)
+}
+
+type vectorStoreAvailabilityService interface {
+	VectorStoreAvailable(ctx context.Context) (bool, error)
 }
 
 type auditWriter interface {
@@ -37,6 +42,10 @@ func NewService(repo repository.SettingsRepository, dataEncryptionKey string) *S
 
 func (s *Service) SetAuthSafetyService(service authSafetyService) {
 	s.authSafety = service
+}
+
+func (s *Service) SetVectorStoreAvailabilityService(service vectorStoreAvailabilityService) {
+	s.vectorStore = service
 }
 
 // SetAuditWriter 注入系统设置审计写入器。
@@ -236,6 +245,8 @@ func validatePatchItem(item PatchItem) error {
 			return err
 		}
 		return validateEPayTypesJSON(value, key)
+	case "billing:native_tool_pricing_json":
+		return validateNativeToolPricingJSON(value, key)
 	case "billing:epay_gateway_url":
 		if err := validateStringMax(value, 512, key); err != nil {
 			return err
@@ -252,8 +263,6 @@ func validatePatchItem(item PatchItem) error {
 		}
 	case "chat:model_option_allowed_paths", "chat:model_option_denied_paths":
 		return validateModelOptionPathsJSON(value, key)
-	case "chat:model_option_native_tool_types":
-		return validateNativeToolAllowedTypesJSON(value, key)
 	case "auth:login_default_next_path":
 		if value == "" {
 			return fmt.Errorf("%s cannot be empty", key)
@@ -266,6 +275,8 @@ func validatePatchItem(item PatchItem) error {
 		return validateIntMinMax(value, 1, 168, key)
 	case "auth:refresh_token_ttl_hours":
 		return validateIntMinMax(value, 1, 8760, key)
+	case "auth:rate_limit_rpm", "auth:public_auth_rate_limit_rpm":
+		return validateIntMinMax(value, 1, 100000, key)
 	case "auth:smtp_host":
 		return validateStringMax(value, 255, key)
 	case "auth:smtp_username", "auth:smtp_password", "auth:smtp_from":
@@ -278,8 +289,10 @@ func validatePatchItem(item PatchItem) error {
 		return validateIntMinMax(value, 1, 65535, key)
 	case "auth:email_registration_allowed_domains":
 		return validateEmailDomainList(value, key)
-	case "storage:max_upload_file_bytes", "storage:user_storage_quota_bytes":
+	case "storage:max_upload_file_bytes":
 		return validateInt64Min(value, 1, key)
+	case "storage:user_storage_quota_bytes":
+		return validateInt64Min(value, 0, key)
 	case "file:file_full_context_max_bytes":
 		return validateOptionalInt64Min(value, 0, key)
 	case "file:image_max_bytes", "file:doc_max_bytes":
@@ -378,7 +391,7 @@ func validatePatchItem(item PatchItem) error {
 		return validateStringMax(value, 255, key)
 	case "extract:tencent_ocr_secret_id", "extract:tencent_ocr_secret_key", "extract:aliyun_ocr_access_key_id", "extract:aliyun_ocr_access_key_secret":
 		return validateStringMax(value, 512, key)
-	case "auth:username_login_enabled", "auth:email_login_enabled", "auth:third_party_login_enabled", "auth:email_registration_enabled", "auth:email_verification_enabled", "auth:email_registration_block_plus_alias", "auth:auto_link_verified_email", "auth:turnstile_registration_enabled", "billing:native_tool_billing_enabled", "chat:rag_enabled", "chat:message_embedding_enabled", "chat:semantic_context_enabled", "file:full_context_limit_enabled", "file:embedding_enabled", "file:embed_trigger_on_upload", "file:embedding_normalize", "extract:image_ocr_enabled", "extract:pdf_ocr_fallback_enabled", "mcp:mcp_enable":
+	case "auth:username_login_enabled", "auth:email_login_enabled", "auth:third_party_login_enabled", "auth:email_registration_enabled", "auth:email_verification_enabled", "auth:email_registration_block_plus_alias", "auth:auto_link_verified_email", "auth:turnstile_registration_enabled", "auth:rate_limit_enabled", "billing:native_tool_billing_enabled", "chat:rag_enabled", "chat:message_embedding_enabled", "chat:semantic_context_enabled", "file:full_context_limit_enabled", "file:embedding_enabled", "file:embed_trigger_on_upload", "file:embedding_normalize", "extract:image_ocr_enabled", "extract:pdf_ocr_fallback_enabled", "mcp:mcp_enable":
 		if _, err := strconv.ParseBool(value); err != nil {
 			return fmt.Errorf("%s must be bool", key)
 		}
@@ -652,12 +665,17 @@ func upsertPatch(patches []PatchItem, next PatchItem) []PatchItem {
 func (s *Service) validateEmbeddingDependentSettings(ctx context.Context, patches []PatchItem) error {
 	requiresValidation := false
 	for _, item := range patches {
-		if item.Namespace != "chat" {
-			continue
+		if item.Namespace == "file" {
+			switch item.Key {
+			case "embedding_enabled", "embedding_host", "rag_model":
+				requiresValidation = true
+			}
 		}
-		if (item.Key == "rag_enabled" || item.Key == "message_embedding_enabled" || item.Key == "semantic_context_enabled") && strings.EqualFold(strings.TrimSpace(item.Value), "true") {
-			requiresValidation = true
-			break
+		if item.Namespace == "chat" {
+			switch item.Key {
+			case "rag_enabled", "message_embedding_enabled", "semantic_context_enabled":
+				requiresValidation = true
+			}
 		}
 	}
 	if !requiresValidation {
@@ -670,15 +688,25 @@ func (s *Service) validateEmbeddingDependentSettings(ctx context.Context, patche
 	}
 	applyPatchesToEffectiveSettings(next, patches, "chat", "file")
 
+	embeddingEnabled, _ := strconv.ParseBool(next["file:embedding_enabled"])
 	ragEnabled, _ := strconv.ParseBool(next["chat:rag_enabled"])
 	messageEmbeddingEnabled, _ := strconv.ParseBool(next["chat:message_embedding_enabled"])
 	semanticContextEnabled, _ := strconv.ParseBool(next["chat:semantic_context_enabled"])
 	if semanticContextEnabled && !messageEmbeddingEnabled {
 		return fmt.Errorf("chat:message_embedding_enabled is required when chat:semantic_context_enabled is true")
 	}
-	if ragEnabled || messageEmbeddingEnabled || semanticContextEnabled {
+	if embeddingEnabled || ragEnabled || messageEmbeddingEnabled || semanticContextEnabled {
 		if !embeddingServiceReady(next) {
-			return fmt.Errorf("embedding service must be enabled and configured before enabling RAG or semantic enhancement")
+			return fmt.Errorf("embedding service must be enabled and configured before enabling embedding features")
+		}
+		if s.vectorStore != nil {
+			available, err := s.vectorStore.VectorStoreAvailable(ctx)
+			if err != nil {
+				return err
+			}
+			if !available {
+				return fmt.Errorf("vector store is unavailable; enable a supported vector store before enabling embedding features")
+			}
 		}
 	}
 	return nil
@@ -706,9 +734,6 @@ func (s *Service) validateBillingPaymentSettings(ctx context.Context, patches []
 	if len(providers) == 0 {
 		return nil
 	}
-	if err := validateFloatMinMax(next["billing:usd_to_cny_rate"], 0.000001, 1000, "billing:usd_to_cny_rate"); err != nil {
-		return err
-	}
 	for _, provider := range providers {
 		switch provider {
 		case "stripe":
@@ -719,6 +744,9 @@ func (s *Service) validateBillingPaymentSettings(ctx context.Context, patches []
 				return err
 			}
 		case "epay":
+			if err := validateFloatMinMax(next["billing:usd_to_cny_rate"], 0.000001, 1000, "billing:usd_to_cny_rate"); err != nil {
+				return err
+			}
 			if err := requireSettingFields(next, []requiredSettingField{
 				{key: "billing:epay_gateway_url", label: "billing:epay_gateway_url"},
 				{key: "billing:epay_types", label: "billing:epay_types"},

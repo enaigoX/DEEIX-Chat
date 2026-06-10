@@ -4,7 +4,6 @@ import * as React from "react";
 import { motion } from "motion/react";
 import { ArrowDownToLine } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { toast } from "sonner";
 
 import { ChatLabel } from "@/features/chat/components/sections/chat-label";
 import { useMessageFeedback } from "@/features/chat/hooks/use-message-feedback";
@@ -22,6 +21,7 @@ import type { OpenCodeArtifactInput } from "@/features/chat/model/chat-artifacts
 import { CenteredEmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConversationShareExportIconDropdown } from "@/shared/components/conversation-share-export-menu";
+import { useCopyAction } from "@/shared/components/copy-action";
 import { cn } from "@/lib/utils";
 
 function CompactDivider({ summaryPreview }: { summaryPreview: string }) {
@@ -75,6 +75,7 @@ type ChatAreaProps = {
   onRetryUserMessage: (message: ChatAreaMessage) => Promise<void> | void;
   onRetryAssistantMessage: (message: ChatAreaMessage) => Promise<void> | void;
   onContinueAssistantMessage?: (message: ChatAreaMessage) => Promise<void> | void;
+  onEditAssistantMessage: (message: ChatAreaMessage, content: string) => Promise<boolean> | boolean;
   onEditUserMessage: (message: ChatAreaMessage, content: string) => Promise<boolean> | boolean;
   onEditImageAttachment?: (attachment: MessageAttachment, sourceModelName?: string) => void;
   onOpenCodeArtifact?: (message: ChatAreaMessage, artifact: OpenCodeArtifactInput) => void;
@@ -110,6 +111,7 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
   onRetryUserMessage,
   onRetryAssistantMessage,
   onContinueAssistantMessage,
+  onEditAssistantMessage,
   onEditUserMessage,
   onEditImageAttachment,
   onCycleMessageBranch,
@@ -127,6 +129,7 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
   onRetryUserMessage: (message: ChatAreaMessage) => Promise<void> | void;
   onRetryAssistantMessage: (message: ChatAreaMessage) => Promise<void> | void;
   onContinueAssistantMessage?: (message: ChatAreaMessage) => Promise<void> | void;
+  onEditAssistantMessage: (message: ChatAreaMessage, content: string) => Promise<boolean> | boolean;
   onEditUserMessage: (message: ChatAreaMessage, content: string) => Promise<boolean> | boolean;
   onEditImageAttachment?: (attachment: MessageAttachment, sourceModelName?: string) => void;
   onCycleMessageBranch: (parentPublicID: string | null, direction: "previous" | "next") => void;
@@ -139,6 +142,13 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
   showBillingCost: boolean;
 }) {
   const t = useTranslations("chat.messages");
+  const { copy, isCopied } = useCopyAction({
+    messages: {
+      copied: t("copied"),
+      failed: t("copyFailed"),
+      failedDescription: t("copyFailedDescription"),
+    },
+  });
   const isUser = item.role === "user";
   const isAssistant = item.role === "assistant";
   const artifactActions = React.useMemo(
@@ -151,14 +161,10 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
     [isAssistant, item, onOpenCodeArtifact],
   );
 
+  const copyKey = item.publicID || item.key;
   const onCopy = React.useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(item.content);
-      toast.success(t("copied"));
-    } catch {
-      toast.error(t("copyFailed"), { description: t("copyFailedDescription") });
-    }
-  }, [item.content, t]);
+    await copy(item.content, { key: copyKey });
+  }, [copy, copyKey, item.content]);
 
   if (isUser) {
     return (
@@ -169,6 +175,7 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
         onEditUserMessage={onEditUserMessage}
         onCycleMessageBranch={onCycleMessageBranch}
         onCopy={() => void onCopy()}
+        copySucceeded={isCopied(copyKey)}
       />
     );
   }
@@ -181,9 +188,11 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
         reaction={reaction}
         onRetryAssistantMessage={onRetryAssistantMessage}
         onContinueAssistantMessage={onContinueAssistantMessage}
+        onEditAssistantMessage={onEditAssistantMessage}
         onCycleMessageBranch={onCycleMessageBranch}
         onReactAssistantMessage={onReactAssistantMessage}
         onCopy={() => void onCopy()}
+        copySucceeded={isCopied(copyKey)}
         onEditImageAttachment={onEditImageAttachment}
         artifactActions={artifactActions}
         markdownRender={markdownRender}
@@ -235,6 +244,7 @@ export function ChatArea({
   onRetryUserMessage,
   onRetryAssistantMessage,
   onContinueAssistantMessage,
+  onEditAssistantMessage,
   onEditUserMessage,
   onEditImageAttachment,
   onOpenCodeArtifact,
@@ -258,6 +268,7 @@ export function ChatArea({
   const stableOnRetryUserMessage = useStableEvent(onRetryUserMessage);
   const stableOnRetryAssistantMessage = useStableEvent(onRetryAssistantMessage);
   const stableOnContinueAssistantMessage = useStableEvent(onContinueAssistantMessage ?? (() => undefined));
+  const stableOnEditAssistantMessage = useStableEvent(onEditAssistantMessage);
   const stableOnEditUserMessage = useStableEvent(onEditUserMessage);
   const stableOnEditImageAttachment = useStableEvent((attachment: MessageAttachment, sourceModelName?: string) => {
     onEditImageAttachment?.(attachment, sourceModelName);
@@ -325,6 +336,7 @@ export function ChatArea({
                   onRetryUserMessage={stableOnRetryUserMessage}
                   onRetryAssistantMessage={stableOnRetryAssistantMessage}
                   onContinueAssistantMessage={onContinueAssistantMessage ? stableOnContinueAssistantMessage : undefined}
+                  onEditAssistantMessage={stableOnEditAssistantMessage}
                   onEditUserMessage={stableOnEditUserMessage}
                   onEditImageAttachment={editImageAttachmentHandler}
                   onCycleMessageBranch={stableOnCycleMessageBranch}

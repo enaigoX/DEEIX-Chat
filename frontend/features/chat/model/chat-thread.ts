@@ -155,11 +155,36 @@ function extractInlineAlertDetails(item: MessageDTO): UpstreamDebugInfo | undefi
 
 const ROOT_BRANCH_KEY = "__root__";
 
+export type BranchSelectionPathItem = {
+  parentPublicID?: string | null;
+  publicID?: string | null;
+};
+
+type MessageLabels = {
+  generationInterrupted: string;
+  streamInterrupted?: string;
+  imageRunning?: string;
+  resolveErrorMessage?: (errorCode: string, fallback: string, details?: UpstreamDebugInfo) => string;
+};
+
+function resolveAssistantErrorMessage(item: MessageDTO, labels: MessageLabels, details?: UpstreamDebugInfo): string {
+  const fallback = item.errorMessage.trim();
+  if (item.errorCode === "stream_interrupted" || item.errorCode === "conversation_run.stream_interrupted") {
+    return labels.streamInterrupted || fallback;
+  }
+  const errorCode = item.errorCode.trim();
+  if (errorCode && labels.resolveErrorMessage) {
+    return labels.resolveErrorMessage(errorCode, fallback, details);
+  }
+  return fallback;
+}
+
 export function mapServerMessage(
   item: MessageDTO,
-  labels: { generationInterrupted: string; streamInterrupted?: string; imageRunning?: string } = {
+  labels: MessageLabels = {
     generationInterrupted: "Generation interrupted",
   },
+  options: { liveRunIDs?: ReadonlySet<string> } = {},
 ): ChatAreaMessage {
   const publicID = item.publicID.trim();
   const msg: ChatAreaMessage = {
@@ -177,6 +202,7 @@ export function mapServerMessage(
     serverMessageID: item.id,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
+    editedAt: item.editedAt ?? null,
     myFeedback: item.myFeedback || null,
     thumbsUpCount: item.thumbsUpCount ?? 0,
     thumbsDownCount: item.thumbsDownCount ?? 0,
@@ -200,19 +226,19 @@ export function mapServerMessage(
     msg.billingCost = item.billingCost;
     msg.processTrace = parseProcessTrace(item);
     if ((item.status === "error" || item.status === "interrupted") && item.errorMessage?.trim()) {
+      const details = extractInlineAlertDetails(item);
       msg.inlineAlert = {
         title: labels.generationInterrupted,
-        message:
-          item.errorCode === "stream_interrupted" || item.errorCode === "conversation_run.stream_interrupted"
-            ? labels.streamInterrupted || item.errorMessage.trim()
-            : item.errorMessage.trim(),
-        details: extractInlineAlertDetails(item),
+        message: resolveAssistantErrorMessage(item, labels, details),
+        details,
       };
     }
     if (item.status === "pending") {
-      msg.isPending = true;
-      msg.isStreaming = true;
-      msg.activityLabel = item.contentType === "image" ? labels.imageRunning : undefined;
+      const liveRunID = item.runID?.trim() || "";
+      const live = Boolean(liveRunID && options.liveRunIDs?.has(liveRunID));
+      msg.isPending = live;
+      msg.isStreaming = live;
+      msg.activityLabel = live && item.contentType === "image" ? labels.imageRunning : undefined;
     }
   }
   return msg;
@@ -233,13 +259,99 @@ export function buildChildrenIndex(messages: ChatAreaMessage[]) {
   return children;
 }
 
+export function applyBranchSelectionPath(
+  previous: Record<string, string>,
+  path: BranchSelectionPathItem[],
+  obsoletePublicIDs: Array<string | null | undefined> = [],
+): Record<string, string> {
+  const obsolete = new Set(obsoletePublicIDs.map((item) => item?.trim() || "").filter(Boolean));
+  let changed = false;
+  const next = { ...previous };
+
+  for (const [key, value] of Object.entries(next)) {
+    if (obsolete.has(key) || obsolete.has(value)) {
+      delete next[key];
+      changed = true;
+    }
+  }
+
+  for (const item of path) {
+    const publicID = item.publicID?.trim() || "";
+    if (!publicID) {
+      continue;
+    }
+    const parentKey = toBranchKey(item.parentPublicID);
+    if (next[parentKey] !== publicID) {
+      next[parentKey] = publicID;
+      changed = true;
+    }
+  }
+
+  return changed ? next : previous;
+}
+
+export function resolveBranchSelectionPath(
+  messages: ChatAreaMessage[],
+  leafPublicID: string | null | undefined,
+): BranchSelectionPathItem[] {
+  const leafID = leafPublicID?.trim() || "";
+  if (!leafID) {
+    return [];
+  }
+
+  const byPublicID = new Map(messages.map((item) => [item.publicID, item]));
+  const path: BranchSelectionPathItem[] = [];
+  const visited = new Set<string>();
+  let current = byPublicID.get(leafID) ?? null;
+
+  while (current && !visited.has(current.publicID)) {
+    visited.add(current.publicID);
+    path.push({
+      parentPublicID: current.parentPublicID,
+      publicID: current.publicID,
+    });
+    current = current.parentPublicID ? byPublicID.get(current.parentPublicID) ?? null : null;
+  }
+
+  return path;
+}
+
 export function reconcileBranchSelections(messages: ChatAreaMessage[], previous: Record<string, string>) {
   const next: Record<string, string> = {};
   const children = buildChildrenIndex(messages);
+  const messagesByPublicID = new Map<string, ChatAreaMessage>();
+  let latestPublicID = "";
+
+  for (const item of messages) {
+    const publicID = item.publicID.trim();
+    if (publicID) {
+      messagesByPublicID.set(publicID, item);
+      latestPublicID = publicID;
+    }
+  }
+
+  const visited = new Set<string>();
+  let current = latestPublicID ? messagesByPublicID.get(latestPublicID) ?? null : null;
+
+  while (current) {
+    const publicID = current.publicID.trim();
+    if (!publicID || visited.has(publicID)) {
+      break;
+    }
+    visited.add(publicID);
+    next[toBranchKey(current.parentPublicID)] = publicID;
+
+    const parentPublicID = current.parentPublicID?.trim() || "";
+    current = parentPublicID ? messagesByPublicID.get(parentPublicID) ?? null : null;
+  }
+
   for (const [parentKey, siblings] of children.entries()) {
     const existing = previous[parentKey];
     if (existing && siblings.some((item) => item.publicID === existing)) {
       next[parentKey] = existing;
+      continue;
+    }
+    if (next[parentKey]) {
       continue;
     }
     const latest = siblings[siblings.length - 1];
@@ -255,7 +367,8 @@ export function buildVisibleMessages(
   selections: Record<string, string>,
 ): ChatAreaMessage[] {
   const children = buildChildrenIndex(messages);
-  const visible: ChatAreaMessage[] = [];
+  const reconciledSelections = reconcileBranchSelections(messages, selections);
+  let visible: ChatAreaMessage[] = [];
   const visited = new Set<string>();
   let parentKey = ROOT_BRANCH_KEY;
 
@@ -265,7 +378,7 @@ export function buildVisibleMessages(
       break;
     }
 
-    const selectedPublicID = selections[parentKey] || siblings[siblings.length - 1]?.publicID;
+    const selectedPublicID = reconciledSelections[parentKey] || siblings[siblings.length - 1]?.publicID;
     const selected = siblings.find((item) => item.publicID === selectedPublicID) ?? siblings[siblings.length - 1];
     if (!selected || visited.has(selected.publicID)) {
       break;
@@ -274,6 +387,10 @@ export function buildVisibleMessages(
     visited.add(selected.publicID);
     visible.push(selected);
     parentKey = selected.publicID;
+  }
+
+  if (visible.length === 0 && messages.length > 0) {
+    visible = buildTailVisibleMessages(messages);
   }
 
   const withUserNavigators = visible.map((item) => {
@@ -316,4 +433,20 @@ export function buildVisibleMessages(
       branchNavigator: previous.branchNavigator ?? item.branchNavigator,
     };
   });
+}
+
+function buildTailVisibleMessages(messages: ChatAreaMessage[]): ChatAreaMessage[] {
+  const byPublicID = new Map(messages.map((item) => [item.publicID, item]));
+  const visible: ChatAreaMessage[] = [];
+  const visited = new Set<string>();
+  let current = messages.at(-1) ?? null;
+
+  while (current && !visited.has(current.publicID)) {
+    visited.add(current.publicID);
+    visible.push(current);
+    const parentPublicID = current.parentPublicID?.trim() || "";
+    current = parentPublicID ? byPublicID.get(parentPublicID) ?? null : null;
+  }
+
+  return visible.reverse();
 }

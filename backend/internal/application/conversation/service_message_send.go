@@ -226,6 +226,26 @@ func (s *Service) sendMessageInternal(
 			}
 		}
 		runState.finalize(ctx, retErr)
+		if retErr != nil && result == nil && userMessage != nil && assistantMessage != nil {
+			latencyMS := time.Since(startedAt).Milliseconds()
+			if latencyMS < 0 {
+				latencyMS = 0
+			}
+			result = &SendMessageResult{
+				UserMessage:      *userMessage,
+				AssistantMessage: *assistantMessage,
+				Billable:         false,
+				LatencyMS:        latencyMS,
+			}
+			if resolvedRoute != nil {
+				result.UpstreamID = resolvedRoute.UpstreamID
+				result.UpstreamName = resolvedRoute.UpstreamName
+				result.PlatformModelName = resolvedRoute.PlatformModelName
+				result.RoutedBindingCode = resolvedRoute.BindingCode
+				result.UpstreamModelName = resolvedRoute.UpstreamModel
+				result.UpstreamProtocol = resolvedRoute.Protocol
+			}
+		}
 	}()
 
 	resolvedAttachments, err := s.resolveAttachments(ctx, input.UserID, input.FileIDs)
@@ -318,12 +338,13 @@ func (s *Service) sendMessageInternal(
 	route, err := s.routeResolver.ResolveRoute(ctx, channel.ResolveRouteInput{
 		PlatformModelName: conversation.Model,
 		TaskType:          channel.TaskTypeChat,
+		Scope:             channel.RouteScopeUser,
 		UserID:            input.UserID,
 		ConversationID:    input.ConversationID,
 		RequestID:         strings.TrimSpace(input.RequestID),
 	})
 	if err != nil {
-		if errors.Is(err, channel.ErrRouteNotFound) || errors.Is(err, channel.ErrModelNotFound) {
+		if errors.Is(err, channel.ErrRouteNotFound) || errors.Is(err, channel.ErrModelNotFound) || errors.Is(err, channel.ErrModelAccessDenied) {
 			retErr = ErrModelRouteNotConfigured
 			return nil, retErr
 		}
@@ -436,7 +457,7 @@ func (s *Service) sendMessageInternal(
 
 	// ContextAssembler 只承载真正的系统级行为指令；资料型上下文稍后进入用户 XML。
 	assembler := NewContextAssembler(int64(cfg.ContextMaxInputTokens))
-	systemPrompt := resolveMessageSystemPromptInjection(cfg, route, input.HTMLVisualPromptEnabled)
+	systemPrompt := resolveMessageSystemPromptInjection(cfg, route, conversation.ProjectSystemPrompt, input.HTMLVisualPromptEnabled, input.HTMLVisualColorMode)
 	if systemPrompt.Content != "" {
 		if systemPrompt.InlineToUser {
 			historyMsgs = inlineSystemPromptIntoLatestUserMessage(historyMsgs, systemPrompt.Content)
@@ -639,10 +660,10 @@ func (s *Service) sendMessageInternal(
 		AttributionTitle:    attributionTitle,
 	}
 	filteredOptions = filterModelOptions(input.Options, route.Protocol, modelOptionPolicyConfig{
-		Mode:                       cfg.ModelOptionPolicyMode,
-		AllowedPathsJSON:           cfg.ModelOptionAllowedPaths,
-		DeniedPathsJSON:            cfg.ModelOptionDeniedPaths,
-		NativeToolAllowedTypesJSON: cfg.NativeToolAllowedTypes,
+		Mode:                  cfg.ModelOptionPolicyMode,
+		AllowedPathsJSON:      cfg.ModelOptionAllowedPaths,
+		DeniedPathsJSON:       cfg.ModelOptionDeniedPaths,
+		ModelCapabilitiesJSON: route.ModelCapabilitiesJSON,
 	})
 	generateInput := llm.GenerateInput{
 		RequestID:      strings.TrimSpace(input.RequestID),
@@ -707,9 +728,18 @@ func (s *Service) sendMessageInternal(
 	}
 	sendSpan.SetAttributes(promptShapeTraceAttributes("conversation.prompt", initialPromptShape)...)
 
+	firstVisibleDeltaLatencyMS := int64(0)
+	visibleDeltaCount := 0
 	emitVisibleDelta := func(delta string) error {
 		if delta == "" {
 			return nil
+		}
+		visibleDeltaCount++
+		if firstVisibleDeltaLatencyMS == 0 {
+			firstVisibleDeltaLatencyMS = time.Since(startedAt).Milliseconds()
+			if firstVisibleDeltaLatencyMS < 0 {
+				firstVisibleDeltaLatencyMS = 0
+			}
 		}
 		if traceRecorder != nil {
 			traceRecorder.completeUpstreamThink()
@@ -887,7 +917,7 @@ func (s *Service) sendMessageInternal(
 	}
 
 	handleCanceledGeneration := func(generateErr error) bool {
-		if generateErr == nil || (ctx.Err() == nil && !errors.Is(generateErr, ErrMessageGenerationCanceled)) {
+		if generateErr == nil || (ctx.Err() == nil && !isMessageGenerationCanceledError(generateErr)) {
 			return false
 		}
 		partialText := strings.TrimSpace(streamedText.String())
@@ -1147,7 +1177,10 @@ func (s *Service) sendMessageInternal(
 	run.CacheWriteTokens = totalUsage.CacheWriteTokens
 	run.ReasoningTokens = totalUsage.ReasoningTokens
 	run.ToolCallsCount = len(toolCallRows)
-	run.FirstTokenLatencyMS = time.Since(startedAt).Milliseconds()
+	run.FirstTokenLatencyMS = firstVisibleDeltaLatencyMS
+	if run.FirstTokenLatencyMS == 0 {
+		run.FirstTokenLatencyMS = time.Since(startedAt).Milliseconds()
+	}
 	if run.FirstTokenLatencyMS < 0 {
 		run.FirstTokenLatencyMS = 0
 	}
@@ -1161,6 +1194,8 @@ func (s *Service) sendMessageInternal(
 			zap.Int64("cache_read_tokens", totalUsage.CacheReadTokens),
 			zap.Int64("cache_write_tokens", totalUsage.CacheWriteTokens),
 			zap.Int64("output_tokens", totalUsage.OutputTokens),
+			zap.Int("visible_delta_count", visibleDeltaCount),
+			zap.Int64("first_visible_delta_latency_ms", firstVisibleDeltaLatencyMS),
 		}
 		fields = append(fields, promptShapeLogFields(initialPromptShape)...)
 		s.logger.Debug("conversation_prompt_shape", fields...)
@@ -1291,6 +1326,7 @@ func (s *Service) sendMessageInternal(
 	return &SendMessageResult{
 		UserMessage:         *userMessage,
 		AssistantMessage:    *assistantMessage,
+		Billable:            true,
 		UpstreamID:          run.UpstreamID,
 		UpstreamName:        run.UpstreamName,
 		PlatformModelName:   route.PlatformModelName,
@@ -1300,6 +1336,7 @@ func (s *Service) sendMessageInternal(
 		EffectiveOptions:    filteredOptions,
 		UsageSpeed:          totalUsage.Speed,
 		UsageServiceTier:    totalUsage.ServiceTier,
+		RawUsageJSON:        totalUsage.RawUsageJSON,
 		CacheWrite5mTokens:  totalUsage.CacheWrite5mTokens,
 		CacheWrite1hTokens:  totalUsage.CacheWrite1hTokens,
 		ServerSideToolUsage: totalServerSideToolUsage,

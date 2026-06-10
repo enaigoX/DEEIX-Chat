@@ -76,7 +76,7 @@
     "refresh": "刷新",
     "selectedItems": "已选 {count} 项",
     "pagination": "共 {total} 条，第 {page} / {pageCount} 页",
-    "pageSize": "{size} / 页",
+    "pageSize": "{size} 条 / 页",
     "previousPage": "上一页",
     "nextPage": "下一页"
   },
@@ -125,5 +125,9 @@
     "errors": "{count} 个错误",
     "format": "格式化",
     "loading": "加载编辑器…"
+  },
+  "appVersion": {
+    "title": "检测到新版本",
+    "description": "刷新网页后即可使用最新版本。"
   }
 }

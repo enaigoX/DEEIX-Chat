@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -35,6 +34,8 @@ import (
 )
 
 const passwordHashCost = 12
+const refreshTokenPreviousHashGrace = 15 * time.Second
+const accessTokenSessionClockSkew = 2 * time.Minute
 
 // Service 封装认证业务能力。
 type Service struct {
@@ -133,6 +134,12 @@ type AuditInput struct {
 	Detail     interface{}
 }
 
+// BootstrapSuperAdmin 表示首次启动时自动创建的超级管理员凭据。
+type BootstrapSuperAdmin struct {
+	Username string
+	Password string
+}
+
 // RecordAudit 记录认证域审计日志。
 func (s *Service) RecordAudit(ctx context.Context, input AuditInput) {
 	if s.auditWriter == nil {
@@ -158,31 +165,24 @@ func (s *Service) warn(message string, fields ...zap.Field) {
 	s.logger.Warn(message, fields...)
 }
 
-func (s *Service) info(message string, fields ...zap.Field) {
-	if s.logger == nil {
-		return
-	}
-	s.logger.Info(message, fields...)
-}
-
 // EnsureBootstrapSuperAdmin 确保系统至少存在一个 superadmin。
-func (s *Service) EnsureBootstrapSuperAdmin(ctx context.Context) error {
+func (s *Service) EnsureBootstrapSuperAdmin(ctx context.Context) (*BootstrapSuperAdmin, error) {
 	count, err := s.repo.CountSuperAdmins(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if count > 0 {
-		return s.repo.MarkBootstrapSuperAdminPasswordResetRequired(ctx, s.cfg.Snapshot().AdminUsername)
+		return nil, s.repo.MarkBootstrapSuperAdminPasswordResetRequired(ctx, s.cfg.Snapshot().AdminUsername)
 	}
 
 	cfg := s.cfg.Snapshot()
 	bootstrapPassword, err := generateBootstrapAdminPassword()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(bootstrapPassword), passwordHashCost)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	now := time.Now()
 
@@ -212,10 +212,9 @@ func (s *Service) EnsureBootstrapSuperAdmin(ctx context.Context) error {
 		PasswordOrigin:    domainuser.PasswordOriginAdminCreated,
 		MustResetPassword: true,
 	}, 0, 0, nil, false); err != nil {
-		return err
+		return nil, err
 	}
-	s.info("bootstrap superadmin created", zap.String("username", username), zap.String("password", bootstrapPassword))
-	return nil
+	return &BootstrapSuperAdmin{Username: username, Password: bootstrapPassword}, nil
 }
 
 func generateBootstrapAdminPassword() (string, error) {
@@ -524,10 +523,7 @@ func shouldRequireInitialUsername(item domainuser.User, adminUsername string) bo
 	if item.Role == domainuser.RoleSuperAdmin {
 		return strings.EqualFold(strings.TrimSpace(item.Username), strings.TrimSpace(adminUsername))
 	}
-	return item.Role == domainuser.RoleUser &&
-		(item.EmailSource == domainuser.EmailSourceLocalRegister ||
-			item.EmailSource == domainuser.EmailSourceProviderVerified ||
-			item.EmailSource == domainuser.EmailSourceProviderUnverified)
+	return false
 }
 
 func (s *Service) CompleteOnboarding(
@@ -545,9 +541,8 @@ func (s *Service) CompleteOnboarding(
 	if credentialErr != nil && !errors.Is(credentialErr, repository.ErrNotFound) {
 		return nil, false, credentialErr
 	}
-	cfg := s.cfg.Snapshot()
-	if shouldRequireInitialUsername(*item, cfg.AdminUsername) {
-		return nil, false, fmt.Errorf("username change required")
+	if shouldRequireInitialUsername(*item, s.cfg.Snapshot().AdminUsername) {
+		return nil, false, ErrUsernameChangeRequired
 	}
 	passwordChanged := false
 	if credential != nil && (credential.MustResetPassword || isBootstrapSuperAdminAdminCreatedPassword(*item, credential)) {
@@ -824,7 +819,7 @@ func (s *Service) UpdateUsernameOnce(ctx context.Context, userID uint, input Upd
 	}
 	if shouldRequireInitialUsername(*current, s.cfg.Snapshot().AdminUsername) &&
 		strings.EqualFold(strings.TrimSpace(current.Username), username) {
-		return nil, ErrInvalidUsername
+		return nil, ErrUsernameChangeRequired
 	}
 	item, err := s.repo.UpdateUsernameOnce(ctx, userID, username, time.Now())
 	if errors.Is(err, repository.ErrDuplicateUsername) || errors.Is(err, repository.ErrDuplicate) {
@@ -1061,10 +1056,6 @@ func (s *Service) Refresh(
 		s.RecordAuthEvent(ctx, claims.UserID, requestID, "token_refresh", "failure", "session_revoked_or_expired", normalizedAuditCtx.ClientIP, normalizedAuditCtx.UserAgent, "")
 		return nil, ErrSessionRevoked
 	}
-	if subtle.ConstantTimeCompare([]byte(hashToken(trimmedRefreshToken)), []byte(session.RefreshTokenHash)) != 1 {
-		s.RecordAuthEvent(ctx, claims.UserID, requestID, "token_refresh", "failure", "refresh_token_hash_mismatch", normalizedAuditCtx.ClientIP, normalizedAuditCtx.UserAgent, "")
-		return nil, ErrInvalidRefreshToken
-	}
 
 	userItem, err := s.repo.GetByID(ctx, claims.UserID)
 	if err != nil {
@@ -1083,13 +1074,22 @@ func (s *Service) Refresh(
 
 	if err = s.repo.RotateSessionTokens(
 		ctx,
-		userItem.ID,
-		claims.SessionID,
-		hashToken(tokenBundle.RefreshToken),
-		tokenBundle.AccessJTI,
-		now,
-		tokenBundle.RefreshExpiresAt,
+		repository.RotateSessionTokensInput{
+			UserID:               userItem.ID,
+			SessionID:            claims.SessionID,
+			PresentedRefreshHash: hashToken(trimmedRefreshToken),
+			NextRefreshHash:      hashToken(tokenBundle.RefreshToken),
+			NextAccessJTI:        tokenBundle.AccessJTI,
+			IssuedAt:             now,
+			ExpiresAt:            tokenBundle.RefreshExpiresAt,
+			Now:                  now,
+			PreviousTokenGrace:   refreshTokenPreviousHashGrace,
+		},
 	); err != nil {
+		if errors.Is(err, repository.ErrInvalidInput) {
+			s.RecordAuthEvent(ctx, claims.UserID, requestID, "token_refresh", "failure", "refresh_token_hash_mismatch", normalizedAuditCtx.ClientIP, normalizedAuditCtx.UserAgent, "")
+			return nil, ErrInvalidRefreshToken
+		}
 		return nil, err
 	}
 
@@ -1192,10 +1192,10 @@ func (s *Service) ValidateAccessSession(
 	ctx context.Context,
 	userID uint,
 	sessionID string,
-	accessJTI string,
+	accessIssuedAt time.Time,
 	auditCtx requestmeta.SessionAuditContext,
 ) error {
-	if userID == 0 || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(accessJTI) == "" {
+	if userID == 0 || strings.TrimSpace(sessionID) == "" || accessIssuedAt.IsZero() {
 		return ErrSessionRevoked
 	}
 
@@ -1209,7 +1209,7 @@ func (s *Service) ValidateAccessSession(
 	if session.RevokedAt != nil || time.Now().After(session.ExpiresAt) {
 		return ErrSessionRevoked
 	}
-	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(session.AccessJTI)), []byte(strings.TrimSpace(accessJTI))) != 1 {
+	if accessIssuedAt.Add(accessTokenSessionClockSkew).Before(session.CreatedAt) {
 		return ErrSessionRevoked
 	}
 

@@ -1,24 +1,26 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import { Image, ImageOff, ImagePlus } from "lucide-react";
+import { Check, Image, ImageOff, ImagePlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { AudioLines } from "@/components/animate-ui/icons/audio-lines";
 import { Blocks } from "@/components/animate-ui/icons/blocks";
 import { Pause } from "@/components/animate-ui/icons/pause";
-import { Plus } from "@/components/animate-ui/icons/plus";
 import { Send } from "@/components/animate-ui/icons/send";
 import { Link as LinkIcon } from "@/components/animate-ui/icons/link";
 import { Crop } from "@/components/animate-ui/icons/crop";
 import { X as XIcon } from "@/components/animate-ui/icons/x";
+import { PlusIcon } from "@/components/ui/plus";
 import type {
   ChatModelOption,
   PendingAttachment,
   UploadingAttachment,
 } from "@/features/chat/types/chat-runtime";
 import { useSpeechInput } from "@/features/chat/hooks/use-speech-input";
+import { useModelShortcutMenu } from "@/features/chat/hooks/use-model-shortcut-menu";
 import { ChatMCP } from "@/features/chat/components/sections/chat-mcp";
 import { ChatModelPicker } from "@/features/chat/components/sections/chat-model-picker";
 import { ChatModelConfig } from "@/features/chat/components/sections/chat-model-config";
@@ -41,6 +43,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { resolveFileProcessingBadge, resolveFileProcessingToneClass } from "@/shared/lib/file-processing";
 import { cn } from "@/lib/utils";
+import { LobeHubIcon } from "@/shared/components/lobehub-icon";
+import { resolveLobeHubIconURL, resolveModelIdentity } from "@/shared/lib/model-identity";
 import type { ConversationOptions } from "@/shared/api/conversation.types";
 import type { MCPToolDTO } from "@/shared/api/mcp.types";
 import type { ModelOptionPolicy } from "@/shared/lib/model-option-policy";
@@ -68,6 +72,7 @@ type ChatInputProps = {
   selectedPlatformModelName: string;
   availableTools: MCPToolDTO[];
   selectedToolIDs: number[];
+  defaultToolIDs: number[];
   htmlVisualPromptEnabled: boolean;
   maxSelectedTools: number;
   toolsLoading: boolean;
@@ -80,9 +85,11 @@ type ChatInputProps = {
   onDraftChange: (value: string) => void;
   onModelChange: (platformModelName: string) => void;
   onSelectedToolsChange: (toolIDs: number[]) => void;
+  onDefaultToolsChange: (toolIDs: number[]) => void | Promise<void>;
   onHTMLVisualPromptChange: (enabled: boolean) => void;
   onOptionsChange: React.Dispatch<React.SetStateAction<ConversationOptions>>;
-  onOptionsReset: () => void;
+  onOptionsReset: (defaults?: ConversationOptions) => void;
+  onOptionsDefaultRestore: () => Promise<ConversationOptions | null>;
   onUploadFiles: (files: File[]) => void | Promise<void>;
   onCaptureScreenshot: () => void | Promise<void>;
   onRemoveAttachment: (fileID: string) => void;
@@ -97,6 +104,50 @@ type ComposerModeIndicator = {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   tone: "default" | "warning";
 };
+
+function ModelShortcutMenuItem({
+  model,
+  active,
+  selected,
+  onSelect,
+}: {
+  model: ChatModelOption;
+  active: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const platformModelName = model.platformModelName.trim();
+  const identity = React.useMemo(
+    () =>
+      resolveModelIdentity({
+        code: model.platformModelName,
+        vendor: model.vendor,
+        icon: model.icon,
+      }),
+    [model.icon, model.platformModelName, model.vendor],
+  );
+  const iconURL = React.useMemo(() => resolveLobeHubIconURL(identity.modelIcon), [identity.modelIcon]);
+
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={active}
+      data-active={active}
+      className="flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[11px] font-medium text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground data-[active=true]:bg-accent data-[active=true]:text-accent-foreground"
+      onMouseDown={(event) => {
+        event.preventDefault();
+        onSelect();
+      }}
+    >
+      <LobeHubIcon iconUrl={iconURL} label={platformModelName} />
+      <span className="min-w-0 flex-1 truncate">{platformModelName}</span>
+      <span className="flex size-3.5 shrink-0 items-center justify-center">
+        {selected ? <Check className="size-3.5 text-current" strokeWidth={1.8} /> : null}
+      </span>
+    </button>
+  );
+}
 
 function resolveComposerModeIndicator(
   decision: ChatSubmitDecision,
@@ -171,6 +222,7 @@ function ChatInputComponent({
   selectedPlatformModelName,
   availableTools,
   selectedToolIDs,
+  defaultToolIDs,
   htmlVisualPromptEnabled,
   maxSelectedTools,
   toolsLoading,
@@ -183,9 +235,11 @@ function ChatInputComponent({
   onDraftChange,
   onModelChange,
   onSelectedToolsChange,
+  onDefaultToolsChange,
   onHTMLVisualPromptChange,
   onOptionsChange,
   onOptionsReset,
+  onOptionsDefaultRestore,
   onUploadFiles,
   onCaptureScreenshot,
   onRemoveAttachment,
@@ -195,7 +249,6 @@ function ChatInputComponent({
   const tChat = useTranslations("chat");
   const tComposer = useTranslations("chat.composer");
   const tFileStatus = useTranslations("files.status");
-  const [isPlusHovered, setIsPlusHovered] = React.useState(false);
   const [isBlocksHovered, setIsBlocksHovered] = React.useState(false);
   const [isVoiceHovered, setIsVoiceHovered] = React.useState(false);
   const speechInput = useSpeechInput({ draft, onDraftChange });
@@ -203,6 +256,7 @@ function ChatInputComponent({
   const [ragWarnDismissed, setRagWarnDismissed] = React.useState(false);
   const [previewAttachment, setPreviewAttachment] = React.useState<PendingAttachment | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const composingRef = React.useRef(false);
   const hasDraftText = draft.trim().length > 0;
   const canSend = (draft.trim().length > 0 || attachments.length > 0) && !sending && !loading && !uploading;
@@ -237,6 +291,27 @@ function ChatInputComponent({
   const modelOptionPolicyDisabled = modelOptionPolicy?.mode?.trim() === "disabled";
   const showMCPToolsButton = availableTools.length > 0 && !isMediaMode;
   const showHTMLVisualPromptButton = !isMediaMode;
+  const {
+    activeIndex: modelShortcutActiveIndex,
+    handleBlur: handleModelShortcutBlur,
+    handleChange: handleModelShortcutChange,
+    handleFocus: handleModelShortcutFocus,
+    handleKeyDown: handleModelShortcutKeyDown,
+    menuID: modelShortcutMenuID,
+    menuRef: modelShortcutMenuRef,
+    menuStyle: modelShortcutMenuStyle,
+    open: showModelShortcutMenu,
+    options: modelShortcutOptions,
+    select: selectModelShortcut,
+  } = useModelShortcutMenu({
+    disabled: sending || loading || uploading || modelLoading || modelDisabled,
+    draft,
+    modelOptions,
+    onDraftChange,
+    onModelChange,
+    selectedPlatformModelName,
+    textareaRef,
+  });
   const onSelectUploadTool = React.useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -283,33 +358,19 @@ function ChatInputComponent({
                 </button>
               </div>
             ) : null}
-            <div className="w-full overflow-x-auto">
-              <div className="flex w-max gap-2 px-1.5 pb-1 pt-2">
+            <div className="w-full overflow-hidden sm:overflow-x-auto">
+              <div className="flex max-h-[196px] w-full flex-col gap-2 overflow-y-auto pb-1 pl-1.5 pr-2 pt-2 sm:max-h-none sm:w-max sm:flex-row sm:overflow-y-visible sm:pr-1.5">
                 {attachments.map((item) => (
                   <div
                     key={item.fileID}
-                    role="button"
-                    tabIndex={0}
-                    className="bg-pure group relative flex h-14 w-[212px] shrink-0 items-center gap-2.5 rounded-lg border border-border/50 bg-background/95 px-2.5 text-left shadow-[0_1px_2px_rgba(0,0,0,0.025)] transition-colors hover:border-border hover:bg-accent/30 sm:w-[228px]"
-                    onClick={() => setPreviewAttachment(item)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setPreviewAttachment(item);
-                      }
-                    }}
+                    className="bg-pure group relative flex h-14 w-full shrink-0 items-center gap-1.5 rounded-lg border border-border/50 bg-background/95 px-2 text-left shadow-[0_1px_2px_rgba(0,0,0,0.025)] transition-colors hover:border-border hover:bg-accent/30 sm:w-[228px] sm:px-2.5"
                   >
                     <button
                       type="button"
-                      className="bg-pure absolute -right-1.5 -top-1.5 z-20 inline-flex size-5 items-center justify-center rounded-full border border-border text-muted-foreground opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100 focus:opacity-100 hover:bg-accent hover:text-foreground"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onRemoveAttachment(item.fileID);
-                      }}
-                      aria-label={tComposer("removeAttachment", { name: item.fileName })}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/35"
+                      onClick={() => setPreviewAttachment(item)}
+                      aria-label={tComposer("previewAttachment", { name: item.fileName })}
                     >
-                      <XIcon size={14} strokeWidth={1.8} animateOnHover="default" />
-                    </button>
                     {(() => {
                       const badge = resolveFileProcessingBadge(item, (key, values) => tFileStatus(key, values));
                       const FileIcon = resolveFileIcon(item);
@@ -348,12 +409,21 @@ function ChatInputComponent({
                         </>
                       );
                     })()}
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/35 sm:size-7"
+                      onClick={() => onRemoveAttachment(item.fileID)}
+                      aria-label={tComposer("removeAttachment", { name: item.fileName })}
+                    >
+                      <XIcon size={15} strokeWidth={1.8} animateOnHover="default" />
+                    </button>
                   </div>
                 ))}
                 {uploadingAttachments.map((item) => (
                   <div
                     key={item.tempID}
-                    className="bg-pure relative flex h-14 w-[212px] shrink-0 items-center gap-2.5 rounded-lg border border-border/50 bg-background/95 px-2.5 sm:w-[228px]"
+                    className="bg-pure relative flex h-14 w-full shrink-0 items-center gap-2.5 rounded-lg border border-border/50 bg-background/95 px-2.5 sm:w-[228px]"
                     aria-label={tComposer("uploadingAttachment", { name: item.fileName })}
                   >
                     <Skeleton className="size-5 shrink-0 rounded-sm" />
@@ -378,19 +448,47 @@ function ChatInputComponent({
           </div>
         ) : null}
 
+        {showModelShortcutMenu && typeof document !== "undefined" ? createPortal(
+          <div
+            ref={modelShortcutMenuRef}
+            id={modelShortcutMenuID}
+            role="listbox"
+            className="fixed z-[60] overflow-y-auto rounded-xl border-[0.5px] border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
+            style={modelShortcutMenuStyle}
+          >
+            <div className="flex flex-col gap-0.5">
+              {modelShortcutOptions.map((model, index) => (
+                <ModelShortcutMenuItem
+                  key={model.platformModelName}
+                  model={model}
+                  active={index === modelShortcutActiveIndex}
+                  selected={model.platformModelName === selectedPlatformModelName}
+                  onSelect={() => selectModelShortcut(model)}
+                />
+              ))}
+            </div>
+          </div>,
+          document.body,
+        ) : null}
+
         <InputGroupTextarea
+          ref={textareaRef}
           value={draft}
           disabled={sending || loading || uploading}
           readOnly={speechInput.active}
           placeholder={dropActive ? tChat("attachments.dropTitle") : speechInput.placeholder}
           rows={1}
+          aria-controls={showModelShortcutMenu ? modelShortcutMenuID : undefined}
+          aria-expanded={showModelShortcutMenu ? true : undefined}
           style={{ fontFamily: "var(--font-chat)", fontWeight: "var(--font-chat-weight)" }}
           className={cn(
-            "rounded-3xl min-h-12 overflow-y-auto px-5 pt-4 text-[15px] leading-6 placeholder:text-[inherit] placeholder:font-[inherit] placeholder:leading-[inherit]",
+            "rounded-3xl min-h-12 overflow-y-auto px-5 pt-4 text-[15px] leading-6 placeholder:text-muted-foreground placeholder:font-[inherit] placeholder:leading-[inherit]",
             inputHeightClassName,
             speechInput.active ? "placeholder:font-normal placeholder:text-muted-foreground" : "",
           )}
-          onChange={(event) => onDraftChange(event.target.value)}
+          onFocus={handleModelShortcutFocus}
+          onBlur={handleModelShortcutBlur}
+          onChange={(event) => handleModelShortcutChange(event.target.value)}
           onPaste={(event) => {
             const files = clipboardFilesFromPaste(event);
             if (files.length === 0) {
@@ -413,6 +511,10 @@ function ChatInputComponent({
             }
             const shouldSend = isSendShortcutEvent(sendShortcut, event);
 
+            if (handleModelShortcutKeyDown(event)) {
+              return;
+            }
+
             if (shouldSend) {
               event.preventDefault();
               if (canSend) {
@@ -423,7 +525,7 @@ function ChatInputComponent({
         />
 
         <InputGroupAddon align="block-end" className="items-center justify-between pt-2">
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <InputGroupButton
@@ -431,16 +533,13 @@ function ChatInputComponent({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="rounded-md text-muted-foreground hover:text-foreground"
+                  className="size-7 rounded-md text-muted-foreground hover:text-foreground sm:size-8"
                   disabled={sending || loading || uploading}
                   aria-label={tComposer("openTools")}
-                  onMouseEnter={() => setIsPlusHovered(true)}
-                  onMouseLeave={() => setIsPlusHovered(false)}
                 >
-                  <Plus
+                  <PlusIcon
                     size={20}
                     strokeWidth={1.4}
-                    animate={isPlusHovered ? "default" : undefined}
                   />
                 </InputGroupButton>
               </DropdownMenuTrigger>
@@ -475,12 +574,15 @@ function ChatInputComponent({
                 disabled={sending || loading || uploading || modelLoading}
                 options={options}
                 defaultOptions={defaultOptions}
+                optionControls={selectedModel?.optionControls ?? []}
+                nativeToolKeys={selectedModel?.nativeToolKeys ?? []}
+                nativeTools={selectedModel?.nativeTools ?? []}
                 modelOptionPolicy={modelOptionPolicy}
                 selectedProtocol={selectedProtocol}
                 selectedModelName={selectedModelName}
-                isMediaMode={isMediaMode}
                 onOptionsChange={onOptionsChange}
                 onOptionsReset={onOptionsReset}
+                onDefaultOptionsRestore={onOptionsDefaultRestore}
               />
             ) : null}
 
@@ -488,9 +590,11 @@ function ChatInputComponent({
               <ChatMCP
                 availableTools={availableTools}
                 selectedToolIDs={selectedToolIDs}
+                defaultToolIDs={defaultToolIDs}
                 maxSelectedTools={maxSelectedTools}
                 disabled={sending || loading || uploading || toolsLoading}
                 onSelectedToolsChange={onSelectedToolsChange}
+                onDefaultToolsChange={onDefaultToolsChange}
               />
             ) : null}
 
@@ -502,7 +606,7 @@ function ChatInputComponent({
                     variant="ghost"
                     size="icon-sm"
                     className={cn(
-                      "rounded-md text-muted-foreground hover:text-foreground",
+                      "size-7 rounded-md text-muted-foreground hover:text-foreground sm:size-8",
                       htmlVisualPromptEnabled && "bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary",
                     )}
                     disabled={sending || loading || uploading}
@@ -528,13 +632,13 @@ function ChatInputComponent({
             ) : null}
           </div>
 
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-1 overflow-hidden sm:gap-1.5">
             {composerModeIndicator && ComposerModeIcon ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
                     className={cn(
-                      "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors",
+                      "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium transition-colors",
                       composerModeIndicator.tone === "warning"
                         ? "bg-destructive/10 text-destructive"
                         : "bg-muted/60 text-muted-foreground",
@@ -561,7 +665,7 @@ function ChatInputComponent({
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="rounded-md text-muted-foreground hover:text-foreground"
+              className="size-7 rounded-md text-muted-foreground hover:text-foreground sm:size-8"
               disabled={loading || uploading || (!sending && !hasDraftText && !speechInput.supported)}
               onClick={sending ? onStopMessage : hasDraftText ? onSendMessage : speechInput.toggle}
               onMouseEnter={() => setIsVoiceHovered(true)}

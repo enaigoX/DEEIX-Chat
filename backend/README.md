@@ -1,14 +1,14 @@
 # DEEIX Chat Backend
 
-DEEIX Chat 后端是 Go API 服务，负责认证、用户、对话、模型渠道、文件处理、MCP 工具、记忆、计费、支付、系统设置、审计日志与可观测性等核心业务。
+DEEIX Chat 后端是 Go API 服务，负责认证、用户、对话、模型渠道、模型能力、文件处理、MCP 工具、官方原生工具、记忆、计费、支付、系统设置、审计日志与可观测性等核心业务。
 
 ## 技术栈
 
-- Go 1.25
+- Go 1.26
 - Gin
 - Gorm
-- PostgreSQL + pgvector
-- Redis
+- PostgreSQL + pgvector 或 SQLite + sqlite-vec
+- Redis 或进程内 memory cache
 - Swagger (`swag`)
 - S3 兼容对象存储（可选）
 - OpenTelemetry Trace（可选）
@@ -26,6 +26,7 @@ DEEIX Chat 后端是 Go API 服务，负责认证、用户、对话、模型渠�
 - Application 层承载用例编排，不直接依赖 Gorm、Redis、Docker 等基础设施实现。
 - Repository 接口位于 `internal/repository`，具体实现位于 `internal/infra/persistence`。
 - 共享基础设施位于 `internal/infra`，通用响应、请求元数据等位于 `internal/shared`。
+- 模型能力 JSON 是请求参数、可视化控件、官方原生工具和图像流式能力的后端事实源。
 - 不新增兼容 helper，不保留无意义历史字段；项目早期允许直接重构。
 
 ## HTTP 响应
@@ -96,7 +97,7 @@ observability:
 
 `config.yaml` 是静态基础设施配置入口，环境变量优先级高于 YAML。未显式配置 `enabled` 时，`endpoint` 非空会自动启用 Trace；显式配置 `enabled: true` 时，`endpoint` 必填。运行时业务设置由数据库 settings 覆盖，不把 OpenTelemetry collector、header/token 等部署层配置放入后台管理。
 
-初始化超级管理员凭据内置为 `deeix-chat` / `deeix-chat-2026` / `System Admin`，仅在数据库中没有超级管理员时创建账号。首次登录会强制修改用户名和密码；后续账号变更不通过 `config.yaml`。
+初始化超级管理员用户名为 `admin`。当数据库中没有超级管理员时，后端会生成随机密码并只在首次创建账号的启动日志中输出一次，日志关键字为 `bootstrap superadmin created`。首次登录会强制修改用户名和密码；后续账号变更不通过 `config.yaml`。
 
 `APP_ENV` 未配置时默认 `prod`。`dev`/`development` 只用于本地开发；公网生产部署应保持 `APP_ENV=prod` 或 `APP_ENV=production` 并使用生产密钥。
 
@@ -214,6 +215,19 @@ geoip:
 
 OCR 引擎配置由后台文件设置管理，当前支持 RapidOCR、Tesseract OCR、Paddle OCR、腾讯云 OCR、阿里云 OCR 与 LLM OCR。服务地址、鉴权密钥和超时时间按具体引擎配置。
 
+用户文件存储配额由运行时设置 `storage:user_storage_quota_bytes` 管理，单位为字节。值为 `0` 表示不限制；非零时，上传、分享克隆和文件复用链路都会按用户维度校验并同步最新配额。前端 `/files` 页支持单个删除和批量删除，后端会在删除后释放对应配额。
+
+## 模型能力与官方原生工具
+
+模型能力 JSON 支持：
+
+- `defaultOptions`：写入用户侧默认参数 JSON，并作为请求参数来源。
+- `optionControls`：定义用户参数配置对话框的可视化控件，不会单独传给上游。
+- `nativeToolKeys`：定义当前模型允许的厂商官方原生工具，例如 OpenAI、xAI、Google 和 Anthropic 的原生搜索、代码执行或图片生成能力。
+- `image.stream`：仅对图像类模型能力生效；未配置时保持默认流式，显式写 `false` 时关闭图像流式调用。
+
+用户手写 `tools` 时，只有命中 `nativeToolKeys` 的官方原生工具会作为官方工具保留，工具子参数会随该工具透传；普通用户不能通过 JSON 自行启用未被管理员允许的 MCP Tool 或官方原生工具。MCP Tool 仍必须由管理员在工具页配置和启用。
+
 ## MCP 工具
 
 MCP 能力由后台工具设置管理：
@@ -225,6 +239,12 @@ MCP 能力由后台工具设置管理：
 - 工具调用结果会进入消息处理轨迹，前端与“处理链路 / 思考链路”并列展示工具链路。
 
 计费侧把一次用户触发的多轮 LLM + 工具调用视为一次 run 汇总统计。
+
+官方原生工具按上游返回的调用次数生成独立服务项；是否计费和每次调用价格由管理员在计费设置中统一配置，价格填 `0` 表示不单独计费。工具返回内容产生的模型 token 仍按模型定价计算。
+
+## 版本信息
+
+`GET /api/v1/version` 是公开接口，返回当前版本、提交、构建时间和 `buildID`，用于前端定期检测新部署并提示用户刷新。该接口设置为 no-store，避免被 CDN 或浏览器长期缓存。
 
 ## 可观测性
 

@@ -12,6 +12,15 @@ type testSettingsRepo struct {
 	byNamespace map[string][]domainsettings.SystemSetting
 }
 
+type testVectorStore struct {
+	available bool
+	err       error
+}
+
+func (s testVectorStore) VectorStoreAvailable(context.Context) (bool, error) {
+	return s.available, s.err
+}
+
 func (r *testSettingsRepo) ListAll(ctx context.Context) ([]domainsettings.SystemSetting, error) {
 	var result []domainsettings.SystemSetting
 	for _, items := range r.byNamespace {
@@ -96,6 +105,54 @@ func TestValidateEmbeddingDependentSettingsRejectsRAGWithoutEmbedding(t *testing
 	}
 }
 
+func TestValidateEmbeddingDependentSettingsRejectsEmbeddingWithoutVectorStore(t *testing.T) {
+	repo := &testSettingsRepo{byNamespace: map[string][]domainsettings.SystemSetting{
+		"chat": {
+			{Namespace: "chat", Key: "rag_enabled", Value: "false"},
+			{Namespace: "chat", Key: "message_embedding_enabled", Value: "false"},
+			{Namespace: "chat", Key: "semantic_context_enabled", Value: "false"},
+		},
+		"file": {
+			{Namespace: "file", Key: "embedding_enabled", Value: "false"},
+			{Namespace: "file", Key: "embedding_host", Value: "https://embedding.example.com"},
+			{Namespace: "file", Key: "rag_model", Value: "embed-model"},
+		},
+	}}
+	service := NewService(repo, "test-data-encryption-key")
+	service.SetVectorStoreAvailabilityService(testVectorStore{available: false})
+
+	err := service.validateEmbeddingDependentSettings(context.Background(), []PatchItem{
+		{Namespace: "file", Key: "embedding_enabled", Value: "true"},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestValidateEmbeddingDependentSettingsAllowsEmbeddingWithVectorStore(t *testing.T) {
+	repo := &testSettingsRepo{byNamespace: map[string][]domainsettings.SystemSetting{
+		"chat": {
+			{Namespace: "chat", Key: "rag_enabled", Value: "false"},
+			{Namespace: "chat", Key: "message_embedding_enabled", Value: "false"},
+			{Namespace: "chat", Key: "semantic_context_enabled", Value: "false"},
+		},
+		"file": {
+			{Namespace: "file", Key: "embedding_enabled", Value: "false"},
+			{Namespace: "file", Key: "embedding_host", Value: "https://embedding.example.com"},
+			{Namespace: "file", Key: "rag_model", Value: "embed-model"},
+		},
+	}}
+	service := NewService(repo, "test-data-encryption-key")
+	service.SetVectorStoreAvailabilityService(testVectorStore{available: true})
+
+	err := service.validateEmbeddingDependentSettings(context.Background(), []PatchItem{
+		{Namespace: "file", Key: "embedding_enabled", Value: "true"},
+	})
+	if err != nil {
+		t.Fatalf("expected validation to pass, got %v", err)
+	}
+}
+
 func TestRuntimeSettingsNormalizeConfigDisablesEmbeddingDependentFeatures(t *testing.T) {
 	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
 	cfg := config.Config{
@@ -160,11 +217,11 @@ func TestValidateModelOptionPolicySettings(t *testing.T) {
 	if err := validatePatchItem(PatchItem{Namespace: "chat", Key: "model_option_allowed_paths", Value: `{"default":["bad path"]}`}); err == nil {
 		t.Fatal("expected whitespace path to fail")
 	}
-	if err := validatePatchItem(PatchItem{Namespace: "chat", Key: "model_option_native_tool_types", Value: config.DefaultNativeToolAllowedTypesJSON()}); err != nil {
-		t.Fatalf("expected default native tools to pass, got %v", err)
+	if err := validatePatchItem(PatchItem{Namespace: "billing", Key: "native_tool_pricing_json", Value: `{"xai.web_search":{"priceNanousd":1000000,"unit":"call","priceLabel":"","billable":true}}`}); err != nil {
+		t.Fatalf("expected native tool pricing JSON to pass, got %v", err)
 	}
-	if err := validatePatchItem(PatchItem{Namespace: "chat", Key: "model_option_native_tool_types", Value: `{"anthropic_messages":["unknown_tool"]}`}); err == nil {
-		t.Fatal("expected unsupported native tool type to fail")
+	if err := validatePatchItem(PatchItem{Namespace: "billing", Key: "native_tool_pricing_json", Value: `{"unknownTool":{"priceNanousd":1000000,"unit":"call","priceLabel":"","billable":true}}`}); err == nil {
+		t.Fatal("expected unsupported native tool pricing key to fail")
 	}
 }
 
