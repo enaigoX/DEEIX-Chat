@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
 	domainchannel "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/channel"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"go.uber.org/zap"
 )
 
@@ -178,6 +179,11 @@ func (s *Service) ImportUpstreamModels(ctx context.Context, upstreamID uint, inp
 		return nil, err
 	}
 
+	permissionGroupIDs, groupWriter, err := s.normalizeImportPermissionGroupIDs(ctx, input.PermissionGroupIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	result := &ImportUpstreamModelsData{
 		Total:   len(input.Items),
 		Results: make([]ImportUpstreamModelResultView, 0, len(input.Items)),
@@ -205,10 +211,81 @@ func (s *Service) ImportUpstreamModels(ctx context.Context, upstreamID uint, inp
 			result.CreatedPlatform++
 		}
 		imported.Status = status
+		if groupWriter != nil {
+			groupIDs, err := mergeImportedModelPermissionGroupIDs(ctx, groupWriter, imported.PlatformModelID, permissionGroupIDs)
+			if err != nil {
+				return nil, err
+			}
+			if err := groupWriter.SetModelManualGroups(ctx, imported.PlatformModelID, groupIDs); err != nil {
+				return nil, err
+			}
+		}
 		result.Results = append(result.Results, imported)
 	}
 
 	s.InvalidateModelCatalog()
+	return result, nil
+}
+
+func (s *Service) normalizeImportPermissionGroupIDs(ctx context.Context, groupIDs []uint) ([]uint, modelPermissionGroupWriter, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil, nil
+	}
+	writer, ok := s.permGroupRepo.(modelPermissionGroupWriter)
+	if !ok {
+		return nil, nil, ErrPermissionGroupRepoUnavailable
+	}
+	seen := make(map[uint]struct{}, len(groupIDs))
+	result := make([]uint, 0, len(groupIDs))
+	for _, id := range groupIDs {
+		if id == 0 {
+			return nil, nil, ErrInvalidPermissionGroupModels
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		exists, err := writer.PermissionGroupExists(ctx, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !exists {
+			return nil, nil, ErrInvalidPermissionGroupModels
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result, writer, nil
+}
+
+func mergeImportedModelPermissionGroupIDs(ctx context.Context, writer modelPermissionGroupWriter, platformModelID uint, groupIDs []uint) ([]uint, error) {
+	currentIDs, err := writer.ListModelManualGroupIDs(ctx, platformModelID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[uint]struct{}, len(currentIDs)+len(groupIDs))
+	result := make([]uint, 0, len(currentIDs)+len(groupIDs))
+	for _, id := range currentIDs {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	for _, id := range groupIDs {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
 	return result, nil
 }
 
@@ -337,30 +414,32 @@ func (s *Service) importSingleUpstreamModel(ctx context.Context, upstreamItem *d
 		Protocols:         protocols,
 	}
 	for _, protocol := range protocols {
-		createdRoute := !s.routeExists(ctx, upstreamItem.ID, platformModelName, upstreamModelName, protocol)
-		view, err := s.UpsertUpstreamModel(ctx, upstreamItem.ID, UpsertUpstreamModelInput{
-			PlatformModelName: platformModelName,
-			UpstreamModelName: upstreamModelName,
-			Protocol:          protocol,
-			KindsJSON:         kindsJSON,
-			Status:            input.Status,
-			Priority:          input.Priority,
-			Weight:            1,
-			Source:            "import",
-		})
-		if err != nil {
-			return ImportUpstreamModelResultView{}, err
-		}
-		if result.BindingCode == "" {
-			result.BindingCode = view.BindingCode
-		}
-		if createdRoute {
+		if !s.routeExists(ctx, upstreamItem.ID, platformModelName, upstreamModelName, protocol) {
 			result.CreatedRoutes++
-			result.CreatedRoute = true
 		} else {
 			result.ExistingRoutes++
 		}
 	}
+	status := input.Status
+	priority := input.Priority
+	weight := 1
+	source := "import"
+	view, err := s.UpsertUpstreamModel(ctx, upstreamItem.ID, UpsertUpstreamModelInput{
+		PlatformModelName: platformModelName,
+		UpstreamModelName: upstreamModelName,
+		Protocols:         protocols,
+		KindsJSON:         kindsJSON,
+		Status:            &status,
+		Priority:          &priority,
+		Weight:            &weight,
+		Source:            &source,
+	})
+	if err != nil {
+		return ImportUpstreamModelResultView{}, err
+	}
+	result.BindingCode = view.BindingCode
+	result.PlatformModelID = view.PlatformModelID
+	result.CreatedRoute = result.CreatedRoutes > 0
 	return result, nil
 }
 

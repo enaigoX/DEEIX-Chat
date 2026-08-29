@@ -66,6 +66,7 @@ type sharedAttachmentSnapshot struct {
 	ProcessingReady        bool   `json:"processing_ready"`
 	ProcessingErrorCode    string `json:"processing_error_code"`
 	ProcessingErrorMessage string `json:"processing_error_message"`
+	DurationSeconds        int64  `json:"duration_seconds"`
 }
 
 // GetConversationShare 查询当前会话最近一次分享状态。
@@ -518,6 +519,7 @@ func (s *Service) cloneSharedMessage(
 		Role:             strings.TrimSpace(source.Role),
 		ContentType:      contentType,
 		Content:          source.Content,
+		ReasoningContent: source.ReasoningContent,
 		BranchReason:     branchReason,
 		SourceMessageID:  sourceMessageID,
 		TokenUsage:       source.TokenUsage,
@@ -533,6 +535,7 @@ func (s *Service) cloneSharedMessage(
 		Status:           status,
 		ErrorCode:        source.ErrorCode,
 		ErrorMessage:     source.ErrorMessage,
+		KnowledgeSources: append([]model.MessageKnowledgeSource(nil), source.KnowledgeSources...),
 	}
 	if message.Role == "" {
 		message.Role = "assistant"
@@ -594,7 +597,7 @@ func (s *Service) cloneSharedMessageAttachments(
 			SHA256:         targetFile.SHA256,
 			StoragePath:    targetFile.StoragePath,
 			Status:         "active",
-			MetaJSON:       "",
+			MetaJSON:       generatedVideoAttachmentMetaJSON(snapshot.DurationSeconds),
 			UploadedAt:     now,
 		})
 	}
@@ -845,14 +848,14 @@ func isFileNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return errors.Is(err, repository.ErrNotFound) || strings.Contains(strings.ToLower(err.Error()), "file not found")
+	return errors.Is(err, repository.ErrNotFound) || errors.Is(err, ErrFileNotFound)
 }
 
 func isStorageQuotaExceededError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return errors.Is(err, ErrStorageQuotaExceeded) || strings.Contains(strings.ToLower(err.Error()), "storage quota exceeded")
+	return errors.Is(err, ErrStorageQuotaExceeded)
 }
 
 func (s *Service) resolveShareMessageIDs(ctx context.Context, conversationID uint, defaultPublicIDs []string) ([]string, []string, error) {

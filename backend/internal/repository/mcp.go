@@ -27,9 +27,20 @@ type UpdateMCPServerInput struct {
 
 // UpdateMCPToolInput 定义更新 MCP 工具字段。
 type UpdateMCPToolInput struct {
-	DisplayName *string
-	Description *string
-	Status      *string
+	DisplayName              *string
+	Description              *string
+	AttachmentInputMode      *string
+	AttachmentArgument       *string
+	AttachmentEncoding       *string
+	AttachmentPromptArgument *string
+	// PriceNanousd 更新单次调用价格（nano USD），0 表示不单独计费。
+	PriceNanousd *int64
+	Status       *string
+}
+
+type ReorderMCPServerInput struct {
+	ServerID uint
+	ToolIDs  []uint
 }
 
 // MCPRepository 封装 MCP 控制面持久化。
@@ -39,9 +50,10 @@ type MCPRepository interface {
 	ListServers(ctx context.Context) ([]domainmcp.Server, error)
 	GetServer(ctx context.Context, serverID uint) (*domainmcp.Server, error)
 	DeleteServer(ctx context.Context, serverID uint) error
-	ReplaceServerTools(ctx context.Context, serverID uint, tools []domainmcp.Tool) error
+	ReplaceServerTools(ctx context.Context, serverID uint, tools []domainmcp.Tool, overwriteCustomizedMetadata bool) error
 	ListTools(ctx context.Context, serverID uint, onlyActive bool) ([]domainmcp.Tool, error)
 	ListToolsByIDs(ctx context.Context, toolIDs []uint) ([]domainmcp.Tool, error)
 	UpdateTool(ctx context.Context, toolID uint, input UpdateMCPToolInput) (*domainmcp.Tool, error)
 	UpdateServerToolsStatus(ctx context.Context, serverID uint, toolIDs []uint, status string) ([]domainmcp.Tool, error)
+	ReorderServersWithTools(ctx context.Context, order []ReorderMCPServerInput) ([]domainmcp.ServerWithTools, error)
 }

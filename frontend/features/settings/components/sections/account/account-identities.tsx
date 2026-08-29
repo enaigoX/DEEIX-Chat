@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import { Unlink } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -11,8 +10,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Table, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow, TableSkeletonRows } from "@/components/ui/table";
-import { formatDateTime } from "@/features/settings/model/account-page";
+import { Table, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableLoadingRow, TableRow } from "@/components/ui/table";
+import { formatDateTime } from "@/features/settings/model/account-settings";
 import { useAppLocale } from "@/i18n/app-i18n-provider";
 import type { IdentityProviderDTO, UserIdentityDTO } from "@/shared/api/auth.types";
 import { IdentityProviderIcon } from "@/shared/components/identity-provider-icon";
@@ -85,7 +84,7 @@ export function AccountIdentitiesSection({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {loading && identities.length === 0 ? <TableSkeletonRows colSpan={5} rowCount={4} /> : null}
+          {loading && identities.length === 0 ? <TableLoadingRow colSpan={5} /> : null}
           {!loading && identities.length === 0 ? (
             <TableEmptyRow colSpan={5}>{t("identity.empty")}</TableEmptyRow>
           ) : null}

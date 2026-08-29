@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SpinnerLabel } from "@/components/ui/spinner";
+import { useDialogSnapshot } from "@/shared/hooks/use-dialog-snapshot";
+import {
+  billingDisplayAmountToUSD,
+  billingDisplayInputSymbol,
+  formatProviderPaymentAmountFromUSD,
+} from "@/features/settings/model/subscription-format";
+import type { BillingDisplayOptions } from "@/shared/lib/billing-display";
 
 type PaymentProvider = "stripe" | "epay";
 
@@ -33,6 +40,7 @@ type TopUpDialogProps = {
   selectedPaymentProvider: PaymentProvider;
   selectedEPayType: string;
   epayTypes: EPayTypeOption[];
+  billingDisplay: BillingDisplayOptions;
   epayLabels: {
     alipay: string;
     wxpay: string;
@@ -57,6 +65,7 @@ export function TopUpDialog({
   selectedPaymentProvider,
   selectedEPayType,
   epayTypes,
+  billingDisplay,
   epayLabels,
   onAmountChange,
   onPaymentProviderChange,
@@ -64,6 +73,11 @@ export function TopUpDialog({
   onSubmit,
 }: TopUpDialogProps) {
   const t = useTranslations("settings.subscriptionPage");
+  const displayAmount = Number(amount);
+  const paymentAmountUSD = billingDisplayAmountToUSD(displayAmount, billingDisplay);
+  const stripePaymentAmount = formatProviderPaymentAmountFromUSD(paymentAmountUSD, "stripe", billingDisplay);
+  const epayPaymentAmount = formatProviderPaymentAmountFromUSD(paymentAmountUSD, "epay", billingDisplay);
+  const inputSymbol = billingDisplayInputSymbol(billingDisplay);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,7 +95,7 @@ export function TopUpDialog({
             </p>
           </div>
           <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{inputSymbol}</span>
             <Input
               value={amount}
               type="number"
@@ -102,13 +116,14 @@ export function TopUpDialog({
               {paymentProviders.includes("stripe") ? (
                 <button
                   type="button"
-                  className={`flex h-9 items-center justify-center rounded-md border px-2 text-xs ${
+                  className={`flex min-h-9 flex-col items-center justify-center rounded-md border px-2 py-1 text-xs ${
                     selectedPaymentProvider === "stripe" ? "border-foreground bg-muted/25 font-medium" : "border-border bg-transparent text-muted-foreground"
                   }`}
                   disabled={billingLoading || topUpLoading || paymentDisabled}
                   onClick={() => onPaymentProviderChange("stripe")}
                 >
-                  Stripe
+                  <span>Stripe</span>
+                  <span className="text-[11px] font-normal tabular-nums opacity-80">{stripePaymentAmount}</span>
                 </button>
               ) : null}
               {paymentProviders.includes("epay")
@@ -118,7 +133,7 @@ export function TopUpDialog({
                     <button
                       key={item.type}
                       type="button"
-                      className={`flex h-9 items-center justify-center rounded-md border px-2 text-xs ${
+                      className={`flex min-h-9 flex-col items-center justify-center rounded-md border px-2 py-1 text-xs ${
                         selected ? "border-foreground bg-muted/25 font-medium" : "border-border bg-transparent text-muted-foreground"
                       }`}
                       disabled={billingLoading || topUpLoading || paymentDisabled}
@@ -127,7 +142,8 @@ export function TopUpDialog({
                         onEPayTypeChange(item.type);
                       }}
                     >
-                      {item.name || resolveEPayTypeLabel(item.type, epayLabels)}
+                      <span>{item.name || resolveEPayTypeLabel(item.type, epayLabels)}</span>
+                      <span className="text-[11px] font-normal tabular-nums opacity-80">{epayPaymentAmount}</span>
                     </button>
                   );
                 })
@@ -169,6 +185,7 @@ export function RedemptionDialog({
   onSubmit,
 }: RedemptionDialogProps) {
   const t = useTranslations("settings.subscriptionPage");
+  const stableCode = useDialogSnapshot(open ? code : null) ?? "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -180,7 +197,7 @@ export function RedemptionDialog({
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">{t("redemption.code")}</p>
           <Input
-            value={code}
+            value={stableCode}
             autoComplete="off"
             className="font-mono"
             disabled={billingLoading || redemptionLoading}

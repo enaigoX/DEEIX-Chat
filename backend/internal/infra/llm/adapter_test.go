@@ -29,6 +29,9 @@ func TestSupportsImageGenerationStream(t *testing.T) {
 	if !SupportsImageGenerationStream(AdapterGoogleImageGeneration, "gemini-3-pro-image") {
 		t.Fatalf("expected google image generation adapter to support image generation streaming")
 	}
+	if !SupportsImageGenerationStream(AdapterGeminiInteractions, "gemini-3.5-flash") {
+		t.Fatalf("expected Gemini Interactions adapter to support image generation streaming")
+	}
 	if SupportsStreamingAdapter(AdapterXAIImage) {
 		t.Fatalf("expected xAI image adapter to use non-streaming media flow")
 	}
@@ -64,5 +67,29 @@ func TestImageAdapterCapabilities(t *testing.T) {
 	}
 	if !IsImageEditAdapter(AdapterXAIImageEdits) {
 		t.Fatalf("expected xAI image edits protocol to support image editing")
+	}
+}
+
+func TestXAIVideoAdapterCapabilities(t *testing.T) {
+	if !IsKnownAdapter(AdapterXAIVideo) || !IsImplementedAdapter(AdapterXAIVideo) {
+		t.Fatalf("expected xAI video adapter to be known and implemented")
+	}
+	if !IsVideoGenerationAdapter(AdapterXAIVideo) {
+		t.Fatalf("expected xAI video adapter to support video generation")
+	}
+	if SupportsStreamingAdapter(AdapterXAIVideo) {
+		t.Fatalf("expected xAI video adapter to use asynchronous polling instead of streaming")
+	}
+	if got := DefaultEndpointForAdapter(AdapterXAIVideo); got != EndpointVideoGenerations {
+		t.Fatalf("expected xAI video endpoint, got %q", got)
+	}
+	if !IsKnownAdapter(AdapterXAIVideoExtensions) || !IsImplementedAdapter(AdapterXAIVideoExtensions) {
+		t.Fatalf("expected xAI video extensions adapter to be known and implemented")
+	}
+	if !IsVideoGenerationAdapter(AdapterXAIVideoExtensions) {
+		t.Fatalf("expected xAI video extensions adapter to use the video media pipeline")
+	}
+	if got := DefaultEndpointForAdapter(AdapterXAIVideoExtensions); got != EndpointVideoExtensions {
+		t.Fatalf("expected xAI video extensions endpoint, got %q", got)
 	}
 }

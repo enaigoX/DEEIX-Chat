@@ -68,12 +68,18 @@ export function AppRecent() {
           starredFilter={controller.starredFilter}
           shareFilter={controller.shareFilter}
           allSelectedArchived={controller.allSelectedArchived}
+          projects={controller.projects}
+          selectedProjectID={controller.selectedProjectID}
+          movingSelectedToProject={controller.movingSelectedToProject}
           onToggleSelectionMode={controller.toggleSelectionMode}
           onEnterSelectionMode={controller.enterSelectionMode}
           onExitSelectionMode={controller.exitSelectionMode}
           onArchiveSelected={requestArchiveSelected}
+          onMoveSelectedToProject={controller.moveSelectedToProject}
           onRevokeSelectedShares={requestRevokeSelectedShares}
           onRequestDeleteSelected={controller.requestDeleteSelected}
+          onExportAll={controller.onExportAll}
+          exportingAll={controller.exportingAll}
           onStatusFilterChange={controller.setStatusFilter}
           onStarredFilterChange={controller.setStarredFilter}
           onShareFilterChange={controller.setShareFilter}
@@ -97,6 +103,7 @@ export function AppRecent() {
           onToggleSelected={controller.onToggleSelected}
           onToggleStar={controller.onToggleStar}
           onRename={controller.onRename}
+          onManageLabels={controller.onManageLabels}
           onArchive={controller.onArchive}
           onShare={controller.onShare}
           onSetProject={controller.onSetProject}
@@ -110,6 +117,8 @@ export function AppRecent() {
       <RecentDialogs
         renameTarget={controller.renameTarget}
         renameValue={controller.renameValue}
+        renamingAutomatically={controller.renamingAutomatically}
+        labelsTarget={controller.labelsTarget}
         deleteTarget={controller.deleteTarget}
         deleteFiles={controller.deleteFiles}
         shareTarget={controller.shareTarget}
@@ -118,7 +127,10 @@ export function AppRecent() {
         bulkConfirmPending={bulkConfirmPending}
         onRenameValueChange={controller.setRenameValue}
         onRenameCommit={controller.onRenameCommit}
+        onAutoRename={controller.onAutoRename}
         onCloseRenameDialog={controller.closeRenameDialog}
+        onUpdateLabels={controller.onUpdateLabels}
+        onCloseLabelsDialog={controller.closeLabelsDialog}
         onDeleteFilesChange={controller.setDeleteFiles}
         onConfirmDelete={controller.confirmDelete}
         onCloseDeleteDialog={controller.closeDeleteDialog}

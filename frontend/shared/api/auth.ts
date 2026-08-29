@@ -18,6 +18,8 @@ import type {
   MeData,
   PatchMePayload,
   PatchUsernamePayload,
+  PasswordResetCompleteData,
+  PasswordResetStartData,
   PasswordChangeVerificationStartData,
   SecurityVerificationMethod,
   TwoFactorDisableData,
@@ -139,6 +141,20 @@ export async function completeEmailRegistration(email: string, password: string,
   return apiRequest<LoginData>("/api/v1/auth/register/email/complete", {
     method: "POST",
     body: { email, password, code, turnstileToken },
+  });
+}
+
+export async function startPasswordReset(email: string): Promise<PasswordResetStartData> {
+  return apiRequest<PasswordResetStartData>("/api/v1/auth/password/reset/start", {
+    method: "POST",
+    body: { email },
+  });
+}
+
+export async function completePasswordReset(email: string, code: string, newPassword: string): Promise<PasswordResetCompleteData> {
+  return apiRequest<PasswordResetCompleteData>("/api/v1/auth/password/reset/complete", {
+    method: "POST",
+    body: { email, code, newPassword },
   });
 }
 
@@ -282,7 +298,11 @@ export async function getLoginPageSettings(): Promise<LoginPageSettings> {
 }
 
 export async function getLoginOptions(): Promise<LoginOptionsData> {
-  return apiRequest<LoginOptionsData>("/api/v1/auth/login-options");
+  const result = await apiRequest<LoginOptionsData>("/api/v1/auth/login-options");
+  return {
+    ...result,
+    providerAuthBridge: result.providerAuthBridge ?? { callbackBaseURL: "", enabled: false, protocolVersion: 0 },
+  };
 }
 
 export async function completeProviderLogin(
@@ -296,6 +316,38 @@ export async function completeProviderLogin(
   return apiRequest<LoginData>(`/api/v1/auth/providers/${pathParam(slug)}/callback`, {
     method: "POST",
     body: { code, state, redirectURI: redirectURI, codeVerifier: codeVerifier, intent },
+  });
+}
+
+export type ProviderAuthBridgeStartData = {
+  authorizationURL: string;
+  expiresAt: string;
+};
+
+export async function startProviderAuthBridge(
+  slug: string,
+  input: {
+    clientID: string;
+    redirectURI: string;
+    codeChallenge: string;
+    clientState: string;
+    intent: "login" | "register";
+    next: string;
+  },
+): Promise<ProviderAuthBridgeStartData> {
+  return apiRequest<ProviderAuthBridgeStartData>(`/api/v1/auth/providers/${pathParam(slug)}/authorize`, {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function exchangeProviderAuthBridgeGrant(
+  slug: string,
+  input: { clientID: string; grant: string; codeVerifier: string },
+): Promise<LoginData> {
+  return apiRequest<LoginData>(`/api/v1/auth/providers/${pathParam(slug)}/exchange`, {
+    method: "POST",
+    body: input,
   });
 }
 

@@ -3,12 +3,20 @@ package settings
 import "github.com/gin-gonic/gin"
 
 func (m *Module) RegisterPublicRoutes(api *gin.RouterGroup) {
+	api.GET("/branding", m.Handler.GetBranding)
+	api.GET("/branding/manifest.webmanifest", m.Handler.GetBrandingManifest)
 	api.GET("/settings/login-page", m.Handler.GetLoginPageSettings)
+}
+
+// RegisterFrontendRoutes 注册由前端直接发现的公开资源路由。
+func (m *Module) RegisterFrontendRoutes(engine *gin.Engine) {
+	engine.GET("/manifest.webmanifest", m.Handler.GetBrandingManifest)
 }
 
 func (m *Module) RegisterRoutes(api *gin.RouterGroup) {
 	api.GET("/settings/model-option-policy", m.Handler.GetModelOptionPolicy)
 	api.GET("/settings/mcp-policy", m.Handler.GetMCPPolicy)
+	api.GET("/settings/chat-context-policy", m.Handler.GetChatContextPolicy)
 }
 
 // RegisterAdminRoutes 注册 settings 管理路由（由管理员中间件保护）。

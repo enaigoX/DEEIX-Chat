@@ -2,11 +2,18 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { DollarSign, Globe, Plus, Settings, ShieldCheck, ShieldX, Trash2, UserCheck } from "lucide-react";
+import { Database, Globe, Plus, Settings, ShieldCheck, ShieldX, Trash2, Upload, UserCheck, WalletCards } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -31,20 +38,25 @@ import {
   TableEmptyRow,
   TableHead,
   TableHeader,
+  TableLoadingRow,
   TableRow,
-  TableSkeletonRows,
 } from "@/components/ui/table";
+import { useVirtualTableRows, VirtualTablePaddingRow } from "@/components/ui/virtual-table";
+import { importOpenWebUIUsers } from "@/features/admin/api";
+import type { ImportOpenWebUIUsersData, ImportOpenWebUIUsersRequest } from "@/features/admin/api/admin.types";
 import { resolveAvatarImageSrc } from "@/shared/lib/avatar";
 import { useAuthSession } from "@/shared/auth/auth-session-context";
+import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
+import { useDialogSnapshot } from "@/shared/hooks/use-dialog-snapshot";
 import { TimeZoneSelect } from "@/shared/components/time-zone-select";
-import { useProgressiveRows } from "@/hooks/use-progressive-rows";
-import type { AdminUserRole, AdminUserStatus } from "@/features/admin/api/admin.types";
+import type { AdminUserDTO, AdminUserRole, AdminUserStatus } from "@/features/admin/api/admin.types";
 import type { AdminBillingMode } from "@/features/admin/api/billing.types";
-import type { UserDTO } from "@/shared/api/auth.types";
+import type { BillingDisplayOptions } from "@/shared/lib/billing-display";
 
-import { AccountAvatarEditorDialog } from "./account-avatar-dialog";
-import { AccountConfirmationDialog } from "./account-confirm-dialog";
-import { AccountPasswordResetDialog } from "./account-password-dialog";
+import { AccountAvatarEditorDialog } from "./accounts-avatar-dialog";
+import { AccountConfirmationDialog } from "./accounts-confirm-dialog";
+import { AccountOpenWebUIImportDialog } from "./accounts-import-dialog";
+import { AccountPasswordResetDialog } from "./accounts-password-dialog";
 import { TablePagination, TableToolbar } from "@/components/ui/table-tools";
 import { AdminBulkConfirmDialog } from "@/features/admin/components/bulk-confirm-dialog";
 import { useAdminUsersPage } from "@/features/admin/hooks/use-admin-users-page";
@@ -64,16 +76,17 @@ import {
   resolveUserInitial,
   resolveValue,
 } from "@/features/admin/utils/account-display";
+import { resolveAdminErrorMessage } from "@/features/admin/utils/admin-error";
 
 const CreateUserDialog = dynamic(
-  () => import("./account-user-editor").then((module) => module.CreateUserDialog),
+  () => import("./accounts-user-editor").then((module) => module.CreateUserDialog),
   {
     ssr: false,
   },
 );
 
 const EditUserSheet = dynamic(
-  () => import("./account-user-editor").then((module) => module.EditUserSheet),
+  () => import("./accounts-user-editor").then((module) => module.EditUserSheet),
   {
     ssr: false,
   },
@@ -185,20 +198,26 @@ function BulkActionControlRow({
 }
 
 type AccountsUsersProps = {
-  items: UserDTO[];
+  items: AdminUserDTO[];
   total: number;
   page: number;
+  setPage: (value: number) => void;
   pageSize: number;
+  setPageSize: (value: number) => void;
+  pageCount: number;
+  query: string;
+  setQuery: (value: string) => void;
   loading: boolean;
-  onLoadUsers: (page: number, pageSize?: number) => Promise<void>;
-  onSetUsers: React.Dispatch<React.SetStateAction<UserDTO[]>>;
+  onLoadUsers: () => Promise<void>;
+  onSetUsers: React.Dispatch<React.SetStateAction<AdminUserDTO[]>>;
   onSetTotal: React.Dispatch<React.SetStateAction<number>>;
 };
 
 type UserTableRowProps = {
-  item: UserDTO;
+  item: AdminUserDTO;
   checked: boolean;
   billingMode: AdminBillingMode;
+  billingDisplay: BillingDisplayOptions;
   inlineRolePending: boolean;
   inlineStatusPending: boolean;
   pendingAction: string;
@@ -207,18 +226,19 @@ type UserTableRowProps = {
   canManage: boolean;
   onToggleSelectedUser: (userID: number, checked: boolean) => void;
   onInlinePatch: (
-    item: UserDTO,
+    item: AdminUserDTO,
     field: "role" | "status",
-    payload: Partial<Pick<UserDTO, "role" | "status">>,
+    payload: Partial<Pick<AdminUserDTO, "role" | "status">>,
   ) => Promise<void>;
-  onOpenAvatar: (user: UserDTO) => void;
-  onOpenEdit: (user: UserDTO) => void;
+  onOpenAvatar: (user: AdminUserDTO) => void;
+  onOpenEdit: (user: AdminUserDTO) => void;
 };
 
 const UserTableRow = React.memo(function UserTableRow({
   item,
   checked,
   billingMode,
+  billingDisplay,
   inlineRolePending,
   inlineStatusPending,
   pendingAction,
@@ -284,7 +304,7 @@ const UserTableRow = React.memo(function UserTableRow({
           <Combobox
             items={rowRoleOptions}
             value={item.role}
-            onValueChange={(value) => void onInlinePatch(item, "role", { role: value as UserDTO["role"] })}
+            onValueChange={(value) => void onInlinePatch(item, "role", { role: value as AdminUserDTO["role"] })}
             disabled={disabled || inlineRolePending}
           >
             <ComboboxInput
@@ -312,7 +332,7 @@ const UserTableRow = React.memo(function UserTableRow({
             items={USER_STATUS_OPTIONS}
             value={item.status}
             itemToStringLabel={resolveUserStatusLabel}
-            onValueChange={(value) => void onInlinePatch(item, "status", { status: value as UserDTO["status"] })}
+            onValueChange={(value) => void onInlinePatch(item, "status", { status: value as AdminUserDTO["status"] })}
             disabled={disabled || inlineStatusPending}
           >
             <ComboboxInput
@@ -348,10 +368,10 @@ const UserTableRow = React.memo(function UserTableRow({
           </div>
         </TableCell>
       ) : null}
-      {billingMode === "usage" ? (
+      {billingMode !== "self" ? (
         <TableCell className="whitespace-nowrap text-foreground">
           <span title={resolveBillingAccountStatusLabel(item.billingAccountStatus || "active")}>
-            {formatBillingBalance(item.billingBalanceUSD)}
+            {formatBillingBalance(item.billingBalanceUSD, billingDisplay)}
           </span>
         </TableCell>
       ) : null}
@@ -365,7 +385,7 @@ const UserTableRow = React.memo(function UserTableRow({
           {resolveValue(item.timezone)}
         </div>
       </TableCell>
-      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.lastLoginAt, locale)}</TableCell>
+      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.lastActiveAt || item.lastLoginAt, locale)}</TableCell>
       <TableCell className="w-[56px] py-1.5 whitespace-nowrap" stickyEnd>
         <div className="flex h-7 items-center justify-end">
           <Button
@@ -394,7 +414,12 @@ export function AccountsUsers({
   items,
   total,
   page,
+  setPage,
   pageSize,
+  setPageSize,
+  pageCount,
+  query,
+  setQuery,
   loading,
   onLoadUsers,
   onSetUsers,
@@ -427,8 +452,6 @@ export function AccountsUsers({
     setDeleteDialogTarget,
     resetTwoFactorDialogTarget,
     setResetTwoFactorDialogTarget,
-    query,
-    setQuery,
     roleFilter,
     setRoleFilter,
     statusFilter,
@@ -453,11 +476,11 @@ export function AccountsUsers({
     resetPasswordDraft,
     setResetPasswordDraft,
     billingMode,
+    billingDisplay,
     billingPlans,
     createAvatarSource,
     avatarDialogPreviewSrc,
     editStatusChanged,
-    pageCount,
     filteredItems,
     selectAllState,
     resolveInlineKey,
@@ -482,13 +505,31 @@ export function AccountsUsers({
     onBulkApplyTimezone,
     onBulkApplyBalance,
     handleRandomizeAvatarDialog,
-  } = useAdminUsersPage({ items, total, page, pageSize, viewerRole: viewer?.role, onLoadUsers, onSetUsers, onSetTotal });
-  const { visibleRows: renderedItems } = useProgressiveRows(filteredItems, {
-    initialCount: 12,
-    step: 16,
-    disabled: loading,
+  } = useAdminUsersPage({
+    items,
+    total,
+    page,
+    pageSize,
+    query,
+    setQuery,
+    viewerRole: viewer?.role,
+    onLoadUsers,
+    onSetPage: setPage,
+    onSetUsers,
+    onSetTotal,
   });
+  const stableEditDialogTarget = useDialogSnapshot(editDialogTarget);
+  const stableResetPasswordDraft = useDialogSnapshot(resetDialogTarget ? resetPasswordDraft : null) ?? "";
+  const virtualRows = useVirtualTableRows(filteredItems, {
+    enabled: filteredItems.length > 100,
+    estimateSize: 40,
+  });
+  const initialLoading = loading && filteredItems.length === 0;
+  const showRows = filteredItems.length > 0;
   const [bulkConfirmAction, setBulkConfirmAction] = React.useState<AccountBulkAction | null>(null);
+  const [openWebUIImportOpen, setOpenWebUIImportOpen] = React.useState(false);
+  const [openWebUIImportPending, setOpenWebUIImportPending] = React.useState(false);
+  const [openWebUIImportResult, setOpenWebUIImportResult] = React.useState<ImportOpenWebUIUsersData | null>(null);
   const bulkConfirmOpen = bulkConfirmAction !== null;
   const hasSelectableFilteredItems = React.useMemo(
     () => filteredItems.some(canManageUser),
@@ -514,6 +555,48 @@ export function AccountsUsers({
         break;
     }
   }
+
+  async function handleImportOpenWebUI(payload: ImportOpenWebUIUsersRequest) {
+    if (openWebUIImportPending) {
+      return;
+    }
+    setOpenWebUIImportPending(true);
+    try {
+      const token = await resolveAccessToken();
+      if (!token) {
+        toast.error(t("toast.sessionExpired"), { description: t("toast.signInAgain") });
+        return;
+      }
+      const result = await importOpenWebUIUsers(token, payload);
+      setOpenWebUIImportResult(result);
+      if (payload.dryRun) {
+        toast.success(t("importOpenWebUI.toastPreviewSucceeded", {
+          imported: result.imported,
+          skipped: result.skippedExistingEmail + result.skippedDuplicateSourceEmail,
+        }));
+        return;
+      }
+      toast.success(t("importOpenWebUI.toastSucceeded", {
+        imported: result.imported,
+        skipped: result.skippedExistingEmail + result.skippedDuplicateSourceEmail,
+      }));
+      setOpenWebUIImportOpen(false);
+      if (page === 1) {
+        await onLoadUsers();
+      } else {
+        setPage(1);
+      }
+    } catch (error) {
+      toast.error(t("importOpenWebUI.toastFailed"), { description: resolveAdminErrorMessage(error) });
+    } finally {
+      setOpenWebUIImportPending(false);
+    }
+  }
+
+  const showBalanceColumn = billingMode !== "self";
+  const baseColumnCount = 9;
+  const billingColumnCount = (billingMode === "period" ? 1 : 0) + (showBalanceColumn ? 1 : 0);
+  const tableColSpan = baseColumnCount + billingColumnCount;
 
   return (
     <>
@@ -638,9 +721,9 @@ export function AccountsUsers({
                 />
               </BulkActionControlRow>
 
-              {billingMode === "usage" ? (
+              {showBalanceColumn ? (
                 <BulkActionControlRow
-                  icon={<DollarSign className="size-3 stroke-1" />}
+                  icon={<WalletCards className="size-3 stroke-1" />}
                   label={t("actions.apply")}
                   onApply={() => setBulkConfirmAction("balance")}
                   disabled={loading || Boolean(pendingAction) || selectedUserIDs.size === 0 || !batchBalance.trim()}
@@ -650,7 +733,7 @@ export function AccountsUsers({
                     min="0"
                     step="0.000001"
                     value={batchBalance}
-                    placeholder={t("fields.balance")}
+                    placeholder={t("fields.balanceUSDInput")}
                     onChange={(event) => setBatchBalance(event.target.value)}
                     disabled={loading || Boolean(pendingAction) || selectedUserIDs.size === 0}
                     className="h-7 px-2 text-[11px]"
@@ -667,24 +750,53 @@ export function AccountsUsers({
               onClick: () => setBulkConfirmAction("delete"),
             },
           ]}
-          loading={loading || Boolean(pendingAction)}
+          loading={loading || Boolean(pendingAction) || openWebUIImportPending}
           onRefresh={() => void refreshUsers(page)}
-          refreshDisabled={loading || Boolean(pendingAction)}
+          refreshDisabled={loading || Boolean(pendingAction) || openWebUIImportPending}
           refreshLoading={pendingAction === "refresh"}
         >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 px-2 text-xs"
+                disabled={Boolean(pendingAction) || openWebUIImportPending}
+              >
+                <Upload className="size-3.5 stroke-1" />
+                {t("importOpenWebUI.import")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => {
+                  setOpenWebUIImportResult(null);
+                  setOpenWebUIImportOpen(true);
+                }}
+              >
+                <Database className="size-3.5 stroke-1" />
+                OpenWebUI
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             type="button"
             size="sm"
             className="h-7 gap-1 px-2 text-xs"
             onClick={() => setCreateDialogOpen(true)}
-            disabled={Boolean(pendingAction)}
+            disabled={Boolean(pendingAction) || openWebUIImportPending}
           >
             <Plus className="size-3.5 stroke-1" />
             {t("create")}
           </Button>
         </TableToolbar>
 
-        <Table>
+        <Table
+          viewportRef={virtualRows.viewportRef}
+          viewportClassName={virtualRows.viewportClassName}
+          viewportStyle={virtualRows.viewportStyle}
+        >
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-[44px] py-1.5 text-center">
@@ -701,49 +813,54 @@ export function AccountsUsers({
                 <TableHead>{t("fields.role")}</TableHead>
                 <TableHead>{t("fields.status")}</TableHead>
                 {billingMode === "period" ? <TableHead>{t("fields.subscription")}</TableHead> : null}
-                {billingMode === "usage" ? <TableHead>{t("fields.balance")}</TableHead> : null}
+                {showBalanceColumn ? <TableHead>{t("fields.balance")}</TableHead> : null}
                 <TableHead className="text-center">2FA</TableHead>
                 <TableHead>{t("fields.timezone")}</TableHead>
-                <TableHead>{t("fields.lastLogin")}</TableHead>
+                <TableHead>{t("fields.lastActive")}</TableHead>
                 <TableHead className="w-[56px]" stickyEnd />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading && filteredItems.length === 0 ? (
-                <TableSkeletonRows colSpan={billingMode === "self" ? 9 : 10} rowCount={10} />
+              {initialLoading ? (
+                <TableLoadingRow colSpan={tableColSpan} />
               ) : null}
-              {renderedItems.map((item) => (
-                <UserTableRow
-                  key={item.id}
-                  item={item}
-                  checked={selectedUserIDs.has(item.id)}
-                  billingMode={billingMode}
-                  inlineRolePending={Boolean(inlinePending[resolveInlineKey(item.id, "role")])}
-                  inlineStatusPending={Boolean(inlinePending[resolveInlineKey(item.id, "status")])}
-                  pendingAction={pendingAction}
-                  actionUserID={actionUserID}
-                  roleOptions={roleOptions}
-                  canManage={canManageUser(item)}
-                  onToggleSelectedUser={handleToggleSelectedUser}
-                  onInlinePatch={handleInlineUserPatch}
-                  onOpenAvatar={handleOpenAvatarDialog}
-                  onOpenEdit={handleOpenEditDialog}
-                />
-              ))}
+              {showRows ? <VirtualTablePaddingRow colSpan={tableColSpan} height={virtualRows.paddingTop} /> : null}
+              {showRows
+                ? virtualRows.rows.map(({ item }) => (
+                    <UserTableRow
+                      key={item.id}
+                      item={item}
+                      checked={selectedUserIDs.has(item.id)}
+                      billingMode={billingMode}
+                      billingDisplay={billingDisplay}
+                      inlineRolePending={Boolean(inlinePending[resolveInlineKey(item.id, "role")])}
+                      inlineStatusPending={Boolean(inlinePending[resolveInlineKey(item.id, "status")])}
+                      pendingAction={pendingAction}
+                      actionUserID={actionUserID}
+                      roleOptions={roleOptions}
+                      canManage={canManageUser(item)}
+                      onToggleSelectedUser={handleToggleSelectedUser}
+                      onInlinePatch={handleInlineUserPatch}
+                      onOpenAvatar={handleOpenAvatarDialog}
+                      onOpenEdit={handleOpenEditDialog}
+                    />
+                  ))
+                : null}
+              {showRows ? <VirtualTablePaddingRow colSpan={tableColSpan} height={virtualRows.paddingBottom} /> : null}
               {!loading && filteredItems.length === 0 ? (
-                <TableEmptyRow colSpan={billingMode === "self" ? 9 : 10}>{t("table.empty")}</TableEmptyRow>
+                <TableEmptyRow colSpan={tableColSpan}>{t("table.empty")}</TableEmptyRow>
               ) : null}
             </TableBody>
         </Table>
 
         <TablePagination
-          total={filteredItems.length}
+          total={total}
           page={page}
           pageCount={pageCount}
           pageSize={pageSize}
-          onPageChange={(nextPage) => void onLoadUsers(nextPage, pageSize)}
-          onPageSizeChange={(nextPageSize) => void onLoadUsers(1, nextPageSize)}
-          loading={loading || Boolean(pendingAction)}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          loading={loading || Boolean(pendingAction) || openWebUIImportPending}
         />
       </div>
 
@@ -818,19 +935,37 @@ export function AccountsUsers({
         />
       ) : null}
 
-      {editDialogTarget ? (
+      <AccountOpenWebUIImportDialog
+        open={openWebUIImportOpen}
+        pending={openWebUIImportPending}
+        result={openWebUIImportResult}
+        onOpenChange={(open) => {
+          if (!open && openWebUIImportPending) {
+            return;
+          }
+          setOpenWebUIImportOpen(open);
+          if (open) {
+            setOpenWebUIImportResult(null);
+          }
+        }}
+        onPreviewReset={() => setOpenWebUIImportResult(null)}
+        onSubmit={handleImportOpenWebUI}
+      />
+
+      {stableEditDialogTarget ? (
         <EditUserSheet
-          open
+          open={Boolean(editDialogTarget)}
           onOpenChange={(open) => {
             if (!open && pendingAction !== "edit") {
               setEditDialogTarget(null);
             }
           }}
           pending={pendingAction === "edit"}
-          editDialogTarget={editDialogTarget}
+          editDialogTarget={stableEditDialogTarget}
           editPayload={editPayload}
           setEditPayload={setEditPayload}
           billingMode={billingMode}
+          billingDisplay={billingDisplay}
           billingPlans={billingPlans}
           statusChanged={editStatusChanged}
           timeZoneOptions={timeZoneOptions}
@@ -839,27 +974,27 @@ export function AccountsUsers({
           onOpenEditAvatarDialog={() => {
             setAvatarDialog({
               mode: "edit",
-              target: editDialogTarget,
-              value: editPayload.avatarURL.trim() || editDialogTarget.avatarURL.trim(),
+              target: stableEditDialogTarget,
+              value: editPayload.avatarURL.trim() || stableEditDialogTarget.avatarURL.trim(),
             });
           }}
           onOpenResetPasswordDialog={() => {
-            setResetDialogTarget(editDialogTarget);
+            setResetDialogTarget(stableEditDialogTarget);
             setResetPasswordDraft("");
           }}
           onOpenResetTwoFactorDialog={() => {
-            setResetTwoFactorDialogTarget(editDialogTarget);
+            setResetTwoFactorDialogTarget(stableEditDialogTarget);
           }}
           onOpenRevokeDialog={() => {
-            setRevokeDialogTarget(editDialogTarget);
+            setRevokeDialogTarget(stableEditDialogTarget);
           }}
           onOpenDeleteDialog={() => {
-            setDeleteDialogTarget(editDialogTarget);
+            setDeleteDialogTarget(stableEditDialogTarget);
           }}
-          resetPasswordPending={pendingAction === "reset-password" && actionUserID === editDialogTarget.id}
-          resetTwoFactorPending={pendingAction === "reset-2fa" && actionUserID === editDialogTarget.id}
-          revokePending={pendingAction === "revoke-sessions" && actionUserID === editDialogTarget.id}
-          deletePending={pendingAction === "delete" && actionUserID === editDialogTarget.id}
+          resetPasswordPending={pendingAction === "reset-password" && actionUserID === stableEditDialogTarget.id}
+          resetTwoFactorPending={pendingAction === "reset-2fa" && actionUserID === stableEditDialogTarget.id}
+          revokePending={pendingAction === "revoke-sessions" && actionUserID === stableEditDialogTarget.id}
+          deletePending={pendingAction === "delete" && actionUserID === stableEditDialogTarget.id}
           resolveUserInitial={resolveUserInitial}
         />
       ) : null}
@@ -873,7 +1008,7 @@ export function AccountsUsers({
           }
         }}
         pending={pendingAction === "reset-password"}
-        password={resetPasswordDraft}
+        password={stableResetPasswordDraft}
         onPasswordChange={setResetPasswordDraft}
         onConfirm={() => void onResetPassword()}
         onCancel={() => {

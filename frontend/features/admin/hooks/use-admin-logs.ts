@@ -7,6 +7,7 @@ import {
   listAdminAuditLogs,
   listAdminConversationEvents,
   listAdminPaymentOrders,
+  listAdminRedemptions,
   listAdminSystemEvents,
   listAdminUsageLogs,
   listAdminUserAuthEvents,
@@ -17,6 +18,7 @@ import type {
   AdminAuditLogDTO,
   AdminConversationEventDTO,
   AdminPaymentOrderDTO,
+  AdminRedemptionRecordDTO,
   AdminSystemEventDTO,
   AdminUsageLogDTO,
   AdminUserAuthEventDTO,
@@ -63,6 +65,11 @@ export const PAYMENT_ORDER_SORT_OPTIONS = [
   { labelKey: "sort.amountDesc", value: "amount_desc" },
 ] as const;
 
+export const REDEMPTION_SORT_OPTIONS = [
+  { labelKey: "sort.createdDesc", value: "created_desc" },
+  { labelKey: "sort.createdAsc", value: "created_asc" },
+] as const;
+
 export const CONVERSATION_EVENT_SORT_OPTIONS = [
   { labelKey: "sort.createdDesc", value: "created_desc" },
   { labelKey: "sort.createdAsc", value: "created_asc" },
@@ -75,6 +82,7 @@ export type SecurityLogSortValue = (typeof SECURITY_LOG_SORT_OPTIONS)[number]["v
 export type SystemEventSortValue = (typeof SYSTEM_EVENT_SORT_OPTIONS)[number]["value"];
 export type UsageLogSortValue = (typeof USAGE_LOG_SORT_OPTIONS)[number]["value"];
 export type PaymentOrderSortValue = (typeof PAYMENT_ORDER_SORT_OPTIONS)[number]["value"];
+export type RedemptionSortValue = (typeof REDEMPTION_SORT_OPTIONS)[number]["value"];
 export type ConversationEventSortValue = (typeof CONVERSATION_EVENT_SORT_OPTIONS)[number]["value"];
 
 const AUDIT_RESOURCE_VALUES = [
@@ -85,6 +93,7 @@ const AUDIT_RESOURCE_VALUES = [
   "file",
   "memory",
   "settings",
+  "logs",
 ] as const;
 
 const AUDIT_RESOURCE_LABEL_KEYS: Record<string, string> = {
@@ -95,13 +104,16 @@ const AUDIT_RESOURCE_LABEL_KEYS: Record<string, string> = {
   file: "audit.resources.file",
   memory: "audit.resources.memory",
   settings: "audit.resources.settings",
+  logs: "audit.resources.logs",
 };
 
 const AUDIT_ACTION_VALUES = [
   "login",
   "stream_message",
   "create_conversation",
+  "fork_conversation",
   "rename_conversation",
+  "update_conversation_labels",
   "export_conversation",
   "delete_conversation",
   "set_conversation_star",
@@ -132,13 +144,16 @@ const AUDIT_ACTION_VALUES = [
   "admin_reset_user_password",
   "admin_reset_user_2fa",
   "admin_delete_user",
+  "admin_cleanup_logs",
 ] as const;
 
 const AUDIT_ACTION_LABEL_KEYS: Record<string, string> = {
   login: "audit.actions.login",
   stream_message: "audit.actions.stream_message",
   create_conversation: "audit.actions.create_conversation",
+  fork_conversation: "audit.actions.fork_conversation",
   rename_conversation: "audit.actions.rename_conversation",
+  update_conversation_labels: "audit.actions.update_conversation_labels",
   export_conversation: "audit.actions.export_conversation",
   delete_conversation: "audit.actions.delete_conversation",
   set_conversation_star: "audit.actions.set_conversation_star",
@@ -169,6 +184,7 @@ const AUDIT_ACTION_LABEL_KEYS: Record<string, string> = {
   admin_reset_user_password: "audit.actions.admin_reset_user_password",
   admin_reset_user_2fa: "audit.actions.admin_reset_user_2fa",
   admin_delete_user: "audit.actions.admin_delete_user",
+  admin_cleanup_logs: "audit.actions.admin_cleanup_logs",
 };
 
 type UseAdminLogsState = {
@@ -283,6 +299,28 @@ type UseAdminPaymentOrdersState = {
   sortValue: PaymentOrderSortValue;
   setSortValue: (value: PaymentOrderSortValue) => void;
   loadPaymentOrders: (page?: number, pageSize?: number) => Promise<void>;
+};
+
+type UseAdminRedemptionsState = {
+  records: AdminRedemptionRecordDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  loading: boolean;
+  query: string;
+  setQuery: (value: string) => void;
+  rewardTypeFilter: string;
+  setRewardTypeFilter: (value: string) => void;
+  codeIDFilter: number;
+  setCodeIDFilter: (value: number) => void;
+  createdFromFilter: string;
+  setCreatedFromFilter: (value: string) => void;
+  createdToFilter: string;
+  setCreatedToFilter: (value: string) => void;
+  sortValue: RedemptionSortValue;
+  setSortValue: (value: RedemptionSortValue) => void;
+  loadRedemptions: (page?: number, pageSize?: number) => Promise<void>;
 };
 
 type UseAdminConversationEventsState = {
@@ -1007,6 +1045,116 @@ export function useAdminPaymentOrders(): UseAdminPaymentOrdersState {
     sortValue,
     setSortValue,
     loadPaymentOrders,
+  };
+}
+
+export function useAdminRedemptions(initialCodeID?: number): UseAdminRedemptionsState {
+  const t = useTranslations("adminLogs");
+  const [records, setRecords] = React.useState<AdminRedemptionRecordDTO[]>([]);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(ADMIN_LOGS_PAGE_SIZE);
+  const [loading, setLoading] = React.useState(true);
+  const [query, setQueryState] = React.useState("");
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
+  const [rewardTypeFilter, setRewardTypeFilterState] = React.useState("");
+  const [codeIDFilter, setCodeIDFilterState] = React.useState(
+    initialCodeID && initialCodeID > 0 ? initialCodeID : 0,
+  );
+  const [createdFromFilter, setCreatedFromFilterState] = React.useState("");
+  const [createdToFilter, setCreatedToFilterState] = React.useState("");
+  const [sortValue, setSortValueState] = React.useState<RedemptionSortValue>("created_desc");
+  const requestSeqRef = React.useRef(0);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  const loadRedemptions = React.useCallback(async (nextPage = 1, nextPageSize = pageSize) => {
+    const requestSeq = requestSeqRef.current + 1;
+    requestSeqRef.current = requestSeq;
+    setLoading(true);
+    try {
+      const token = await resolveAccessToken();
+      if (!token) {
+        toast.error(t("toast.sessionExpired"), { description: t("toast.signInAgain") });
+        return;
+      }
+      const data = await listAdminRedemptions(token, {
+        page: nextPage,
+        pageSize: nextPageSize,
+        query: /^\d+$/.test(debouncedQuery) ? undefined : debouncedQuery,
+        userID: parsePositiveInt(debouncedQuery),
+        codeID: codeIDFilter > 0 ? codeIDFilter : undefined,
+        rewardType: rewardTypeFilter,
+        createdFrom: toRFC3339DateRangeBound(createdFromFilter, "start"),
+        createdTo: toRFC3339DateRangeBound(createdToFilter, "end"),
+        sort: sortValue,
+      });
+      if (requestSeq !== requestSeqRef.current) return;
+      setRecords(data.results);
+      setTotal(data.total);
+      setPage(nextPage);
+      setPageSize(nextPageSize);
+    } catch (error) {
+      toast.error(t("toast.redemptionsLoadFailed"), { description: resolveAdminErrorMessage(error) });
+    } finally {
+      if (requestSeq === requestSeqRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [codeIDFilter, createdFromFilter, createdToFilter, debouncedQuery, pageSize, rewardTypeFilter, sortValue, t]);
+
+  React.useEffect(() => {
+    void loadRedemptions(1);
+  }, [loadRedemptions]);
+
+  const setQuery = React.useCallback((value: string) => {
+    setQueryState(value);
+    setPage(1);
+  }, []);
+  const setRewardTypeFilter = React.useCallback((value: string) => {
+    setRewardTypeFilterState(value);
+    setPage(1);
+  }, []);
+  const setCodeIDFilter = React.useCallback((value: number) => {
+    setCodeIDFilterState(value > 0 ? value : 0);
+    setPage(1);
+  }, []);
+  const setCreatedFromFilter = React.useCallback((value: string) => {
+    setCreatedFromFilterState(value);
+    setPage(1);
+  }, []);
+  const setCreatedToFilter = React.useCallback((value: string) => {
+    setCreatedToFilterState(value);
+    setPage(1);
+  }, []);
+  const setSortValue = React.useCallback((value: RedemptionSortValue) => {
+    setSortValueState(value);
+    setPage(1);
+  }, []);
+
+  return {
+    records,
+    total,
+    page,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    loading,
+    query,
+    setQuery,
+    rewardTypeFilter,
+    setRewardTypeFilter,
+    codeIDFilter,
+    setCodeIDFilter,
+    createdFromFilter,
+    setCreatedFromFilter,
+    createdToFilter,
+    setCreatedToFilter,
+    sortValue,
+    setSortValue,
+    loadRedemptions,
   };
 }
 

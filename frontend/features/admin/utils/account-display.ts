@@ -1,5 +1,8 @@
-import type { UserDTO } from "@/shared/api/auth.types";
-import { resolveLocalizedErrorMessage } from "@/i18n/resolve-error-message";
+import type { AdminUserDTO } from "@/features/admin/api/admin.types";
+import {
+  formatBillingDisplayBalanceFromUSD,
+  type BillingDisplayOptions,
+} from "@/shared/lib/billing-display";
 
 const USER_STATUS_LABELS: Record<string, string> = {
   pending_activation: "Pending activation",
@@ -73,10 +76,6 @@ export function resolveSubscriptionExpiryInputValue(value: string | null | undef
   return `${year}-${month}-${day}`;
 }
 
-export function resolveErrorMessage(error: unknown): string {
-  return resolveLocalizedErrorMessage(error);
-}
-
 export function formatDateTime(value: string | null | undefined, locale = "en-US"): string {
   if (!value) {
     return "-";
@@ -120,7 +119,7 @@ export function resolveBillingAccountStatusLabel(value: string | null | undefine
   return BILLING_ACCOUNT_STATUS_LABELS[key] ?? resolveValue(value);
 }
 
-export function resolveUserInitial(user: UserDTO): string {
+export function resolveUserInitial(user: AdminUserDTO): string {
   const source = user.displayName.trim() || user.username.trim() || user.publicID.trim() || String(user.id);
   return source.charAt(0).toUpperCase();
 }
@@ -139,12 +138,9 @@ export function resolveDetailValue(value: string | number | null | undefined): s
   return String(value);
 }
 
-export function formatBillingBalance(value: number | null | undefined): string {
-  if (!Number.isFinite(value ?? NaN) || (value ?? 0) <= 0) {
-    return "$0.000000";
-  }
-  return `$${(value ?? 0).toLocaleString("en-US", {
-    minimumFractionDigits: 6,
-    maximumFractionDigits: 6,
-  })}`;
+export function formatBillingBalance(
+  value: number | null | undefined,
+  billingDisplay: BillingDisplayOptions = { currency: "USD" },
+): string {
+  return formatBillingDisplayBalanceFromUSD(value ?? 0, billingDisplay);
 }

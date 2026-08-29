@@ -8,6 +8,7 @@ import (
 
 	appchannel "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/channel"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/response"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -53,6 +54,17 @@ func upstreamConfigErrorMessage(err error) string {
 	}
 }
 
+func modelIconErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, appchannel.ErrInvalidModelIconReference):
+		return "invalid model icon"
+	case errors.Is(err, appchannel.ErrModelIconAssetNotFound):
+		return "model icon asset not found"
+	default:
+		return ""
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 用户侧模型目录
 // ---------------------------------------------------------------------------
@@ -68,7 +80,7 @@ func upstreamConfigErrorMessage(err error) string {
 // @Failure 500 {object} ErrorDoc
 // @Router /models [get]
 func (h *Handler) ListPublicModels(c *gin.Context) {
-	items, err := h.service.ListActiveModels(c.Request.Context())
+	items, err := h.service.ListActiveModels(c.Request.Context(), middleware.MustUserID(c))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "list models failed")
 		return
@@ -304,6 +316,7 @@ func (h *Handler) BatchDeleteUpstreams(c *gin.Context) {
 // @Success 200 {object} response.SuccessDoc
 // @Failure 400 {object} ErrorDoc
 // @Failure 404 {object} ErrorDoc
+// @Failure 409 {object} ErrorDoc
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/llm/upstreams/{id}/circuit/open [post]
 func (h *Handler) OpenUpstreamCircuit(c *gin.Context) {
@@ -314,6 +327,10 @@ func (h *Handler) OpenUpstreamCircuit(c *gin.Context) {
 	}
 
 	if err = h.service.OpenUpstreamCircuit(c.Request.Context(), upstreamID); err != nil {
+		if errors.Is(err, appchannel.ErrCircuitBreakerDisabled) {
+			response.Error(c, http.StatusConflict, "circuit breaker is disabled")
+			return
+		}
 		if errors.Is(err, appchannel.ErrUpstreamNotFound) {
 			response.Error(c, http.StatusNotFound, "upstream not found")
 			return
@@ -438,10 +455,10 @@ func (h *Handler) UpsertUpstreamModel(c *gin.Context) {
 	}
 
 	item, err := h.service.UpsertUpstreamModel(c.Request.Context(), upstreamID, appchannel.UpsertUpstreamModelInput{
-		RouteID:            req.RouteID,
+		RouteIDs:           req.RouteIDs,
 		PlatformModelName:  req.PlatformModelName,
 		UpstreamModelName:  req.UpstreamModelName,
-		Protocol:           req.Protocol,
+		Protocols:          *req.Protocols,
 		KindsJSON:          req.KindsJSON,
 		Status:             req.Status,
 		Priority:           req.Priority,
@@ -460,6 +477,8 @@ func (h *Handler) UpsertUpstreamModel(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "model not found")
 		case errors.Is(err, appchannel.ErrUpstreamModelConflict):
 			response.Error(c, http.StatusConflict, "target model already bound on this upstream")
+		case errors.Is(err, appchannel.ErrUpstreamModelBindingChanged):
+			response.ErrorWithCode(c, http.StatusConflict, "llm.upstream_model_binding_changed", "upstream model binding changed; reload and retry")
 		case errors.Is(err, appchannel.ErrInvalidJSONConfig):
 			response.Error(c, http.StatusBadRequest, "invalid json config")
 		case errors.Is(err, appchannel.ErrInvalidAdapter):
@@ -629,6 +648,7 @@ func (h *Handler) BatchDeleteUpstreamModels(c *gin.Context) {
 // @Success 200 {object} response.SuccessDoc
 // @Failure 400 {object} ErrorDoc
 // @Failure 404 {object} ErrorDoc
+// @Failure 409 {object} ErrorDoc
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/llm/upstreams/{id}/models/{route_id}/circuit/open [post]
 func (h *Handler) OpenUpstreamModelCircuit(c *gin.Context) {
@@ -644,6 +664,10 @@ func (h *Handler) OpenUpstreamModelCircuit(c *gin.Context) {
 	}
 
 	if err = h.service.OpenUpstreamModelCircuit(c.Request.Context(), upstreamID, routeID); err != nil {
+		if errors.Is(err, appchannel.ErrCircuitBreakerDisabled) {
+			response.Error(c, http.StatusConflict, "circuit breaker is disabled")
+			return
+		}
 		if errors.Is(err, appchannel.ErrUpstreamModelNotFound) {
 			response.Error(c, http.StatusNotFound, "upstream model not found")
 			return
@@ -863,12 +887,15 @@ func (h *Handler) ImportUpstreamModels(c *gin.Context) {
 	}
 
 	data, err := h.service.ImportUpstreamModels(c.Request.Context(), upstreamID, appchannel.ImportUpstreamModelsInput{
-		Items: items,
+		Items:              items,
+		PermissionGroupIDs: req.PermissionGroupIDs,
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, appchannel.ErrUpstreamNotFound):
 			response.Error(c, http.StatusNotFound, "upstream not found")
+		case errors.Is(err, appchannel.ErrInvalidPermissionGroupModels):
+			response.ErrorFrom(c, http.StatusBadRequest, err)
 		case errors.Is(err, appchannel.ErrInvalidAdapter):
 			response.ErrorFrom(c, http.StatusBadRequest, err)
 		case errors.Is(err, appchannel.ErrInvalidRouteProtocolCombination):
@@ -901,10 +928,12 @@ func (h *Handler) ImportUpstreamModels(c *gin.Context) {
 // @Param page query int false "页码"
 // @Param page_size query int false "每页数量"
 // @Param only_active query bool false "仅查询启用模型"
+// @Param only_available query bool false "仅查询公开且可路由模型"
 // @Param q query string false "搜索关键词"
 // @Param status query string false "状态：active/inactive"
 // @Param vendor query string false "模型厂商"
 // @Param protocol query string false "接口协议"
+// @Param upstream query int false "上游 ID"
 // @Param sort query string false "排序：sortOrder_asc/updated_desc/id_desc/platformModelName_asc/sourceCount_desc"
 // @Success 200 {object} ModelListResponseDoc
 // @Failure 500 {object} ErrorDoc
@@ -912,12 +941,22 @@ func (h *Handler) ImportUpstreamModels(c *gin.Context) {
 func (h *Handler) ListModels(c *gin.Context) {
 	page, pageSize := pageParams(c)
 	onlyActive := c.Query("only_active") == "true"
-	items, total, err := h.service.ListModels(c.Request.Context(), page, pageSize, onlyActive, appchannel.ListModelsInput{
-		Query:    c.Query("q"),
-		Status:   c.Query("status"),
-		Vendor:   c.Query("vendor"),
-		Protocol: c.Query("protocol"),
-		Sort:     c.Query("sort"),
+	onlyAvailable := c.Query("only_available") == "true"
+	var upstreamID uint
+	if raw := c.Query("upstream"); raw != "" {
+		if parsed, err := strconv.ParseUint(raw, 10, strconv.IntSize); err == nil {
+			upstreamID = uint(parsed)
+		}
+	}
+	items, total, err := h.service.ListModels(c.Request.Context(), page, pageSize, appchannel.ListModelsInput{
+		OnlyActive:    onlyActive,
+		OnlyAvailable: onlyAvailable,
+		Query:         c.Query("q"),
+		Status:        c.Query("status"),
+		Vendor:        c.Query("vendor"),
+		Protocol:      c.Query("protocol"),
+		UpstreamID:    upstreamID,
+		Sort:          c.Query("sort"),
 	})
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "list models failed")
@@ -951,15 +990,20 @@ func (h *Handler) CreateModel(c *gin.Context) {
 	}
 
 	item, err := h.service.CreateModel(c.Request.Context(), appchannel.CreateModelInput{
-		PlatformModelName: req.PlatformModelName,
-		Vendor:            req.Vendor,
-		KindsJSON:         req.KindsJSON,
-		Icon:              req.Icon,
-		CapabilitiesJSON:  req.CapabilitiesJSON,
-		SystemPrompt:      req.SystemPrompt,
-		AccessScope:       req.AccessScope,
-		Status:            req.Status,
-		Description:       req.Description,
+		PlatformModelName:  req.PlatformModelName,
+		Vendor:             req.Vendor,
+		DisplayGroupID:     req.DisplayGroupID,
+		KindsJSON:          req.KindsJSON,
+		Icon:               req.Icon,
+		CapabilitiesJSON:   req.CapabilitiesJSON,
+		SystemPrompt:       req.SystemPrompt,
+		AccessScope:        req.AccessScope,
+		Status:             req.Status,
+		Description:        req.Description,
+		CbPolicyMode:       req.CbPolicyMode,
+		CbFailureThreshold: req.CbFailureThreshold,
+		CbDurationMin:      req.CbDurationMin,
+		CbWindowMin:        req.CbWindowMin,
 	})
 	if err != nil {
 		switch {
@@ -967,6 +1011,8 @@ func (h *Handler) CreateModel(c *gin.Context) {
 			response.Error(c, http.StatusConflict, "platform model name already exists")
 		case errors.Is(err, appchannel.ErrInvalidJSONConfig):
 			response.Error(c, http.StatusBadRequest, "invalid json config")
+		case errors.Is(err, appchannel.ErrInvalidModelCapsConfig):
+			response.Error(c, http.StatusBadRequest, "invalid model capability limits")
 		case errors.Is(err, appchannel.ErrInvalidKinds):
 			response.Error(c, http.StatusBadRequest, "invalid kinds")
 		case errors.Is(err, appchannel.ErrInvalidModelAccessScope):
@@ -975,6 +1021,14 @@ func (h *Handler) CreateModel(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, "system prompt too long")
 		case errors.Is(err, appchannel.ErrInvalidPlatformModelName):
 			response.Error(c, http.StatusBadRequest, "invalid platform model name")
+		case errors.Is(err, appchannel.ErrInvalidModelVendor):
+			response.Error(c, http.StatusBadRequest, "invalid model vendor")
+		case errors.Is(err, appchannel.ErrModelVendorNotFound):
+			response.Error(c, http.StatusBadRequest, "model vendor not found")
+		case errors.Is(err, appchannel.ErrModelDisplayGroupNotFound):
+			response.Error(c, http.StatusBadRequest, "model display group not found")
+		case modelIconErrorMessage(err) != "":
+			response.Error(c, http.StatusBadRequest, modelIconErrorMessage(err))
 		default:
 			response.Error(c, http.StatusInternalServerError, "create model failed")
 		}
@@ -1011,15 +1065,20 @@ func (h *Handler) UpdateModel(c *gin.Context) {
 	}
 
 	item, err := h.service.UpdateModel(c.Request.Context(), modelID, appchannel.UpdateModelInput{
-		PlatformModelName: req.PlatformModelName,
-		Vendor:            req.Vendor,
-		KindsJSON:         req.KindsJSON,
-		Icon:              req.Icon,
-		CapabilitiesJSON:  req.CapabilitiesJSON,
-		SystemPrompt:      req.SystemPrompt,
-		AccessScope:       req.AccessScope,
-		Status:            req.Status,
-		Description:       req.Description,
+		PlatformModelName:  req.PlatformModelName,
+		Vendor:             req.Vendor,
+		DisplayGroupID:     req.DisplayGroupID,
+		KindsJSON:          req.KindsJSON,
+		Icon:               req.Icon,
+		CapabilitiesJSON:   req.CapabilitiesJSON,
+		SystemPrompt:       req.SystemPrompt,
+		AccessScope:        req.AccessScope,
+		Status:             req.Status,
+		Description:        req.Description,
+		CbPolicyMode:       req.CbPolicyMode,
+		CbFailureThreshold: req.CbFailureThreshold,
+		CbDurationMin:      req.CbDurationMin,
+		CbWindowMin:        req.CbWindowMin,
 	})
 	if err != nil {
 		switch {
@@ -1027,6 +1086,8 @@ func (h *Handler) UpdateModel(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "model not found")
 		case errors.Is(err, appchannel.ErrInvalidJSONConfig):
 			response.Error(c, http.StatusBadRequest, "invalid json config")
+		case errors.Is(err, appchannel.ErrInvalidModelCapsConfig):
+			response.Error(c, http.StatusBadRequest, "invalid model capability limits")
 		case errors.Is(err, appchannel.ErrInvalidKinds):
 			response.Error(c, http.StatusBadRequest, "invalid kinds")
 		case errors.Is(err, appchannel.ErrInvalidModelAccessScope):
@@ -1035,8 +1096,74 @@ func (h *Handler) UpdateModel(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, "system prompt too long")
 		case errors.Is(err, appchannel.ErrInvalidPlatformModelName):
 			response.Error(c, http.StatusBadRequest, "invalid platform model name")
+		case errors.Is(err, appchannel.ErrInvalidModelVendor):
+			response.Error(c, http.StatusBadRequest, "invalid model vendor")
+		case errors.Is(err, appchannel.ErrModelVendorNotFound):
+			response.Error(c, http.StatusBadRequest, "model vendor not found")
+		case errors.Is(err, appchannel.ErrModelDisplayGroupNotFound):
+			response.Error(c, http.StatusBadRequest, "model display group not found")
+		case modelIconErrorMessage(err) != "":
+			response.Error(c, http.StatusBadRequest, modelIconErrorMessage(err))
 		default:
 			response.Error(c, http.StatusInternalServerError, "update model failed")
+		}
+		return
+	}
+	response.Success(c, ModelDataResponse{Model: toModelResponse(*item)})
+}
+
+// SetModelProtocols godoc
+// @Summary 管理员替换模型全部来源的协议集合
+// @Description 在单个数据库事务中更新平台模型能力类型，并将该模型全部上游绑定替换为指定的完整协议集合
+// @Tags llm
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "模型ID"
+// @Param body body SetModelProtocolsRequest true "完整协议集合与模型能力类型"
+// @Success 200 {object} SetModelProtocolsResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 404 {object} ErrorDoc
+// @Failure 409 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/llm/models/{id}/protocols [patch]
+func (h *Handler) SetModelProtocols(c *gin.Context) {
+	modelID, err := uintParam(c, "id")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid model id")
+		return
+	}
+
+	var req SetModelProtocolsRequest
+	if err = c.ShouldBindJSON(&req); err != nil {
+		response.InvalidRequestBody(c, err)
+		return
+	}
+
+	item, err := h.service.SetModelProtocols(c.Request.Context(), modelID, appchannel.SetModelProtocolsInput{
+		Protocols: req.Protocols,
+		KindsJSON: req.KindsJSON,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, appchannel.ErrModelNotFound):
+			response.Error(c, http.StatusNotFound, "model not found")
+		case errors.Is(err, appchannel.ErrUpstreamModelNotFound):
+			response.Error(c, http.StatusNotFound, "model upstream sources not found")
+		case errors.Is(err, appchannel.ErrUpstreamModelConflict):
+			response.ErrorWithCode(c, http.StatusConflict, "llm.upstream_model_conflict", "model upstream source conflict")
+		case errors.Is(err, appchannel.ErrUpstreamModelBindingChanged):
+			response.ErrorWithCode(c, http.StatusConflict, "llm.upstream_model_binding_changed", "upstream model binding changed; reload and retry")
+		case errors.Is(err, appchannel.ErrInvalidAdapter):
+			response.Error(c, http.StatusBadRequest, "invalid adapter")
+		case errors.Is(err, appchannel.ErrInvalidRouteProtocolCombination):
+			response.Error(c, http.StatusBadRequest, "invalid route protocol combination")
+		case errors.Is(err, appchannel.ErrInvalidKinds):
+			response.Error(c, http.StatusBadRequest, "invalid kinds")
+		case errors.Is(err, appchannel.ErrProtocolRequired):
+			response.Error(c, http.StatusBadRequest, "protocol required")
+		default:
+			response.Error(c, http.StatusInternalServerError, "set model protocols failed")
 		}
 		return
 	}
@@ -1275,12 +1402,15 @@ func (h *Handler) BindModelUpstreamSource(c *gin.Context) {
 	}
 
 	item, err := h.service.BindModelUpstreamSource(c.Request.Context(), modelID, appchannel.BindModelUpstreamSourceInput{
-		UpstreamID:      req.UpstreamID,
-		UpstreamModelID: req.UpstreamModelID,
-		Protocol:        req.Protocol,
-		Status:          req.Status,
-		Priority:        req.Priority,
-		Weight:          req.Weight,
+		UpstreamID:         req.UpstreamID,
+		UpstreamModelID:    req.UpstreamModelID,
+		Protocol:           req.Protocol,
+		Status:             req.Status,
+		Priority:           req.Priority,
+		Weight:             req.Weight,
+		CbFailureThreshold: req.CbFailureThreshold,
+		CbDurationMin:      req.CbDurationMin,
+		CbWindowMin:        req.CbWindowMin,
 	})
 	if err != nil {
 		switch {
@@ -1342,10 +1472,13 @@ func (h *Handler) UpdateModelUpstreamSource(c *gin.Context) {
 	}
 
 	item, err := h.service.UpdateModelUpstreamSource(c.Request.Context(), modelID, routeID, appchannel.UpdateModelUpstreamSourceInput{
-		Protocol: req.Protocol,
-		Status:   req.Status,
-		Priority: req.Priority,
-		Weight:   req.Weight,
+		Protocol:           req.Protocol,
+		Status:             req.Status,
+		Priority:           req.Priority,
+		Weight:             req.Weight,
+		CbFailureThreshold: req.CbFailureThreshold,
+		CbDurationMin:      req.CbDurationMin,
+		CbWindowMin:        req.CbWindowMin,
 	})
 	if err != nil {
 		switch {
@@ -1447,6 +1580,7 @@ func (h *Handler) UpdateLLMSetting(c *gin.Context) {
 func pageParams(c *gin.Context) (int, int) {
 	page := 1
 	pageSize := 20
+	const maxPageSize = 1000
 	if raw := c.Query("page"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			page = parsed
@@ -1454,8 +1588,8 @@ func pageParams(c *gin.Context) (int, int) {
 	}
 	if raw := c.Query("page_size"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
-			if parsed > 100 {
-				parsed = 100
+			if parsed > maxPageSize {
+				parsed = maxPageSize
 			}
 			pageSize = parsed
 		}
@@ -1464,7 +1598,7 @@ func pageParams(c *gin.Context) (int, int) {
 }
 
 func uintParam(c *gin.Context, key string) (uint, error) {
-	value, err := strconv.ParseUint(c.Param(key), 10, 64)
+	value, err := strconv.ParseUint(c.Param(key), 10, strconv.IntSize)
 	if err != nil {
 		return 0, err
 	}

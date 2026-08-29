@@ -9,8 +9,45 @@
     "usage": "Model calls",
     "auth": "Auth security",
     "orders": "Order records",
+    "redemptions": "Redemptions",
     "conversation": "Conversation events",
+    "moderation": "Moderation events",
     "system": "System events"
+  },
+  "cleanup": {
+    "trigger": "Clean up logs",
+    "title": "Clean up historical logs",
+    "description": "Data before 00:00 on the selected date will be permanently deleted. This action cannot be undone.",
+    "typeLabel": "Log type",
+    "dateLabel": "Cutoff date",
+    "datePlaceholder": "Select a date",
+    "impactTitle": "Impact",
+    "highRisk": "High risk",
+    "boundary": "Data before {date} 00:00 will be deleted. Data from the selected date is not included.",
+    "confirm": "Clean up",
+    "deleting": "Cleaning up",
+    "types": {
+      "audit": "Operation audit",
+      "auth": "Auth security",
+      "usage": "Model calls",
+      "orders": "Order records",
+      "conversation": "Conversation events",
+      "system": "System events"
+    },
+    "impacts": {
+      "audit": "Deletes operation tracking records only. Users, conversations, and other business data are not deleted.",
+      "auth": "Deletes sign-in, two-factor, password, and other security event history. Active sessions and credentials are not changed.",
+      "usage": "Deletes usage and cost ledgers. Historical daily and monthly usage, current-cycle quota calculations, and billing traceability are affected, and cleared periods may show lower consumed quota.",
+      "orders": "Deletes payment orders and callback correlation data. Granted balances and subscriptions are not revoked, but old callbacks may fail and payment traceability and idempotency evidence are lost.",
+      "conversation": "Deletes message processing traces, tool calls, and run events. Conversations and message content remain, but historical processing and tool details may no longer appear.",
+      "system": "Deletes diagnostic and troubleshooting events. System configuration and current runtime state are not changed."
+    },
+    "toast": {
+      "sessionExpired": "Session expired",
+      "signInAgain": "Please sign in again before continuing.",
+      "success": "Log cleanup completed. {count} records deleted",
+      "failed": "Failed to clean up logs"
+    }
   },
   "toast": {
     "sessionExpired": "Session expired",
@@ -20,7 +57,9 @@
     "systemLoadFailed": "Failed to load system events",
     "usageLoadFailed": "Failed to load usage logs",
     "ordersLoadFailed": "Failed to load order records",
+    "redemptionsLoadFailed": "Failed to load redemption records",
     "conversationEventsLoadFailed": "Failed to load conversation events",
+    "conversationEventDetailLoadFailed": "Failed to load conversation event details",
     "modelFilterLoadFailed": "Failed to load model filters"
   },
   "sort": {
@@ -68,16 +107,22 @@
     "message": "Message",
     "caller": "Caller",
     "model": "Model",
+    "usage": "Usage",
     "billing": "Billing",
+    "balanceAfter": "Balance after settlement",
     "latency": "Latency",
     "orderNo": "Order no.",
     "type": "Type",
     "provider": "Provider",
     "status": "Status",
+    "upstream": "Upstream",
     "amount": "Amount",
     "scope": "Scope",
     "tool": "Tool",
-    "runID": "Run ID"
+    "runID": "Run ID",
+    "code": "Code",
+    "reward": "Redeemed content",
+    "balanceAfterRedemption": "Balance after"
   },
   "audit": {
     "searchPlaceholder": "Search user ID, action, resource, request ID, IP, or detail",
@@ -89,13 +134,16 @@
       "message": "Messages",
       "file": "Files",
       "memory": "Memory",
-      "settings": "System settings"
+      "settings": "System settings",
+      "logs": "Logs"
     },
     "actions": {
       "login": "Sign in",
       "stream_message": "Send message",
       "create_conversation": "Create conversation",
+      "fork_conversation": "Fork conversation",
       "rename_conversation": "Rename conversation",
+      "update_conversation_labels": "Update conversation labels",
       "export_conversation": "Export conversation",
       "delete_conversation": "Delete conversation",
       "set_conversation_star": "Star conversation",
@@ -125,7 +173,9 @@
       "admin_revoke_user_sessions": "Admin revoke user sessions",
       "admin_reset_user_password": "Admin reset password",
       "admin_reset_user_2fa": "Admin reset two-factor auth",
-      "admin_delete_user": "Admin delete user"
+      "admin_delete_user": "Admin delete user",
+      "admin_cleanup_logs": "Admin clean up logs",
+      "admin_cleanup_conversation_runs": "Admin delete conversation run traces"
     }
   },
   "auth": {
@@ -161,7 +211,13 @@
       "inputShort": "In",
       "outputShort": "Out",
       "cacheReadShort": "Read",
-      "cacheWriteShort": "Write"
+      "cacheWriteShort": "Write",
+      "input": "Input",
+      "output": "Output",
+      "reasoning": "Reasoning",
+      "outputTotal": "Output total",
+      "imageCount": "{count, plural, one {# image} other {# images}}",
+      "secondCount": "{count, plural, one {# second} other {# seconds}}"
     },
     "billing": {
       "cacheWrite": "Cache write",
@@ -215,6 +271,21 @@
       "failed": "Failed"
     }
   },
+  "redemptions": {
+    "searchPlaceholder": "Search user ID, redemption ref no., code hint, or note",
+    "empty": "No redemption records",
+    "filters": {
+      "all": "All",
+      "rewardType": "Reward type",
+      "code": "Code",
+      "clearCode": "Clear code filter"
+    },
+    "rewards": {
+      "balance": "Balance",
+      "subscription": "Subscription plan",
+      "durationDays": "{count} days"
+    }
+  },
   "conversation": {
     "searchPlaceholder": "Search user ID, run ID, event, stage, title, or tool name",
     "empty": "No conversation events",
@@ -233,6 +304,18 @@
       "streaming": "Streaming",
       "completed": "Completed",
       "error": "Error"
+    },
+    "cleanup": {
+      "action": "Delete run traces",
+      "title": "Delete run traces",
+      "description": "Permanently deletes all trace events for the selected {count} runs. Conversations, messages, attachments, calls, and billing records are preserved.",
+      "confirm": "Delete",
+      "deleting": "Deleting",
+      "success": "Deleted {events} trace events from {runs} runs",
+      "failed": "Failed to delete run traces",
+      "maxSelection": "You can select up to 100 runs at a time",
+      "selectAll": "Select runs on this page",
+      "selectRun": "Select run {runID}"
     }
   },
   "detail": {
@@ -241,6 +324,7 @@
       "auth": "Auth log detail",
       "usage": "Usage log detail",
       "order": "Order record detail",
+      "redemption": "Redemption record detail",
       "conversation": "Conversation event detail",
       "system": "System event detail"
     },
@@ -248,6 +332,7 @@
       "authEvent": "Auth event",
       "modelCall": "Model call",
       "order": "Order record",
+      "redemption": "Redemption record",
       "conversationEvent": "Conversation event",
       "systemEvent": "System event",
       "auditEvent": "Audit event"
@@ -263,8 +348,20 @@
       "usageBilling": "Usage billing",
       "order": "Order",
       "payment": "Payment",
+      "redemption": "Redemption",
+      "redemptionCode": "Redemption code",
+      "reward": "Reward",
       "conversationEvent": "Conversation event",
       "tool": "Tool"
+    },
+    "codeStatus": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "deleted": "Deleted"
+    },
+    "rewardTypes": {
+      "balance": "Balance",
+      "subscription": "Subscription plan"
     },
     "fields": {
       "action": "Action",
@@ -290,6 +387,7 @@
       "bindingCode": "Binding code",
       "protocol": "Protocol",
       "billing": "Billing",
+      "balanceAfter": "Balance after settlement",
       "totalTokens": "Total tokens",
       "reasoning": "Reasoning",
       "callCount": "Call count",
@@ -308,20 +406,80 @@
       "eventScope": "Event scope",
       "stage": "Stage",
       "seq": "Seq",
+      "refNo": "Redemption ref no.",
+      "redeemedAt": "Redeemed at",
+      "codeHint": "Code",
+      "codeID": "Code ID",
+      "codeDescription": "Code note",
+      "codeStatus": "Code status",
+      "rewardType": "Reward type",
+      "planName": "Subscription plan",
+      "subscriptionID": "Subscription ID",
+      "balanceBefore": "Balance before redemption",
+      "balanceAfterRedemption": "Balance after redemption",
+      "durationDays": "Plan duration",
       "messageID": "Message ID",
       "toolName": "Tool name",
       "toolCallID": "Tool call ID",
       "title": "Title",
-      "summary": "Summary"
+      "summary": "Summary",
+      "payloadSize": "Payload size"
     },
     "result": {
       "success": "Success",
       "failure": "Failed",
       "blocked": "Blocked"
     },
+    "rewardDurationDays": "{count} days",
     "rawUsageJsonTitle": "Raw Usage JSON",
     "jsonTitle": "Detail JSON",
+    "loading": "Loading details",
+    "payloadOmitted": "This historical payload is {size}, above the safe viewing limit, so its content was omitted. Delete the associated run traces to remove this abnormal historical data.",
     "copied": "{label} copied",
     "copyFailed": "Copy failed"
+  },
+  "moderation": {
+    "searchPlaceholder": "Search exact event ID, user, result, or run ID…",
+    "empty": "No moderation events yet.",
+    "loadFailed": "Could not load moderation events",
+    "viewDetail": "View detail",
+    "detailTitle": "Moderation event detail",
+    "detailFailed": "Could not load event detail",
+    "detailText": "Decrypted text",
+    "detailImages": "Isolated images",
+    "detailImageAlt": "Moderation image {index}",
+    "imageLoadFailed": "Failed to load one or more isolated images",
+    "filters": {
+      "all": "All"
+    },
+    "results": {
+      "passed": "Passed",
+      "hit": "Hit",
+      "failedOpen": "Failed open"
+    },
+    "directions": {
+      "input": "Input",
+      "output": "Output"
+    },
+    "modalities": {
+      "text": "Text",
+      "image": "Image"
+    },
+    "columns": {
+      "eventId": "Event ID",
+      "user": "User",
+      "result": "Result",
+      "direction": "Direction",
+      "modality": "Modality",
+      "latency": "Latency",
+      "createdAt": "Created",
+      "actions": "Actions",
+      "model": "Model",
+      "userID": "User ID",
+      "runID": "Run ID"
+    },
+    "blocks": {
+      "event": "Event"
+    }
   }
 }

@@ -24,10 +24,12 @@ type BillingRepository interface {
 	GetPaymentOrderByOrderNo(ctx context.Context, orderNo string) (*domainbilling.PaymentOrder, error)
 	MarkPaymentOrderPaidAndGrantSubscription(ctx context.Context, orderNo string, externalPaymentID string, paidAt time.Time, subscription *domainbilling.Subscription) (*domainbilling.PaymentOrder, bool, error)
 	AddUsage(ctx context.Context, usage *domainbilling.UsageLedger) error
-	AddUsageAndDebitBalance(ctx context.Context, usage *domainbilling.UsageLedger) error
 	AddUsageAndSettleBalance(ctx context.Context, usage *domainbilling.UsageLedger, reservation *domainbilling.UsageBalanceReservation) error
-	ReserveUsageBalance(ctx context.Context, userID uint, amountNanousd int64, refNo string) (*domainbilling.UsageBalanceReservation, error)
-	ReleaseUsageBalanceReservation(ctx context.Context, userID uint, refNo string, description string) error
+	AddPeriodUsageAndSettleOverage(ctx context.Context, usage *domainbilling.UsageLedger, periodStart time.Time, periodEnd time.Time, periodCreditNanousd int64, reservation *domainbilling.UsageBalanceReservation) error
+	ReserveUsageBalance(ctx context.Context, input domainbilling.UsageBalanceReservationRequest) (*domainbilling.UsageBalanceReservation, error)
+	RenewUsageBalanceReservation(ctx context.Context, userID uint, refNo string) error
+	ReleaseUsageBalanceReservation(ctx context.Context, userID uint, refNo string) error
+	MarkUsageReservationReconciliationRequired(ctx context.Context, userID uint, refNo string, failureCode string) error
 	GetOrCreateBillingAccount(ctx context.Context, userID uint) (*domainbilling.BillingAccount, error)
 	ListBillingAccountsByUserIDs(ctx context.Context, userIDs []uint) ([]domainbilling.BillingAccount, error)
 	SetBillingAccountBalance(ctx context.Context, userID uint, balanceNanousd int64, refNo string, description string) (*domainbilling.BillingAccount, error)
@@ -38,6 +40,7 @@ type BillingRepository interface {
 	PatchRedemptionCode(ctx context.Context, id uint, patch RedemptionCodePatch) (*domainbilling.RedemptionCode, error)
 	DeleteRedemptionCode(ctx context.Context, id uint) error
 	RedeemCode(ctx context.Context, input RedemptionApplyInput) (*RedemptionApplyResult, error)
+	ListRedemptions(ctx context.Context, filter RedemptionListFilter, offset int, limit int) ([]RedemptionRecord, int64, error)
 	GetBillingMode(ctx context.Context) (string, error)
 	GetBillingPrepaidAmountNanousd(ctx context.Context) (int64, error)
 	GetNativeToolBillingEnabled(ctx context.Context) (bool, error)
@@ -57,6 +60,7 @@ type BillingRepository interface {
 // RedemptionCodeListFilter 描述管理员兑换码列表筛选条件。
 type RedemptionCodeListFilter struct {
 	Mode         string
+	Modes        []string
 	Status       string
 	Availability string
 	Query        string
@@ -71,6 +75,30 @@ type RedemptionCodePatch struct {
 	ExpiresAtSet      bool
 	ExpiresAt         *time.Time
 	Description       *string
+}
+
+// RedemptionListFilter 描述管理员兑换记录列表筛选条件。
+type RedemptionListFilter struct {
+	CodeID      uint
+	UserID      uint
+	RewardType  string
+	Query       string
+	CreatedFrom *time.Time
+	CreatedTo   *time.Time
+	Sort        string
+}
+
+// RedemptionRecord 表示带兑换码与余额流水上下文的兑换记录。
+// 兑换码删除为状态软删，历史记录始终可联表查询。
+type RedemptionRecord struct {
+	Redemption      domainbilling.Redemption
+	CodeHint        string
+	CodeDescription string
+	CodeStatus      string
+	PlanName        string
+	// BalanceAmountNanousd / BalanceAfterNanousd 来自余额流水；订阅类兑换无流水时为 nil。
+	BalanceAmountNanousd *int64
+	BalanceAfterNanousd  *int64
 }
 
 // RedemptionApplyInput 描述一次兑换需要在事务中完成的写入参数。
@@ -106,6 +134,28 @@ type UsageLogListFilter struct {
 	CreatedFrom       *time.Time
 	CreatedTo         *time.Time
 	Sort              string
+}
+
+// UsageStatisticsFilter 描述管理员用量统计的聚合范围和维度。
+type UsageStatisticsFilter struct {
+	StartDate         time.Time
+	EndDateExclusive  time.Time
+	UserID            uint
+	PermissionGroupID uint
+	MembershipAt      time.Time
+	PlatformModelName string
+	BillingScope      string
+	Granularity       string
+	Section           string
+	ModelRankBy       string
+	UserRankBy        string
+	RankLimit         int
+}
+
+// UsageStatisticsRepository 提供独立于计费写入仓储的管理员统计能力。
+// 独立接口可避免为统计功能扩大 BillingRepository 及其测试桩。
+type UsageStatisticsRepository interface {
+	GetUsageStatistics(ctx context.Context, filter UsageStatisticsFilter) (domainbilling.UsageStatistics, error)
 }
 
 // PaymentOrderListFilter 描述管理员支付订单列表筛选和排序条件。

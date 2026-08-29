@@ -1,13 +1,32 @@
 package conversation
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	model "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
 	domainmemory "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/memory"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 )
+
+type toolArtifactCaptureRepository struct {
+	repository.ConversationRepository
+	toolCalls []model.ToolCall
+	artifacts []model.ContextArtifact
+}
+
+func (r *toolArtifactCaptureRepository) CreateConversationToolCalls(_ context.Context, items []model.ToolCall) error {
+	r.toolCalls = append(r.toolCalls, items...)
+	return nil
+}
+
+func (r *toolArtifactCaptureRepository) CreateContextArtifacts(_ context.Context, items []model.ContextArtifact) error {
+	r.artifacts = append(r.artifacts, items...)
+	return nil
+}
 
 func TestBuildPromptContextArtifactsRecordsRAGFallbackAndRecall(t *testing.T) {
 	items := buildPromptContextArtifacts(promptContextArtifactInput{
@@ -75,6 +94,33 @@ func TestBuildPromptContextArtifactsRecordsRAGFallbackAndRecall(t *testing.T) {
 		if err := json.Unmarshal([]byte(item.MetadataJSON), &metadata); err != nil {
 			t.Fatalf("invalid metadata json: %v", err)
 		}
+	}
+}
+
+func TestPersistMessageToolCallsAnchorsEvidenceToAssistantMessage(t *testing.T) {
+	repo := &toolArtifactCaptureRepository{}
+	service := &Service{repo: repo}
+
+	err := service.persistMessageToolCalls(context.Background(), persistMessageToolCallsInput{
+		SendInput:          SendMessageInput{ConversationID: 7, UserID: 11},
+		AssistantMessageID: 22,
+		RunID:              "run_tool",
+		Rows: []model.ToolCall{{
+			ToolCallID: "call_1",
+			ToolType:   "mcp",
+			ToolName:   "lookup",
+			Status:     "completed",
+			OutputJSON: `{"result":"ok"}`,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("persistMessageToolCalls() error = %v", err)
+	}
+	if len(repo.toolCalls) != 1 || repo.toolCalls[0].MessageID != 22 {
+		t.Fatalf("expected tool call on assistant message, got %#v", repo.toolCalls)
+	}
+	if len(repo.artifacts) != 1 || repo.artifacts[0].MessageID != 22 {
+		t.Fatalf("expected tool evidence on assistant message, got %#v", repo.artifacts)
 	}
 }
 
@@ -174,6 +220,31 @@ func TestBuildToolContextArtifactsRecordsLocalAndNativeTools(t *testing.T) {
 	}
 }
 
+func TestBuildToolContextArtifactsKeepsHeadAndTailForLargeResults(t *testing.T) {
+	items := buildToolContextArtifacts(toolContextArtifactInput{
+		ConversationID: 7,
+		UserID:         11,
+		MessageID:      13,
+		RunID:          "run_1",
+		Rows: []model.ToolCall{{
+			ToolCallID: "call_large",
+			ToolType:   "function",
+			ToolName:   "fetch_large",
+			Status:     "success",
+			OutputJSON: "HEAD-" + strings.Repeat("x", contextArtifactExcerptChars+256) + "-TAIL",
+		}},
+	})
+	if len(items) != 1 {
+		t.Fatalf("expected one tool artifact, got %#v", items)
+	}
+	if !strings.Contains(items[0].Content, "HEAD-") || !strings.Contains(items[0].Content, "-TAIL") {
+		t.Fatalf("expected large artifact content to preserve head and tail, got %q", items[0].Content)
+	}
+	if !strings.Contains(items[0].MetadataJSON, `"truncated":true`) {
+		t.Fatalf("expected truncated metadata, got %q", items[0].MetadataJSON)
+	}
+}
+
 func TestBuildSnapshotContextArtifactRecordsSummary(t *testing.T) {
 	item := buildSnapshotContextArtifact(snapshotContextArtifactInput{
 		ConversationID: 7,
@@ -239,6 +310,39 @@ func TestSelectHistoricalContextArtifactsUsesFollowUpAndDeduplicatesCurrentEvide
 	}
 	if items[0].SourceTitle != "B.md" {
 		t.Fatalf("expected B.md artifact, got %#v", items[0])
+	}
+}
+
+func TestSelectHistoricalContextArtifactsSkipsSummaryWhenCurrentSnapshotExists(t *testing.T) {
+	items := selectHistoricalContextArtifacts(historicalContextArtifactInput{
+		CurrentMessageID:   9,
+		HasCurrentSnapshot: true,
+		Query:              "继续总结刚才的内容",
+		Candidates: []model.ContextArtifact{
+			{
+				MessageID:     7,
+				Kind:          model.ContextArtifactSummary,
+				SourceTitle:   "summary",
+				Content:       "旧摘要内容",
+				TokenEstimate: 10,
+				Score:         1,
+			},
+			{
+				MessageID:     8,
+				Kind:          model.ContextArtifactToolResult,
+				SourceTitle:   "tool",
+				Content:       "工具返回的部署结果",
+				TokenEstimate: 10,
+				Score:         1,
+			},
+		},
+	})
+
+	if len(items) != 1 {
+		t.Fatalf("expected one non-summary artifact, got %#v", items)
+	}
+	if items[0].Kind != model.ContextArtifactToolResult {
+		t.Fatalf("expected tool artifact to remain, got %#v", items[0])
 	}
 }
 

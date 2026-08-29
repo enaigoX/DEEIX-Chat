@@ -15,6 +15,7 @@ import (
 	"time"
 
 	platformtracing "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/observability/tracing"
+	extractport "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/extract"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/security"
 )
 
@@ -23,26 +24,23 @@ const (
 	DefaultBaseURL        = "https://mineru.net/api/v4"
 )
 
+// 解析来源模式，契约定义在 ports/extract。
 const (
-	SourceCloud      = "cloud"
-	SourceSelfHosted = "self_hosted"
+	SourceCloud      = extractport.MinerUSourceCloud
+	SourceSelfHosted = extractport.MinerUSourceSelfHosted
 )
 
 // ClientConfig 表示 MinerU 服务接入配置。
 type ClientConfig struct {
-	Source                string
-	BaseURL               string
-	AuthToken             string
-	TimeoutSeconds        int
-	Env                   string
-	SSRFProtectionEnabled bool
+	Source         string
+	BaseURL        string
+	AuthToken      string
+	TimeoutSeconds int
+	OutboundPolicy security.OutboundPolicy
 }
 
-// Request 表示一次 MinerU 文本提取请求。
-type Request struct {
-	AbsolutePath string
-	FileName     string
-}
+// Request 表示一次 MinerU 文本提取请求，契约定义在 ports/extract（MimeType 不参与请求）。
+type Request = extractport.DocumentRequest
 
 // Client 提供 MinerU HTTP 文本提取能力。
 type Client struct {
@@ -65,20 +63,20 @@ func New(cfg ClientConfig) *Client {
 		source:             source,
 		baseURL:            baseURL,
 		authToken:          strings.TrimSpace(cfg.AuthToken),
-		httpClient:         newServiceHTTPClient(timeout, source, cfg.Env, cfg.SSRFProtectionEnabled),
-		artifactHTTPClient: newSafeHTTPClient(timeout, cfg.Env, cfg.SSRFProtectionEnabled),
+		httpClient:         newServiceHTTPClient(timeout, source, cfg.OutboundPolicy),
+		artifactHTTPClient: newSafeHTTPClient(timeout, cfg.OutboundPolicy),
 	}
 }
 
-func newServiceHTTPClient(timeout time.Duration, source string, env string, ssrfProtectionEnabled bool) *http.Client {
+func newServiceHTTPClient(timeout time.Duration, source string, outboundPolicy security.OutboundPolicy) *http.Client {
 	if normalizeSource(source) == SourceSelfHosted {
 		return platformtracing.NewHTTPClient(timeout)
 	}
-	return newSafeHTTPClient(timeout, env, ssrfProtectionEnabled)
+	return newSafeHTTPClient(timeout, outboundPolicy)
 }
 
-func newSafeHTTPClient(timeout time.Duration, env string, ssrfProtectionEnabled bool) *http.Client {
-	transport := security.NewOutboundHTTPTransport(env, ssrfProtectionEnabled, 10*time.Second)
+func newSafeHTTPClient(timeout time.Duration, outboundPolicy security.OutboundPolicy) *http.Client {
+	transport := security.NewOutboundHTTPTransport(outboundPolicy, 10*time.Second)
 	return &http.Client{
 		Timeout:   timeout,
 		Transport: platformtracing.NewHTTPTransport(transport),
@@ -369,10 +367,10 @@ func (c *Client) createBatch(ctx context.Context, req Request) (string, string, 
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 2*1024*1024)).Decode(&parsed); err != nil {
 		return "", "", fmt.Errorf("mineru_invalid_response")
 	}
-	if strings.TrimSpace(parsed.Data.BatchID) == "" || len(parsed.Data.FileURLs) == 0 || strings.TrimSpace(parsed.Data.FileURLs[0].UploadURL) == "" {
+	if strings.TrimSpace(parsed.Data.BatchID) == "" || len(parsed.Data.FileURLs) == 0 || strings.TrimSpace(parsed.Data.FileURLs[0]) == "" {
 		return "", "", fmt.Errorf("mineru_invalid_response")
 	}
-	return strings.TrimSpace(parsed.Data.BatchID), strings.TrimSpace(parsed.Data.FileURLs[0].UploadURL), nil
+	return strings.TrimSpace(parsed.Data.BatchID), strings.TrimSpace(parsed.Data.FileURLs[0]), nil
 }
 
 func (c *Client) uploadFile(ctx context.Context, uploadURL string, absolutePath string) error {
@@ -446,20 +444,27 @@ func (c *Client) pollBatch(ctx context.Context, batchID string) (string, error) 
 		}
 
 		state := strings.ToLower(strings.TrimSpace(parsed.Data.State))
+		var item batchResultItem
+		if len(parsed.Data.ExtractResult) > 0 {
+			item = parsed.Data.ExtractResult[0]
+			if itemState := strings.ToLower(strings.TrimSpace(item.State)); itemState != "" {
+				state = itemState
+			}
+		}
 		switch state {
 		case "done", "success", "completed":
 			if len(parsed.Data.ExtractResult) == 0 {
 				return "", fmt.Errorf("mineru_invalid_response")
 			}
-			zipURL := strings.TrimSpace(parsed.Data.ExtractResult[0].FullZipURL)
+			zipURL := strings.TrimSpace(item.FullZipURL)
 			if zipURL == "" {
 				return "", fmt.Errorf("mineru_invalid_response")
 			}
 			return zipURL, nil
 		case "failed", "error":
 			detail := strings.TrimSpace(parsed.Data.ErrMsg)
-			if detail == "" && len(parsed.Data.ExtractResult) > 0 {
-				detail = strings.TrimSpace(parsed.Data.ExtractResult[0].ErrMsg)
+			if detail == "" {
+				detail = strings.TrimSpace(item.ErrMsg)
 			}
 			if detail == "" {
 				return "", fmt.Errorf("mineru_failed")
@@ -663,10 +668,8 @@ func awaitMultipartWriteError(errCh <-chan error) error {
 
 type batchCreateResponse struct {
 	Data struct {
-		BatchID  string `json:"batch_id"`
-		FileURLs []struct {
-			UploadURL string `json:"upload_url"`
-		} `json:"file_urls"`
+		BatchID  string   `json:"batch_id"`
+		FileURLs []string `json:"file_urls"`
 	} `json:"data"`
 }
 
@@ -689,11 +692,14 @@ func (r selfHostedResponse) firstMarkdown() string {
 
 type batchResultResponse struct {
 	Data struct {
-		State         string `json:"state"`
-		ErrMsg        string `json:"err_msg"`
-		ExtractResult []struct {
-			ErrMsg     string `json:"err_msg"`
-			FullZipURL string `json:"full_zip_url"`
-		} `json:"extract_result"`
+		State         string            `json:"state"`
+		ErrMsg        string            `json:"err_msg"`
+		ExtractResult []batchResultItem `json:"extract_result"`
 	} `json:"data"`
+}
+
+type batchResultItem struct {
+	State      string `json:"state"`
+	ErrMsg     string `json:"err_msg"`
+	FullZipURL string `json:"full_zip_url"`
 }

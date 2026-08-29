@@ -1,15 +1,13 @@
 "use client";
 
-import * as React from "react";
+import { CircleArrowUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { CircleArrowUp } from "lucide-react";
-
-import packageMeta from "@/package.json";
+import * as React from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ADMIN_SECTIONS, type AdminSection } from "@/features/admin/model/admin-sections";
 import { AdminUpdateTooltipContent } from "@/features/admin/components/admin-update-tooltip-content";
+import { ADMIN_SECTIONS, type AdminSection } from "@/features/admin/model/admin-sections";
 import {
   getCachedLatestReleaseSnapshot,
   getServerLatestReleaseSnapshot,
@@ -17,6 +15,26 @@ import {
   subscribeLatestReleaseChange,
 } from "@/features/admin/model/update-check";
 import { cn } from "@/lib/utils";
+import packageMeta from "@/package.json";
+import { useAuthSession } from "@/shared/auth/auth-session-context";
+
+const ADMIN_SECTION_LABEL_KEYS: Record<AdminSection, string> = {
+  statistics: "sections.statistics",
+  accounts: "sections.accounts",
+  upstreams: "sections.upstreams",
+  models: "sections.models",
+  groups: "sections.groups",
+  "tool-settings": "sections.toolSettings",
+  billing: "sections.billing",
+  announcements: "sections.announcements",
+  logs: "sections.logs",
+  "content-moderation": "sections.contentModeration",
+  "login-settings": "sections.loginSettings",
+  "conversation-settings": "sections.conversationSettings",
+  "chat-files": "sections.chatFiles",
+  "knowledge-bases": "sections.knowledgeBases",
+  about: "sections.about",
+};
 
 function resolveActiveSectionFromPath(pathname: string, basePath: string): AdminSection {
   const normalizedBasePath = basePath.replace(/\/$/, "");
@@ -25,7 +43,7 @@ function resolveActiveSectionFromPath(pathname: string, basePath: string): Admin
     return pathname === href || pathname.startsWith(`${href}/`);
   });
 
-  return section?.id ?? "accounts";
+  return section?.id ?? "statistics";
 }
 
 export function AdminSidebar({
@@ -35,6 +53,7 @@ export function AdminSidebar({
 }) {
   const t = useTranslations("adminUsers");
   const tAbout = useTranslations("adminUsers.aboutPage");
+  const { user } = useAuthSession();
   const pathname = usePathname();
   const activeSection = resolveActiveSectionFromPath(pathname, basePath);
   const activeLinkRef = React.useRef<HTMLAnchorElement | null>(null);
@@ -44,22 +63,15 @@ export function AdminSidebar({
     getServerLatestReleaseSnapshot,
   );
   const updateRelease = resolveAvailableRelease(packageMeta.version, cachedLatestRelease);
+  const visibleSections = React.useMemo(
+    () => user?.role === "superadmin"
+      ? ADMIN_SECTIONS
+      : ADMIN_SECTIONS.filter((item) => item.id !== "content-moderation"),
+    [user?.role],
+  );
   const sectionLabel = React.useCallback(
     (id: AdminSection, fallback: string) => {
-      const keyByID: Record<AdminSection, string> = {
-        accounts: "sections.accounts",
-        channels: "sections.channels",
-        models: "sections.models",
-        "tool-settings": "sections.toolSettings",
-        billing: "sections.billing",
-        announcements: "sections.announcements",
-        logs: "sections.logs",
-        "login-settings": "sections.loginSettings",
-        "conversation-settings": "sections.conversationSettings",
-        "chat-files": "sections.chatFiles",
-        about: "sections.about",
-      };
-      return t(keyByID[id]) || fallback;
+      return t(ADMIN_SECTION_LABEL_KEYS[id]) || fallback;
     },
     [t],
   );
@@ -82,7 +94,7 @@ export function AdminSidebar({
           aria-label={t("adminTitle")}
           className="flex gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [-ms-overflow-style:none] xl:grid xl:gap-1 xl:overflow-visible xl:pb-0 [&::-webkit-scrollbar]:hidden"
         >
-          {ADMIN_SECTIONS.map((item) => {
+          {visibleSections.map((item) => {
             const active = item.id === activeSection;
 
             return (

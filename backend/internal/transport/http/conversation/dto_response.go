@@ -25,18 +25,45 @@ type ConversationResponse struct {
 	Provider            string     `json:"provider"`
 	SessionKey          string     `json:"sessionKey"`
 	IsStarred           bool       `json:"isStarred"`
-	StarredAt           *time.Time `json:"starredAt"`
+	StarredAt           *time.Time `json:"starredAt" extensions:"x-nullable,!x-omitempty"`
 	MessageCount        int        `json:"messageCount"`
 	Status              string     `json:"status"`
 	ContextPolicy       string     `json:"contextPolicyJSON"`
-	LastCompactedAt     *time.Time `json:"lastCompactedAt"`
+	LastCompactedAt     *time.Time `json:"lastCompactedAt" extensions:"x-nullable,!x-omitempty"`
 	LastResponseID      string     `json:"lastResponseID"`
 	ShareStatus         string     `json:"shareStatus"`
 	ShareID             string     `json:"shareID"`
-	SharedAt            *time.Time `json:"sharedAt"`
-	LastShareAccessedAt *time.Time `json:"lastShareAccessedAt"`
+	SharedAt            *time.Time `json:"sharedAt" extensions:"x-nullable,!x-omitempty"`
+	LastShareAccessedAt *time.Time `json:"lastShareAccessedAt" extensions:"x-nullable,!x-omitempty"`
 	CreatedAt           time.Time  `json:"createdAt"`
 	UpdatedAt           time.Time  `json:"updatedAt"`
+}
+
+// ConversationSearchResultResponse 会话搜索结果 DTO。
+type ConversationSearchResultResponse struct {
+	PublicID     string    `json:"publicID"`
+	ProjectID    string    `json:"projectID"`
+	ProjectName  string    `json:"projectName"`
+	Title        string    `json:"title"`
+	LabelsJSON   string    `json:"labelsJSON"`
+	IsStarred    bool      `json:"isStarred"`
+	MessageCount int       `json:"messageCount"`
+	Status       string    `json:"status"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+// ConversationSearchPageResponse 会话搜索的增量分页结果。
+type ConversationSearchPageResponse struct {
+	HasMore bool                               `json:"hasMore"`
+	Results []ConversationSearchResultResponse `json:"results"`
+}
+
+// ConversationPreviewMessageResponse 会话搜索预览使用的轻量消息 DTO。
+type ConversationPreviewMessageResponse struct {
+	PublicID     string `json:"publicID"`
+	Role         string `json:"role" enums:"user,assistant"`
+	Content      string `json:"content"`
+	ErrorMessage string `json:"errorMessage"`
 }
 
 type ConversationExportResponse struct {
@@ -55,6 +82,13 @@ type ConversationExportResponse struct {
 type ConversationExportCompatibilityResponse struct {
 	Format string `json:"format"`
 	Notes  string `json:"notes"`
+}
+
+// ConversationDefaultModelCandidateResponse 返回新会话自动选模候选。
+type ConversationDefaultModelCandidateResponse struct {
+	PlatformModelName string     `json:"platformModelName"`
+	Source            string     `json:"source"`
+	UsedAt            *time.Time `json:"usedAt" extensions:"x-nullable,!x-omitempty"`
 }
 
 func toConversationResponse(item *model.Conversation) ConversationResponse {
@@ -92,7 +126,39 @@ func toConversationResponse(item *model.Conversation) ConversationResponse {
 	}
 }
 
+func toConversationSearchResultResponse(item appconversation.ConversationSearchResult) ConversationSearchResultResponse {
+	labelsJSON := strings.TrimSpace(item.Conversation.LabelsJSON)
+	if labelsJSON == "" || labelsJSON == "null" {
+		labelsJSON = "[]"
+	}
+	return ConversationSearchResultResponse{
+		PublicID:     item.Conversation.PublicID,
+		ProjectID:    item.Conversation.ProjectPublicID,
+		ProjectName:  item.Conversation.ProjectName,
+		Title:        item.Conversation.Title,
+		LabelsJSON:   labelsJSON,
+		IsStarred:    item.Conversation.IsStarred,
+		MessageCount: item.Conversation.MessageCount,
+		Status:       item.Conversation.Status,
+		UpdatedAt:    item.Conversation.UpdatedAt,
+	}
+}
+
+func toConversationPreviewMessageResponse(item model.Message) ConversationPreviewMessageResponse {
+	return ConversationPreviewMessageResponse{
+		PublicID:     item.PublicID,
+		Role:         item.Role,
+		Content:      item.Content,
+		ErrorMessage: item.ErrorMessage,
+	}
+}
+
 func toConversationExportResponse(item *appconversation.ConversationExportResult) ConversationExportResponse {
+	return ToConversationExportResponse(item)
+}
+
+// ToConversationExportResponse 转换导出结果为响应 DTO（供跨包复用）。
+func ToConversationExportResponse(item *appconversation.ConversationExportResult) ConversationExportResponse {
 	if item == nil {
 		return ConversationExportResponse{}
 	}
@@ -111,6 +177,7 @@ func toConversationExportResponse(item *appconversation.ConversationExportResult
 	}
 	messages := make([]MessageResponse, 0, len(item.Messages))
 	for _, message := range item.Messages {
+		// User-owned archive: keep recoverable user content; assistant blocked body stays empty from DB.
 		messages = append(messages, toMessageResponseWithRunAndFallback(message, runModels[strings.TrimSpace(message.RunID)], fallbackModel))
 	}
 
@@ -131,18 +198,47 @@ func toConversationExportResponse(item *appconversation.ConversationExportResult
 	}
 }
 
+// ToAdminConversationExportResponse redacts blocked originals for administrator bulk export.
+func ToAdminConversationExportResponse(item *appconversation.ConversationExportResult) ConversationExportResponse {
+	resp := ToConversationExportResponse(item)
+	if item == nil {
+		return resp
+	}
+	runModels := make(map[string]model.Run, len(item.Runs))
+	for _, run := range item.Runs {
+		if runID := strings.TrimSpace(run.RunID); runID != "" {
+			runModels[runID] = run
+		}
+	}
+	fallbackModel := ""
+	if item.Conversation != nil {
+		fallbackModel = item.Conversation.Model
+	}
+	messages := make([]MessageResponse, 0, len(item.Messages))
+	for _, message := range item.Messages {
+		messages = append(messages, toMessageResponseWithRunAndFallbackAdmin(message, runModels[strings.TrimSpace(message.RunID)], fallbackModel))
+	}
+	resp.Messages = messages
+	resp.Compatibility.Notes = "Admin export redacts blocked content. Originals are only available via content moderation event APIs."
+	return resp
+}
+
 // ConversationProjectResponse 对外会话项目响应 DTO。
 type ConversationProjectResponse struct {
-	PublicID     string    `json:"publicID"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	SystemPrompt string    `json:"systemPrompt"`
-	Color        string    `json:"color"`
-	Icon         string    `json:"icon"`
-	SortOrder    int       `json:"sortOrder"`
-	Status       string    `json:"status"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	PublicID                string    `json:"publicID"`
+	Name                    string    `json:"name"`
+	Description             string    `json:"description"`
+	SystemPrompt            string    `json:"systemPrompt"`
+	MCPDefaultMode          string    `json:"mcpDefaultMode"`
+	DefaultMCPToolIDs       []uint    `json:"defaultMCPToolIDs"`
+	DefaultSkillIDs         []uint    `json:"defaultSkillIDs"`
+	DefaultKnowledgeBaseIDs []string  `json:"defaultKnowledgeBaseIDs"`
+	Color                   string    `json:"color"`
+	Icon                    string    `json:"icon"`
+	SortOrder               int       `json:"sortOrder"`
+	Status                  string    `json:"status"`
+	CreatedAt               time.Time `json:"createdAt"`
+	UpdatedAt               time.Time `json:"updatedAt"`
 }
 
 func toConversationProjectResponse(item *model.ConversationProject) ConversationProjectResponse {
@@ -150,16 +246,20 @@ func toConversationProjectResponse(item *model.ConversationProject) Conversation
 		return ConversationProjectResponse{}
 	}
 	return ConversationProjectResponse{
-		PublicID:     item.PublicID,
-		Name:         item.Name,
-		Description:  item.Description,
-		SystemPrompt: item.SystemPrompt,
-		Color:        item.Color,
-		Icon:         item.Icon,
-		SortOrder:    item.SortOrder,
-		Status:       item.Status,
-		CreatedAt:    item.CreatedAt,
-		UpdatedAt:    item.UpdatedAt,
+		PublicID:                item.PublicID,
+		Name:                    item.Name,
+		Description:             item.Description,
+		SystemPrompt:            item.SystemPrompt,
+		MCPDefaultMode:          item.MCPDefaultMode,
+		DefaultMCPToolIDs:       append([]uint{}, item.DefaultMCPToolIDs...),
+		DefaultSkillIDs:         append([]uint{}, item.DefaultSkillIDs...),
+		DefaultKnowledgeBaseIDs: append([]string{}, item.DefaultKnowledgeBaseIDs...),
+		Color:                   item.Color,
+		Icon:                    item.Icon,
+		SortOrder:               item.SortOrder,
+		Status:                  item.Status,
+		CreatedAt:               item.CreatedAt,
+		UpdatedAt:               item.UpdatedAt,
 	}
 }
 
@@ -177,8 +277,8 @@ type ConversationShareResponse struct {
 	MessageCount   int        `json:"messageCount"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
-	RevokedAt      *time.Time `json:"revokedAt"`
-	LastAccessedAt *time.Time `json:"lastAccessedAt"`
+	RevokedAt      *time.Time `json:"revokedAt" extensions:"x-nullable,!x-omitempty"`
+	LastAccessedAt *time.Time `json:"lastAccessedAt" extensions:"x-nullable,!x-omitempty"`
 }
 
 func toConversationShareResponse(item *appconversation.ConversationShareResult) ConversationShareResponse {
@@ -229,7 +329,7 @@ type PublicSharedMessageResponse struct {
 	ModelVendor       string                       `json:"modelVendor"`
 	ModelIcon         string                       `json:"modelIcon"`
 	ProcessTrace      *MessageProcessTraceResponse `json:"processTrace,omitempty"`
-	EditedAt          *time.Time                   `json:"editedAt"`
+	EditedAt          *time.Time                   `json:"editedAt" extensions:"x-nullable,!x-omitempty"`
 	CreatedAt         time.Time                    `json:"createdAt"`
 	UpdatedAt         time.Time                    `json:"updatedAt"`
 }
@@ -280,7 +380,7 @@ type PublicSharedConversationResponse struct {
 	Title                   string                        `json:"title"`
 	Model                   string                        `json:"model"`
 	CreatedAt               time.Time                     `json:"createdAt"`
-	LastAccessedAt          *time.Time                    `json:"lastAccessedAt"`
+	LastAccessedAt          *time.Time                    `json:"lastAccessedAt" extensions:"x-nullable,!x-omitempty"`
 	DefaultMessagePublicIDs []string                      `json:"defaultMessagePublicIDs"`
 	Messages                []PublicSharedMessageResponse `json:"messages"`
 }
@@ -345,8 +445,8 @@ type FileObjectResponse struct {
 	EmbedError             string     `json:"embedError"`
 	ChunkCount             int        `json:"chunkCount"`
 	RagOptOut              bool       `json:"ragOptOut"`
-	LastAccessedAt         *time.Time `json:"lastAccessedAt"`
-	ExpiresAt              *time.Time `json:"expiresAt"`
+	LastAccessedAt         *time.Time `json:"lastAccessedAt" extensions:"x-nullable,!x-omitempty"`
+	ExpiresAt              *time.Time `json:"expiresAt" extensions:"x-nullable,!x-omitempty"`
 	CreatedAt              time.Time  `json:"createdAt"`
 	UpdatedAt              time.Time  `json:"updatedAt"`
 }
@@ -438,15 +538,16 @@ func toDeleteFileResponse(r *appupload.DeleteFileResult) DeleteFileResponse {
 
 // MessageTraceBlockResponse 消息轨迹块响应 DTO。
 type MessageTraceBlockResponse struct {
-	Title           string    `json:"title"`
-	Summary         string    `json:"summary"`
-	ContentMarkdown string    `json:"contentMarkdown"`
-	Status          string    `json:"status"`
-	Stage           string    `json:"stage,omitempty"`
-	RoundID         string    `json:"roundID,omitempty"`
-	ParentEventID   string    `json:"parentEventID,omitempty"`
-	UpdatedAt       time.Time `json:"updatedAt"`
-	PayloadJSON     string    `json:"payloadJSON,omitempty"`
+	Title           string     `json:"title"`
+	Summary         string     `json:"summary"`
+	ContentMarkdown string     `json:"contentMarkdown"`
+	Status          string     `json:"status"`
+	Stage           string     `json:"stage,omitempty"`
+	RoundID         string     `json:"roundID,omitempty"`
+	ParentEventID   string     `json:"parentEventID,omitempty"`
+	StartedAt       *time.Time `json:"startedAt,omitempty"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	PayloadJSON     string     `json:"payloadJSON,omitempty"`
 }
 
 // MessageTraceEventResponse 消息轨迹事件响应 DTO。
@@ -679,43 +780,68 @@ func toPublicTraceEventResponses(events []model.MessageTraceEvent) []MessageTrac
 }
 
 // MessageResponse 消息响应 DTO。
+type MessageKnowledgeSourceResponse struct {
+	FileName   string  `json:"fileName"`
+	FileID     string  `json:"fileID"`
+	ChunkIndex int     `json:"chunkIndex"`
+	Score      float32 `json:"score"`
+	Preview    string  `json:"preview"`
+}
+
 type MessageResponse struct {
-	ID                uint                         `json:"id"`
-	ConversationID    uint                         `json:"conversationID"`
-	UserID            uint                         `json:"userID"`
-	PublicID          string                       `json:"publicID"`
-	ParentMessageID   *uint                        `json:"parentMessageID"`
-	RunID             string                       `json:"runID"`
-	Role              string                       `json:"role"`
-	ContentType       string                       `json:"contentType"`
-	Content           string                       `json:"content"`
-	BranchReason      string                       `json:"branchReason"`
-	SourceMessageID   *uint                        `json:"sourceMessageID"`
-	TokenUsage        int64                        `json:"tokenUsage"`
-	InputTokens       int64                        `json:"inputTokens"`
-	OutputTokens      int64                        `json:"outputTokens"`
-	CacheReadTokens   int64                        `json:"cacheReadTokens"`
-	CacheWriteTokens  int64                        `json:"cacheWriteTokens"`
-	ReasoningTokens   int64                        `json:"reasoningTokens"`
-	LatencyMS         int64                        `json:"latencyMS"`
-	Status            string                       `json:"status"`
-	ErrorCode         string                       `json:"errorCode"`
-	ErrorMessage      string                       `json:"errorMessage"`
-	Attachments       string                       `json:"attachments"`
-	PlatformModelName string                       `json:"platformModelName"`
-	UpstreamModelName string                       `json:"upstreamModelName"`
-	ModelVendor       string                       `json:"modelVendor"`
-	ModelIcon         string                       `json:"modelIcon"`
-	ParentPublicID    string                       `json:"parentPublicID"`
-	SourcePublicID    string                       `json:"sourcePublicID"`
-	MyFeedback        string                       `json:"myFeedback"`
-	ThumbsUpCount     int64                        `json:"thumbsUpCount"`
-	ThumbsDownCount   int64                        `json:"thumbsDownCount"`
-	BillingCost       *MessageBillingCostResponse  `json:"billingCost,omitempty"`
-	ProcessTrace      *MessageProcessTraceResponse `json:"processTrace,omitempty"`
-	EditedAt          *time.Time                   `json:"editedAt"`
-	CreatedAt         time.Time                    `json:"createdAt"`
-	UpdatedAt         time.Time                    `json:"updatedAt"`
+	ID                uint                             `json:"id"`
+	ConversationID    uint                             `json:"conversationID"`
+	UserID            uint                             `json:"userID"`
+	PublicID          string                           `json:"publicID"`
+	ParentMessageID   *uint                            `json:"parentMessageID" extensions:"x-nullable,!x-omitempty"`
+	RunID             string                           `json:"runID"`
+	Role              string                           `json:"role"`
+	ContentType       string                           `json:"contentType"`
+	Content           string                           `json:"content"`
+	BranchReason      string                           `json:"branchReason"`
+	SourceMessageID   *uint                            `json:"sourceMessageID" extensions:"x-nullable,!x-omitempty"`
+	TokenUsage        int64                            `json:"tokenUsage"`
+	InputTokens       int64                            `json:"inputTokens"`
+	OutputTokens      int64                            `json:"outputTokens"`
+	CacheReadTokens   int64                            `json:"cacheReadTokens"`
+	CacheWriteTokens  int64                            `json:"cacheWriteTokens"`
+	ReasoningTokens   int64                            `json:"reasoningTokens"`
+	LatencyMS         int64                            `json:"latencyMS"`
+	Status            string                           `json:"status"`
+	ErrorCode         string                           `json:"errorCode"`
+	ErrorMessage      string                           `json:"errorMessage"`
+	Attachments       string                           `json:"attachments"`
+	PlatformModelName string                           `json:"platformModelName"`
+	UpstreamModelName string                           `json:"upstreamModelName"`
+	ModelVendor       string                           `json:"modelVendor"`
+	ModelIcon         string                           `json:"modelIcon"`
+	ParentPublicID    string                           `json:"parentPublicID"`
+	SourcePublicID    string                           `json:"sourcePublicID"`
+	MyFeedback        string                           `json:"myFeedback"`
+	ThumbsUpCount     int64                            `json:"thumbsUpCount"`
+	ThumbsDownCount   int64                            `json:"thumbsDownCount"`
+	BillingCost       *MessageBillingCostResponse      `json:"billingCost,omitempty"`
+	KnowledgeSources  []MessageKnowledgeSourceResponse `json:"knowledgeSources,omitempty"`
+	ProcessTrace      *MessageProcessTraceResponse     `json:"processTrace,omitempty"`
+	Moderation        *MessageModerationResponse       `json:"moderation,omitempty"`
+	EditedAt          *time.Time                       `json:"editedAt" extensions:"x-nullable,!x-omitempty"`
+	CreatedAt         time.Time                        `json:"createdAt"`
+	UpdatedAt         time.Time                        `json:"updatedAt"`
+}
+
+// MessageModerationResponse exposes soft-moderation state to clients.
+type MessageModerationResponse struct {
+	State      string   `json:"state,omitempty"`
+	Direction  string   `json:"direction,omitempty"`
+	EventID    string   `json:"eventID,omitempty"`
+	Categories []string `json:"categories,omitempty"`
+}
+
+func toOptionalTraceTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 func toTraceBlockResponse(b *model.MessageTraceBlock) *MessageTraceBlockResponse {
@@ -730,6 +856,7 @@ func toTraceBlockResponse(b *model.MessageTraceBlock) *MessageTraceBlockResponse
 		Stage:           b.Stage,
 		RoundID:         b.RoundID,
 		ParentEventID:   b.ParentEventID,
+		StartedAt:       toOptionalTraceTime(b.StartedAt),
 		UpdatedAt:       b.UpdatedAt,
 		PayloadJSON:     sanitizeTracePayloadJSON(b.PayloadJSON),
 	}
@@ -747,6 +874,7 @@ func toPublicTraceBlockResponse(b *model.MessageTraceBlock) *MessageTraceBlockRe
 		Stage:           b.Stage,
 		RoundID:         b.RoundID,
 		ParentEventID:   b.ParentEventID,
+		StartedAt:       toOptionalTraceTime(b.StartedAt),
 		UpdatedAt:       b.UpdatedAt,
 		PayloadJSON:     sanitizePublicTracePayloadJSON(b.PayloadJSON),
 	}
@@ -833,7 +961,8 @@ func deletePublicSensitiveTraceFields(payload map[string]interface{}) {
 func isPublicSensitiveTraceField(key string) bool {
 	normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(strings.TrimSpace(key)))
 	switch normalized {
-	case "upstreamdebug", "authorization", "proxyauthorization", "cookie", "setcookie":
+	case "upstreamdebug", "authorization", "proxyauthorization", "cookie", "setcookie",
+		"citations", "fileid", "filename", "filenames", "preview":
 		return true
 	default:
 		return strings.Contains(normalized, "apikey") ||
@@ -905,6 +1034,17 @@ func toMessageResponseWithRunAndFallback(m model.Message, run model.Run, fallbac
 	if platformModelName == "" {
 		platformModelName = strings.TrimSpace(fallbackModel)
 	}
+	// Server-side redaction for blocked assistant content (user-facing keeps blocked user text).
+	content := m.Content
+	attachments := m.Attachments
+	knowledgeSources := m.KnowledgeSources
+	processTrace := m.ProcessTrace
+	if strings.EqualFold(strings.TrimSpace(m.Status), "blocked") && m.Role == "assistant" {
+		content = ""
+		attachments = "[]"
+		knowledgeSources = nil
+		processTrace = nil
+	}
 	return MessageResponse{
 		ID:                m.ID,
 		ConversationID:    m.ConversationID,
@@ -914,7 +1054,7 @@ func toMessageResponseWithRunAndFallback(m model.Message, run model.Run, fallbac
 		RunID:             m.RunID,
 		Role:              m.Role,
 		ContentType:       m.ContentType,
-		Content:           m.Content,
+		Content:           content,
 		BranchReason:      m.BranchReason,
 		SourceMessageID:   m.SourceMessageID,
 		TokenUsage:        m.TokenUsage,
@@ -927,7 +1067,7 @@ func toMessageResponseWithRunAndFallback(m model.Message, run model.Run, fallbac
 		Status:            m.Status,
 		ErrorCode:         m.ErrorCode,
 		ErrorMessage:      m.ErrorMessage,
-		Attachments:       m.Attachments,
+		Attachments:       attachments,
 		PlatformModelName: platformModelName,
 		UpstreamModelName: strings.TrimSpace(run.UpstreamModelName),
 		ModelVendor:       strings.TrimSpace(run.ModelVendor),
@@ -938,23 +1078,138 @@ func toMessageResponseWithRunAndFallback(m model.Message, run model.Run, fallbac
 		ThumbsUpCount:     m.ThumbsUpCount,
 		ThumbsDownCount:   m.ThumbsDownCount,
 		BillingCost:       toMessageBillingCostResponse(m),
-		ProcessTrace:      toMessageProcessTraceResponse(m.ProcessTrace),
+		KnowledgeSources:  toMessageKnowledgeSourceResponses(knowledgeSources),
+		ProcessTrace:      toMessageProcessTraceResponse(processTrace),
+		Moderation:        toMessageModerationResponse(m, run),
 		EditedAt:          m.EditedAt,
 		CreatedAt:         m.CreatedAt,
 		UpdatedAt:         m.UpdatedAt,
 	}
 }
 
+func toMessageKnowledgeSourceResponses(items []model.MessageKnowledgeSource) []MessageKnowledgeSourceResponse {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]MessageKnowledgeSourceResponse, 0, len(items))
+	for _, item := range items {
+		result = append(result, MessageKnowledgeSourceResponse{
+			FileName:   item.FileName,
+			FileID:     item.FileID,
+			ChunkIndex: item.ChunkIndex,
+			Score:      item.Score,
+			Preview:    item.Preview,
+		})
+	}
+	return result
+}
+
+func toMessageModerationResponse(m model.Message, run model.Run) *MessageModerationResponse {
+	eventID := strings.TrimSpace(m.ModerationEventID)
+	if eventID == "" {
+		eventID = strings.TrimSpace(run.ModerationEventID)
+	}
+	state := strings.TrimSpace(run.ModerationState)
+	if strings.EqualFold(strings.TrimSpace(m.Status), "blocked") {
+		state = "blocked"
+	}
+	if eventID == "" && state == "" {
+		return nil
+	}
+	categories := parseStringJSONArray(firstNonEmptyModerationJSON(m.ModerationCategoriesJSON, run.ModerationCategoriesJSON))
+	direction := ""
+	if strings.EqualFold(m.Status, "blocked") && m.Role == "user" {
+		direction = "input"
+	} else if strings.EqualFold(m.Status, "blocked") {
+		direction = "output"
+	}
+	return &MessageModerationResponse{
+		State:      state,
+		Direction:  direction,
+		EventID:    eventID,
+		Categories: categories,
+	}
+}
+
+func firstNonEmptyModerationJSON(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" && strings.TrimSpace(v) != "[]" {
+			return v
+		}
+	}
+	return "[]"
+}
+
+func parseStringJSONArray(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" || raw == "null" {
+		return nil
+	}
+	var items []string
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil
+	}
+	return items
+}
+
+// toMessageResponseWithRunAndFallbackAdmin redacts blocked originals for admin logs/export.
+func toMessageResponseWithRunAndFallbackAdmin(m model.Message, run model.Run, fallbackModel string) MessageResponse {
+	resp := toMessageResponseWithRunAndFallback(m, run, fallbackModel)
+	if !strings.EqualFold(strings.TrimSpace(m.Status), "blocked") {
+		return resp
+	}
+	eventID := strings.TrimSpace(firstNonEmptyString(m.ModerationEventID, run.ModerationEventID))
+	placeholder := "[blocked by content moderation"
+	if eventID != "" {
+		placeholder += "; event " + eventID
+	}
+	placeholder += "]"
+	if m.Role == "user" {
+		resp.Content = placeholder
+		resp.Attachments = "[]"
+	} else if m.Role == "assistant" {
+		resp.Content = ""
+		resp.Attachments = "[]"
+		resp.ProcessTrace = nil
+		if strings.TrimSpace(resp.ErrorMessage) == "" {
+			resp.ErrorMessage = placeholder
+		}
+	}
+	return resp
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
 // ---------- Send Message ----------
 
 // SendMessageResponse 发送消息响应 DTO。
 type SendMessageResponse struct {
-	UserMessage      MessageResponse `json:"userMessage"`
-	AssistantMessage MessageResponse `json:"assistantMessage"`
+	UserMessage         MessageResponse `json:"userMessage"`
+	AssistantMessage    MessageResponse `json:"assistantMessage"`
+	MetadataRefreshHint string          `json:"metadataRefreshHint,omitempty"`
 }
 
 type CancelMessageGenerationResponse struct {
 	Canceled bool `json:"canceled"`
+}
+
+type ActiveMessageGenerationResponse struct {
+	RunID                string `json:"runID"`
+	ConversationPublicID string `json:"conversationPublicID"`
+}
+
+type ActiveMessageGenerationEventResponse struct {
+	Type                 string                            `json:"type"`
+	Runs                 []ActiveMessageGenerationResponse `json:"runs,omitempty"`
+	RunID                string                            `json:"runID,omitempty"`
+	ConversationPublicID string                            `json:"conversationPublicID,omitempty"`
 }
 
 func toSendMessageResponse(r *appconversation.SendMessageResult) SendMessageResponse {
@@ -963,8 +1218,9 @@ func toSendMessageResponse(r *appconversation.SendMessageResult) SendMessageResp
 		UpstreamModelName: r.UpstreamModelName,
 	}
 	return SendMessageResponse{
-		UserMessage:      toMessageResponseWithRun(r.UserMessage, run),
-		AssistantMessage: toMessageResponseWithRun(r.AssistantMessage, run),
+		UserMessage:         toMessageResponseWithRun(r.UserMessage, run),
+		AssistantMessage:    toMessageResponseWithRun(r.AssistantMessage, run),
+		MetadataRefreshHint: r.MetadataRefreshHint,
 	}
 }
 
@@ -1022,7 +1278,7 @@ type RunResponse struct {
 	ErrorCode           string     `json:"errorCode"`
 	ErrorMessage        string     `json:"errorMessage"`
 	StartedAt           time.Time  `json:"startedAt"`
-	EndedAt             *time.Time `json:"endedAt"`
+	EndedAt             *time.Time `json:"endedAt" extensions:"x-nullable,!x-omitempty"`
 	CreatedAt           time.Time  `json:"createdAt"`
 	UpdatedAt           time.Time  `json:"updatedAt"`
 }
@@ -1064,6 +1320,12 @@ func toRunResponse(r model.Run) RunResponse {
 	}
 }
 
+// ConversationRunStatusResponse 对话运行状态响应 DTO。
+type ConversationRunStatusResponse struct {
+	RunID  string `json:"runID"`
+	Status string `json:"status"`
+}
+
 // ---------- File Processing Status ----------
 
 // FileProcessingStatusResponse 文件处理状态响应 DTO。
@@ -1083,8 +1345,11 @@ type FileProcessingStatusResponse struct {
 	ErrorMessage     string     `json:"errorMessage"`
 	ExtractChars     int        `json:"extractChars"`
 	ExtractPages     int        `json:"extractPages"`
-	StartedAt        *time.Time `json:"startedAt"`
-	CompletedAt      *time.Time `json:"completedAt"`
+	ChunkCount       int        `json:"chunkCount"`
+	EmbedError       string     `json:"embedError"`
+	StartedAt        *time.Time `json:"startedAt" extensions:"x-nullable,!x-omitempty"`
+	CompletedAt      *time.Time `json:"completedAt" extensions:"x-nullable,!x-omitempty"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
 }
 
 func toFileProcessingStatusResponse(d *appprocessing.FileProcessingStatusDTO) FileProcessingStatusResponse {
@@ -1104,8 +1369,11 @@ func toFileProcessingStatusResponse(d *appprocessing.FileProcessingStatusDTO) Fi
 		ErrorMessage:     appprocessing.HumanizeFileProcessingError(d.FileCategory, d.ErrorCode, d.ErrorMessage),
 		ExtractChars:     d.ExtractChars,
 		ExtractPages:     d.ExtractPages,
+		ChunkCount:       d.ChunkCount,
+		EmbedError:       d.EmbedError,
 		StartedAt:        d.StartedAt,
 		CompletedAt:      d.CompletedAt,
+		UpdatedAt:        d.UpdatedAt,
 	}
 }
 
@@ -1201,6 +1469,12 @@ type ConversationCreateResponseDoc struct {
 	Data     ConversationResponse `json:"data"`
 }
 
+// ConversationDefaultModelCandidateResponseDoc 新会话默认模型候选响应文档。
+type ConversationDefaultModelCandidateResponseDoc struct {
+	ErrorMsg string                                    `json:"errorMsg"`
+	Data     ConversationDefaultModelCandidateResponse `json:"data"`
+}
+
 // ConversationExportResponseDoc 会话导出响应文档。
 type ConversationExportResponseDoc struct {
 	ErrorMsg string                     `json:"errorMsg"`
@@ -1214,6 +1488,18 @@ type ConversationListResponseDoc struct {
 		Total   int64                  `json:"total"`
 		Results []ConversationResponse `json:"results"`
 	} `json:"data"`
+}
+
+// ConversationSearchListResponseDoc 会话搜索分页响应文档。
+type ConversationSearchListResponseDoc struct {
+	ErrorMsg string                         `json:"errorMsg"`
+	Data     ConversationSearchPageResponse `json:"data"`
+}
+
+// ConversationPreviewMessageListResponseDoc 会话搜索预览消息响应文档。
+type ConversationPreviewMessageListResponseDoc struct {
+	ErrorMsg string                               `json:"errorMsg"`
+	Data     []ConversationPreviewMessageResponse `json:"data"`
 }
 
 // ConversationProjectResponseDoc 会话项目响应文档。

@@ -22,6 +22,7 @@ type BillingPlan struct {
 	DiscountPercent     int    `gorm:"not null;default:0;comment:默认折扣百分比"`
 	SortOrder           int    `gorm:"not null;default:0;comment:排序权重"`
 	IsActive            bool   `gorm:"not null;default:false;index:idx_billing_plans_active;comment:是否启用"`
+	PermissionGroupID   *uint  `gorm:"index:idx_billing_plans_perm_group;comment:绑定的权限组ID"`
 }
 
 // TableName 指定表名。
@@ -131,6 +132,31 @@ func (BalanceTransaction) TableName() string {
 	return "billing_balance_transactions"
 }
 
+// UsageReservation 记录模型调用在结算前占用的余额与周期额度预算。
+type UsageReservation struct {
+	BaseModel
+	UserID              uint       `gorm:"not null;uniqueIndex:idx_billing_usage_reservations_user_ref,priority:1;index:idx_billing_usage_reservations_user_status;comment:用户ID"`
+	RefNo               string     `gorm:"size:128;not null;uniqueIndex:idx_billing_usage_reservations_user_ref,priority:2;comment:调用幂等编号"`
+	Mode                string     `gorm:"size:16;not null;index:idx_billing_usage_reservations_mode;comment:计费模式"`
+	BalanceNanousd      int64      `gorm:"not null;default:0;comment:预留余额预算(纳美元)"`
+	PeriodCreditNanousd int64      `gorm:"not null;default:0;comment:预留周期额度预算(纳美元)"`
+	PeriodLimitNanousd  int64      `gorm:"not null;default:0;comment:周期总额度快照(纳美元)"`
+	PeriodStartAt       *time.Time `gorm:"index:idx_billing_usage_reservations_period;comment:周期开始时间"`
+	PeriodEndAt         *time.Time `gorm:"index:idx_billing_usage_reservations_period;comment:周期结束时间"`
+	Status              string     `gorm:"size:24;not null;index:idx_billing_usage_reservations_user_status;comment:状态(active/settled/released/reconciliation)"`
+	UsageLedgerID       uint       `gorm:"not null;default:0;index:idx_billing_usage_reservations_ledger_id;comment:结算用量账本ID"`
+	ExpiresAt           time.Time  `gorm:"not null;index:idx_billing_usage_reservations_expires_at;comment:预算占用过期时间"`
+	SettledAt           *time.Time `gorm:"comment:结算时间"`
+	ReleasedAt          *time.Time `gorm:"comment:释放时间"`
+	ReconciliationAt    *time.Time `gorm:"comment:进入待核对状态时间"`
+	FailureCode         string     `gorm:"size:64;not null;default:'';comment:待核对原因代码"`
+}
+
+// TableName 指定表名。
+func (UsageReservation) TableName() string {
+	return "billing_usage_reservations"
+}
+
 // RedemptionCode 记录管理员创建的兑换码定义。
 type RedemptionCode struct {
 	BaseModel
@@ -200,7 +226,7 @@ func (ModelPricing) TableName() string {
 // UsageLedger 记录每日消费与Token使用量，保留计费快照用于审计追溯。
 type UsageLedger struct {
 	BaseModel
-	UserID              uint      `gorm:"not null;index:idx_billing_usage_ledgers_user_id;index:idx_billing_usage_ledgers_user_date,priority:1;comment:用户ID"`
+	UserID              uint      `gorm:"not null;index:idx_billing_usage_ledgers_user_id;index:idx_billing_usage_ledgers_user_date,priority:1;index:idx_billing_usage_ledgers_user_billing_at,priority:1;comment:用户ID"`
 	ConversationID      uint      `gorm:"not null;index:idx_billing_usage_ledgers_conversation_id;comment:会话ID"`
 	ProviderProtocol    string    `gorm:"size:64;not null;default:'';index:idx_billing_usage_ledgers_provider_protocol;comment:协议适配器快照"`
 	UpstreamName        string    `gorm:"size:128;not null;default:'';comment:上游名称"`
@@ -208,6 +234,7 @@ type UsageLedger struct {
 	RoutedBindingCode   string    `gorm:"size:64;not null;default:'';index:idx_billing_usage_ledgers_routed_binding_code;comment:实际路由上游模型绑定编码"`
 	UpstreamModelName   string    `gorm:"size:256;not null;default:'';comment:上游真实模型名"`
 	IsFreeModel         bool      `gorm:"not null;default:false;index:idx_billing_usage_ledgers_is_free_model;comment:是否免费模型用量"`
+	BillingAt           time.Time `gorm:"index:idx_billing_usage_ledgers_billing_at;index:idx_billing_usage_ledgers_user_billing_at,priority:2;comment:计费归属时间"`
 	UsageDate           time.Time `gorm:"type:date;not null;index:idx_billing_usage_ledgers_usage_date;index:idx_billing_usage_ledgers_user_date,priority:2;comment:消费日期"`
 	InputTokens         int64     `gorm:"not null;default:0;comment:输入Token"`
 	CacheReadTokens     int64     `gorm:"not null;default:0;comment:缓存读取Token"`
@@ -223,6 +250,7 @@ type UsageLedger struct {
 	ServiceTier         string    `gorm:"size:32;not null;default:'';comment:计费服务等级"`
 	BilledCurrency      string    `gorm:"size:16;not null;default:'USD';comment:计费币种"`
 	BilledNanousd       int64     `gorm:"not null;default:0;comment:账单金额(纳美元)"`
+	BalanceAfterNanousd *int64    `gorm:"comment:调用结算后按量余额(纳美元)"`
 	PricingSnapshotJSON string    `gorm:"type:text;not null;default:'';comment:计费快照JSON"`
 }
 

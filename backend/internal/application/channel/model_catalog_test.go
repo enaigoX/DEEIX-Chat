@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	appbilling "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/billing"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 )
 
 func TestProtocolDefaultsForCompatibleOnlyIncludesSupportedPrimaryKinds(t *testing.T) {
@@ -51,10 +51,11 @@ func TestProtocolDefaultsForXAIUsesXAIResponsesForConversationKinds(t *testing.T
 	if defaults[modelKindImageEdit] != "xai_image_edits" {
 		t.Fatalf("expected xAI image edit default, got %q in %s", defaults[modelKindImageEdit], raw)
 	}
-	for _, kind := range []string{modelKindVideoGen} {
-		if _, ok := defaults[kind]; ok {
-			t.Fatalf("unexpected xAI default protocol for %s in %s", kind, raw)
-		}
+	if defaults[modelKindVideoGen] != "xai_video" {
+		t.Fatalf("expected xAI video default, got %q in %s", defaults[modelKindVideoGen], raw)
+	}
+	if defaults[modelKindVideoExtension] != "xai_video_extensions" {
+		t.Fatalf("expected xAI video extension default, got %q in %s", defaults[modelKindVideoExtension], raw)
 	}
 }
 
@@ -100,6 +101,25 @@ func TestProtocolDefaultsForGoogleUsesGoogleImageGeneration(t *testing.T) {
 	}
 	if defaults[modelKindImageEdit] != "google_image_generation" {
 		t.Fatalf("expected Google image edit default, got %q in %s", defaults[modelKindImageEdit], raw)
+	}
+	if defaults[modelKindVideoGen] != "gemini_interactions" {
+		t.Fatalf("expected Google video generation default, got %q in %s", defaults[modelKindVideoGen], raw)
+	}
+}
+
+func TestNormalizeProtocolDefaultsJSONAcceptsGeminiInteractionsForVideo(t *testing.T) {
+	normalized, err := normalizeProtocolDefaultsJSON(`{"chat":"gemini_interactions","image_gen":"gemini_interactions","image_edit":"gemini_interactions","video_gen":"gemini_interactions"}`)
+	if err != nil {
+		t.Fatalf("normalize Gemini Interactions defaults: %v", err)
+	}
+	var defaults map[string]string
+	if err := json.Unmarshal([]byte(normalized), &defaults); err != nil {
+		t.Fatalf("unmarshal normalized defaults: %v", err)
+	}
+	for _, kind := range []string{modelKindChat, modelKindImageGen, modelKindImageEdit, modelKindVideoGen} {
+		if defaults[kind] != "gemini_interactions" {
+			t.Fatalf("expected Gemini Interactions %s default, got %s", kind, normalized)
+		}
 	}
 }
 
@@ -209,11 +229,114 @@ func TestReasoningContentPassbackRequiredForDeepSeekChatCompletions(t *testing.T
 	if !reasoningContentPassbackRequired(llm.AdapterOpenAIChatCompletions, "deepseek", "deepseek-v4-flash-free") {
 		t.Fatal("expected DeepSeek Chat Completions route to require reasoning_content passback")
 	}
+	if !reasoningContentPassbackRequired(llm.AdapterOpenRouterChat, "openai", "openai/gpt-oss-120b:free") {
+		t.Fatal("expected OpenRouter Chat Completions route to require reasoning passback")
+	}
 	if reasoningContentPassbackRequired(llm.AdapterOpenAIChatCompletions, "openai", "gpt-5.4") {
 		t.Fatal("expected OpenAI Chat Completions route to skip reasoning_content passback")
 	}
+	if reasoningContentPassbackRequired(llm.AdapterOpenRouterResponses, "openai/gpt-oss-120b:free") {
+		t.Fatal("expected OpenRouter Responses route to skip Chat Completions reasoning passback")
+	}
 	if reasoningContentPassbackRequired(llm.AdapterOpenAIResponses, "deepseek", "deepseek-v4-flash-free") {
 		t.Fatal("expected non Chat Completions route to skip reasoning_content passback")
+	}
+}
+
+// Moonshot、智谱、小米 MiMo 的思考模型同样要求历史 assistant 消息原样携带 reasoning_content，
+// 覆盖显式 vendor 与仅凭模型名推断两种入口，并反向断言未纳入白名单的厂商保持关闭。
+func TestReasoningContentPassbackRequiredForAdditionalChatCompletionsVendors(t *testing.T) {
+	required := []struct {
+		name       string
+		candidates []string
+	}{
+		{"moonshot vendor", []string{"moonshot", "kimi-k3"}},
+		{"kimi alias", []string{"kimi", "kimi-k2.7-code"}},
+		{"kimi by model name", []string{"", "kimi-k3"}},
+		{"moonshot by model name", []string{"", "moonshot-v1-128k"}},
+		{"zhipu vendor", []string{"zhipu", "glm-4.6"}},
+		{"glm alias", []string{"glm", "glm-4.6"}},
+		{"glm by model name", []string{"", "glm-4.6"}},
+		{"chatglm by model name", []string{"", "chatglm-6b"}},
+		{"xiaomi vendor", []string{"xiaomi", "mimo-v2.5-pro"}},
+		{"mimo by model name", []string{"", "mimo-v2.5-pro"}},
+		{"mimo omni by model name", []string{"", "mimo-v2-omni"}},
+		{"mimo namespaced model name", []string{"", "xiaomi/mimo-v2.5-pro"}},
+		{"alibaba vendor", []string{"alibaba", "qwen3.6-plus"}},
+		{"qwen alias", []string{"qwen", "qwen-max"}},
+		{"qwq by model name", []string{"", "qwq-32b"}},
+		{"qvq by model name", []string{"", "qvq-max"}},
+		{"tongyi by model name", []string{"", "tongyi-deepresearch"}},
+		{"minimax vendor", []string{"minimax", "minimax-m2"}},
+		{"abab by model name", []string{"", "abab-6.5s"}},
+		{"hailuo by model name", []string{"", "hailuo-02"}},
+	}
+	for _, item := range required {
+		if !reasoningContentPassbackRequired(llm.AdapterOpenAIChatCompletions, item.candidates...) {
+			t.Fatalf("%s: expected Chat Completions route to require reasoning_content passback", item.name)
+		}
+	}
+
+	// 非 Chat Completions 协议不受影响。
+	if reasoningContentPassbackRequired(llm.AdapterOpenAIResponses, "moonshot", "kimi-k3") {
+		t.Fatal("expected Responses route to skip reasoning_content passback for moonshot")
+	}
+	if reasoningContentPassbackRequired(llm.AdapterOpenAIResponses, "zhipu", "glm-4.6") {
+		t.Fatal("expected Responses route to skip reasoning_content passback for zhipu")
+	}
+
+	// 未列入白名单的厂商保持关闭，避免向不接受该字段的上游发送多余入参。
+	for _, item := range []struct {
+		name       string
+		candidates []string
+	}{
+		{"bytedance", []string{"bytedance", "doubao-seed-1-6"}},
+		{"doubao by model name", []string{"", "doubao-1-5-thinking-pro"}},
+		{"tencent", []string{"tencent", "hunyuan-turbos"}},
+		{"anthropic", []string{"anthropic", "claude-opus-4-8"}},
+	} {
+		if reasoningContentPassbackRequired(llm.AdapterOpenAIChatCompletions, item.candidates...) {
+			t.Fatalf("%s: expected vendor outside the passback allowlist to skip reasoning_content", item.name)
+		}
+	}
+}
+
+// 阿里 Qwen 只回传字段无效，必须同时下发 preserve_thinking；其余厂商不应收到该私有入参，
+// OpenRouter 更要拦住——它有自己的 reasoning 字段与参数校验。
+func TestReasoningPassbackRequestOptionsOnlyForAlibabaChatCompletions(t *testing.T) {
+	got := reasoningPassbackRequestOptions(llm.AdapterOpenAIChatCompletions, "alibaba", "qwen3.6-plus")
+	if len(got) != 1 || got["preserve_thinking"] != true {
+		t.Fatalf("expected preserve_thinking for alibaba chat completions, got %#v", got)
+	}
+	if byName := reasoningPassbackRequestOptions(llm.AdapterOpenAIChatCompletions, "", "qwq-32b"); byName["preserve_thinking"] != true {
+		t.Fatalf("expected model-name inference to require preserve_thinking, got %#v", byName)
+	}
+
+	// 返回值必须是副本，调用方改动不能污染包级变量。
+	got["preserve_thinking"] = false
+	got["injected"] = true
+	again := reasoningPassbackRequestOptions(llm.AdapterOpenAIChatCompletions, "alibaba", "qwen3.6-plus")
+	if len(again) != 1 || again["preserve_thinking"] != true {
+		t.Fatalf("package-level options were mutated by caller: %#v", again)
+	}
+
+	for _, item := range []struct {
+		name       string
+		protocol   string
+		candidates []string
+	}{
+		{"openrouter alibaba", llm.AdapterOpenRouterChat, []string{"alibaba", "qwen/qwen3-max"}},
+		{"responses alibaba", llm.AdapterOpenAIResponses, []string{"alibaba", "qwen3.6-plus"}},
+		{"minimax", llm.AdapterOpenAIChatCompletions, []string{"minimax", "minimax-m2"}},
+		{"deepseek", llm.AdapterOpenAIChatCompletions, []string{"deepseek", "deepseek-v4-flash-free"}},
+		{"moonshot", llm.AdapterOpenAIChatCompletions, []string{"moonshot", "kimi-k3"}},
+		{"zhipu", llm.AdapterOpenAIChatCompletions, []string{"zhipu", "glm-4.6"}},
+		{"xiaomi", llm.AdapterOpenAIChatCompletions, []string{"xiaomi", "mimo-v2.5-pro"}},
+		{"vendor outside allowlist", llm.AdapterOpenAIChatCompletions, []string{"anthropic", "claude-opus-4-8"}},
+	} {
+		if options := reasoningPassbackRequestOptions(item.protocol, item.candidates...); options != nil {
+			t.Fatalf("%s: expected no vendor request options, got %#v", item.name, options)
+		}
 	}
 }
 
@@ -317,6 +440,30 @@ func TestInferKindsJSONRecognizesGeminiImageModels(t *testing.T) {
 	}
 }
 
+func TestInferKindsJSONRecognizesGeminiOmniInteractionsModel(t *testing.T) {
+	for _, modelName := range []string{"gemini-omni-flash-preview"} {
+		if got := inferKindsJSON(modelName); got != `["chat","image_gen","image_edit","video_gen"]` {
+			t.Fatalf("expected %s to infer Interactions universal kinds, got %s", modelName, got)
+		}
+	}
+}
+
+func TestInferKindsJSONRecognizesVideoGenerationModels(t *testing.T) {
+	for _, modelName := range []string{"veo-3.1-fast"} {
+		if got := inferKindsJSON(modelName); got != `["video_gen"]` {
+			t.Fatalf("expected %s to infer video generation kind, got %s", modelName, got)
+		}
+	}
+}
+
+func TestInferKindsJSONRecognizesXAIVideoExtensionModels(t *testing.T) {
+	for _, modelName := range []string{"grok-imagine-video", "grok-imagine-video-1.5-preview"} {
+		if got := inferKindsJSON(modelName); got != `["video_gen","video_extension"]` {
+			t.Fatalf("expected %s to infer video generation and extension kinds, got %s", modelName, got)
+		}
+	}
+}
+
 func TestInferKindsJSONRecognizesXAIImageModels(t *testing.T) {
 	for _, modelName := range []string{
 		"grok-imagine-image",
@@ -356,6 +503,10 @@ func TestNormalizeProtocolDefaultsJSONRejectsProtocolKindMismatch(t *testing.T) 
 	if !errors.Is(err, ErrInvalidAdapter) {
 		t.Fatalf("expected ErrInvalidAdapter, got %v", err)
 	}
+	_, err = normalizeProtocolDefaultsJSON(`{"audio":"gemini_interactions"}`)
+	if !errors.Is(err, ErrInvalidAdapter) {
+		t.Fatalf("expected ErrInvalidAdapter for audio Gemini Interactions default, got %v", err)
+	}
 }
 
 func TestResolveRouteProtocolRejectsExplicitProtocolKindMismatch(t *testing.T) {
@@ -375,7 +526,7 @@ func TestResolveRouteProtocolAcceptsExplicitProtocolForAnyDeclaredKind(t *testin
 	}
 }
 
-func TestSupportedRouteProtocolCombinationOnlyAllowsSameProviderImagePair(t *testing.T) {
+func TestSupportedRouteProtocolCombinationOnlyAllowsCompatibleMediaPairs(t *testing.T) {
 	tests := []struct {
 		name      string
 		protocols []string
@@ -385,6 +536,7 @@ func TestSupportedRouteProtocolCombinationOnlyAllowsSameProviderImagePair(t *tes
 		{name: "single image generation", protocols: []string{"openai_image_generations"}, want: true},
 		{name: "openai image generation and edit", protocols: []string{"openai_image_generations", "openai_image_edits"}, want: true},
 		{name: "xai image generation and edit", protocols: []string{"xai_image", "xai_image_edits"}, want: true},
+		{name: "xai video generation and extension", protocols: []string{"xai_video", "xai_video_extensions"}, want: true},
 		{name: "duplicate protocol", protocols: []string{"openai_responses", "openai_responses"}, want: true},
 		{name: "two chat protocols", protocols: []string{"openai_responses", "openai_chat_completions"}, want: false},
 		{name: "image generation with chat", protocols: []string{"openai_image_generations", "openai_responses"}, want: false},
@@ -427,6 +579,26 @@ func TestResolveRouteProtocolsKeepsSingleGoogleProtocolForDualImageKinds(t *test
 	}
 }
 
+func TestResolveRouteProtocolsUsesGeminiInteractionsForUniversalOmniKinds(t *testing.T) {
+	kindsJSON := `["chat","image_gen","image_edit","video_gen"]`
+
+	protocol, err := resolveRouteProtocol("", compatibleGoogle, "", kindsJSON)
+	if err != nil {
+		t.Fatalf("resolve route protocol: %v", err)
+	}
+	if protocol != "gemini_interactions" {
+		t.Fatalf("expected Gemini Interactions unified protocol, got %q", protocol)
+	}
+
+	protocols, err := resolveRouteProtocols(nil, compatibleGoogle, "", kindsJSON)
+	if err != nil {
+		t.Fatalf("resolve route protocols: %v", err)
+	}
+	if len(protocols) != 1 || protocols[0] != "gemini_interactions" {
+		t.Fatalf("expected single Gemini Interactions protocol, got %#v", protocols)
+	}
+}
+
 func TestResolveRouteProtocolsExpandsXAIDualImageKinds(t *testing.T) {
 	protocols, err := resolveRouteProtocols(nil, compatibleXAI, "", `["image_gen","image_edit"]`)
 	if err != nil {
@@ -440,6 +612,32 @@ func TestResolveRouteProtocolsExpandsXAIDualImageKinds(t *testing.T) {
 		if protocols[i] != expectedProtocol {
 			t.Fatalf("expected protocol %d to be %q, got %#v", i, expectedProtocol, protocols)
 		}
+	}
+}
+
+func TestResolveRouteProtocolsExpandsXAIVideoProtocols(t *testing.T) {
+	protocols, err := resolveRouteProtocols(nil, compatibleXAI, "", `["video_gen","video_extension"]`)
+	if err != nil {
+		t.Fatalf("resolve xAI video protocols: %v", err)
+	}
+	expected := []string{"xai_video", "xai_video_extensions"}
+	if len(protocols) != len(expected) {
+		t.Fatalf("expected %d protocols, got %#v", len(expected), protocols)
+	}
+	for i, expectedProtocol := range expected {
+		if protocols[i] != expectedProtocol {
+			t.Fatalf("expected protocol %d to be %q, got %#v", i, expectedProtocol, protocols)
+		}
+	}
+}
+
+func TestResolveRouteProtocolsDoesNotAddExtensionWithoutExtensionKind(t *testing.T) {
+	protocols, err := resolveRouteProtocols(nil, compatibleXAI, "", `["video_gen"]`)
+	if err != nil {
+		t.Fatalf("resolve xAI generation-only protocol: %v", err)
+	}
+	if len(protocols) != 1 || protocols[0] != "xai_video" {
+		t.Fatalf("expected generation-only xAI protocol, got %#v", protocols)
 	}
 }
 
@@ -506,6 +704,9 @@ func TestIsRouteAllowedForTaskSeparatesChatAndImageProtocols(t *testing.T) {
 	if !IsRouteAllowedForTask(TaskTypeImageGeneration, `["image_gen"]`, "google_image_generation") {
 		t.Fatalf("expected image generation task to allow Google image generation protocol")
 	}
+	if !IsRouteAllowedForTask(TaskTypeImageGeneration, `["image_gen"]`, "gemini_interactions") {
+		t.Fatalf("expected image generation task to allow Gemini Interactions protocol")
+	}
 	if !IsRouteAllowedForTask(TaskTypeImageGeneration, `["image_gen"]`, "xai_image") {
 		t.Fatalf("expected image generation task to allow xAI image protocol")
 	}
@@ -518,11 +719,50 @@ func TestIsRouteAllowedForTaskSeparatesChatAndImageProtocols(t *testing.T) {
 	if !IsRouteAllowedForTask(TaskTypeImageEdit, `["image_edit"]`, "google_image_generation") {
 		t.Fatalf("expected image edit task to allow Google image protocol")
 	}
+	if !IsRouteAllowedForTask(TaskTypeImageEdit, `["image_edit"]`, "gemini_interactions") {
+		t.Fatalf("expected image edit task to allow Gemini Interactions protocol")
+	}
 	if !IsRouteAllowedForTask(TaskTypeImageEdit, `["image_edit"]`, "xai_image_edits") {
 		t.Fatalf("expected image edit task to allow xAI image edits protocol")
 	}
 	if IsRouteAllowedForTask(TaskTypeImageEdit, `["image_edit"]`, "xai_image") {
 		t.Fatalf("expected image edit task to reject xAI image generation protocol")
+	}
+	if !IsRouteAllowedForTask(TaskTypeVideoGeneration, `["video_gen"]`, "gemini_interactions") {
+		t.Fatalf("expected video generation task to allow Gemini Interactions protocol")
+	}
+	if !IsRouteAllowedForTask(TaskTypeVideoGeneration, `["video_gen"]`, "openai_video_generations") {
+		t.Fatalf("expected video generation task to allow OpenAI video protocol")
+	}
+	if !IsRouteAllowedForTask(TaskTypeVideoGeneration, `["video_gen"]`, "xai_video") {
+		t.Fatalf("expected video generation task to allow xAI video protocol")
+	}
+	if IsRouteAllowedForTask(TaskTypeVideoGeneration, `["video_gen"]`, "xai_video_extensions") {
+		t.Fatal("video generation task must reject the xAI video extensions protocol")
+	}
+	if IsRouteAllowedForTask(TaskTypeVideoGeneration, `["chat"]`, "openai_responses") {
+		t.Fatalf("expected video generation task to reject chat protocol")
+	}
+	if !IsRouteAllowedForTask(TaskTypeVideoExtension, `["video_gen","video_extension"]`, "xai_video_extensions") {
+		t.Fatal("xAI video extensions route should support video extension")
+	}
+	if IsRouteAllowedForTask(TaskTypeVideoExtension, `["video_gen","video_extension"]`, "xai_video") {
+		t.Fatal("xAI video generations route must not serve video extension")
+	}
+	if IsRouteAllowedForTask(TaskTypeVideoExtension, `["video_gen","video_extension"]`, "gemini_interactions") {
+		t.Fatal("non-xAI video route must not support video extension")
+	}
+	if IsRouteAllowedForTask(TaskTypeVideoExtension, `["video_gen"]`, "xai_video_extensions") {
+		t.Fatal("video extension task must require the video_extension kind")
+	}
+	if IsRouteAllowedForTask(TaskTypeChat, `["video_gen"]`, "gemini_interactions") {
+		t.Fatalf("expected chat task to reject video generation protocol")
+	}
+	if !IsRouteAllowedForTask(TaskTypeChat, `["chat"]`, "gemini_interactions") {
+		t.Fatalf("expected chat task to allow Gemini Interactions protocol")
+	}
+	if IsRouteAllowedForTask(TaskTypeChat, `["audio"]`, "gemini_interactions") {
+		t.Fatalf("expected audio task to reject Gemini Interactions protocol")
 	}
 }
 
@@ -538,6 +778,18 @@ func TestDefaultRouteModelMatchesTaskFiltersByKind(t *testing.T) {
 	}
 	if defaultRouteModelMatchesTask(`["chat"]`, TaskTypeImageGeneration) {
 		t.Fatal("expected image generation default route to reject chat model")
+	}
+	if !defaultRouteModelMatchesTask(`["video_gen"]`, TaskTypeVideoGeneration) {
+		t.Fatal("expected video generation default route to accept video generation model")
+	}
+	if defaultRouteModelMatchesTask(`["chat"]`, TaskTypeVideoGeneration) {
+		t.Fatal("expected video generation default route to reject chat model")
+	}
+	if !defaultRouteModelMatchesTask(`["video_gen","video_extension"]`, TaskTypeVideoExtension) {
+		t.Fatal("expected video extension default route to accept video extension model")
+	}
+	if defaultRouteModelMatchesTask(`["video_gen"]`, TaskTypeVideoExtension) {
+		t.Fatal("expected video extension default route to reject generation-only model")
 	}
 }
 

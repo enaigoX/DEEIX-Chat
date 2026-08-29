@@ -70,8 +70,6 @@
       "colorMode": "Color mode",
       "themePreset": "Theme",
       "fontSize": "Font size",
-      "chatFont": "Chat font",
-      "chatFontWeight": "Chat font weight",
       "preset": {
         "default": "Default",
         "azure": "Azure",
@@ -87,29 +85,23 @@
         "system": "System",
         "dark": "Dark"
       },
-      "font": {
-        "default": "Default",
-        "songti": "Serif",
-        "heiti": "Sans",
-        "mono": "Mono"
-      },
       "fontSizeOption": {
         "small": "Small",
         "standard": "Standard",
         "medium": "Medium",
         "large": "Large"
-      },
-      "fontWeight": {
-        "regular": "Regular",
-        "medium": "Medium",
-        "semibold": "Semibold",
-        "bold": "Bold"
       }
     },
     "avatarDialog": {
       "title": "Edit avatar",
-      "description": "Enter an avatar URL or click the avatar area to generate a pixel-style avatar.",
+      "description": "Upload an image, enter an avatar URL, or generate a pixel-style avatar.",
       "avatarURL": "Avatar URL",
+      "upload": "Upload image",
+      "uploading": "Uploading",
+      "uploaded": "Avatar uploaded",
+      "uploadFailed": "Failed to upload avatar",
+      "uploadInvalid": "Please choose an image file",
+      "generate": "Generate avatar",
       "apply": "Apply"
     }
   },
@@ -348,12 +340,14 @@
   },
   "chatPage": {
     "defaultModel": {
-      "sectionTitle": "Default model",
+      "sectionTitle": "Conversation basics",
       "title": "Default model for new chats",
       "description": "The model preselected for new chats. Leave empty to use the first available system-recommended model.",
       "systemRecommended": "System default",
       "autoTitle": "Auto-generate titles",
-      "autoTitleDescription": "When disabled, new chats use the first 20 characters of the first message as the title."
+      "autoTitleDescription": "When disabled, new chats use the first 16 characters of the first message as the title.",
+      "autoLabels": "Auto-generate labels",
+      "autoLabelsDescription": "When disabled, conversation labels are no longer generated automatically, reducing auxiliary model calls and their associated token usage."
     },
     "input": {
       "sectionTitle": "Input and sending",
@@ -370,6 +364,8 @@
       "restoreDraftDescription": "Controls whether failed sends automatically restore the text and attachments from that attempt.",
       "preserveDraftTitle": "Preserve conversation drafts",
       "preserveDraftDescription": "Controls whether unsent content is kept and restored when switching conversations.",
+      "reuseModelOptionsTitle": "Reuse model configuration",
+      "reuseModelOptionsDescription": "When enabled, new chats using the same model automatically fill the model parameters used last time.",
       "deleteFilesDefaultTitle": "Delete files by default when deleting chats",
       "deleteFilesDefaultDescription": "When enabled, delete confirmations select file deletion by default. Files still referenced by other conversations are kept."
     },
@@ -377,6 +373,10 @@
       "sectionTitle": "Display and rendering",
       "markdownTitle": "Markdown rendering",
       "markdownDescription": "Controls whether AI replies are rendered as formatted Markdown.",
+      "autoExpandThinkingTitle": "Auto-expand deep thinking",
+      "autoExpandThinkingDescription": "Automatically expands the active thinking step while a reply is generated.",
+      "autoExpandToolCallsTitle": "Auto-expand tool calls",
+      "autoExpandToolCallsDescription": "Automatically expands the active tool call while it runs.",
       "modelTitle": "Show called model",
       "modelDescription": "Controls whether the model used for this call appears below AI replies.",
       "tokenTitle": "Show token usage",
@@ -385,12 +385,34 @@
       "latencyDescription": "Controls whether total call latency appears below AI replies.",
       "costTitle": "Show total cost",
       "costDescription": "Controls whether total call cost appears below AI replies.",
-      "costDescriptionSelfMode": "Controls whether total call cost appears below AI replies. Hidden in self-use mode."
+      "costDescriptionSelfMode": "Controls whether total call cost appears below AI replies. Hidden in self-use mode.",
+      "widthTitle": "Chat area width",
+      "width": {
+        "compact": "Compact",
+        "standard": "Standard",
+        "wide": "Wide"
+      },
+      "chatFont": "Chat font",
+      "chatFontWeight": "Chat font weight",
+      "font": {
+        "default": "Default",
+        "songti": "Serif",
+        "heiti": "Sans",
+        "mono": "Mono"
+      },
+      "fontWeight": {
+        "regular": "Regular",
+        "medium": "Medium",
+        "semibold": "Semibold",
+        "bold": "Bold"
+      }
     },
     "context": {
       "sectionTitle": "Context management",
       "autoCompactTitle": "Auto-compact context",
-      "autoCompactDescription": "When a conversation approaches the model limit, earlier messages are summarized automatically to keep the conversation continuous. Turn this off to compact manually."
+      "autoCompactDescription": "When a conversation exceeds the turn or token threshold, the system summarizes earlier messages and keeps the most recent turns in full to reduce context size. Turn this off to disable automatic context compression.",
+      "reasoningPassbackTitle": "Pass back reasoning context",
+      "reasoningPassbackDescription": "When enabled, supported Chat Completions reasoning models include prior reasoning content in later turns to improve multi-step continuity."
     },
     "file": {
       "sectionTitle": "File processing",
@@ -460,6 +482,10 @@
       "used": "Used {value}",
       "total": "Total {value}"
     },
+    "periodOverage": {
+      "title": "Overage billing",
+      "balance": "Available balance {value}"
+    },
     "entitlements": {
       "title": "Subscription entitlements",
       "count": "{count} segments",
@@ -484,6 +510,7 @@
       "monthly": "Monthly",
       "dailyUsage": "Daily usage",
       "monthlyUsage": "Monthly usage",
+      "otherModels": "Other",
       "empty": "No usage data.",
       "metrics": {
         "totalCost": "Total cost",
@@ -493,7 +520,8 @@
       },
       "tooltip": {
         "cost": "Cost",
-        "calls": "Calls"
+        "calls": "Calls",
+        "latency": "Average latency"
       }
     },
     "usageLog": {
@@ -517,6 +545,7 @@
         "model": "Model",
         "baseBilling": "Base billing",
         "serviceBilling": "Service billing",
+        "balanceAfter": "Balance after settlement",
         "latency": "Latency"
       },
       "empty": "No usage logs."
@@ -591,10 +620,10 @@
     },
     "topUp": {
       "title": "Top up",
-      "description": "Enter a USD amount and confirm the payment method.",
+      "description": "Enter a top-up amount and confirm the payment method.",
       "currentBalance": "Current balance {value}",
       "amount": "Top-up amount",
-      "amountAria": "Top-up amount in USD",
+      "amountAria": "Top-up amount",
       "confirm": "Top up"
     },
     "redemption": {

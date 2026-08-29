@@ -1,36 +1,42 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS frontend-builder
+FROM node:24-bookworm-slim AS frontend-builder
 
-WORKDIR /src/frontend
+WORKDIR /src
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 ARG NEXT_PUBLIC_API_BASE_URL=""
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 
-COPY VERSION /src/VERSION
-COPY scripts /src/scripts
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
-COPY frontend/scripts ./scripts
-COPY frontend/public/pwa ./public/pwa
-COPY frontend/public/sw.js ./public/sw.js
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json ./frontend/package.json
+COPY backend/package.json ./backend/package.json
+COPY packages/api-contract/package.json ./packages/api-contract/package.json
+COPY frontend/scripts ./frontend/scripts
+COPY frontend/public/pwa ./frontend/public/pwa
 
 RUN corepack enable
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store \
-    && pnpm install --frozen-lockfile
+    && pnpm install --frozen-lockfile --prefer-offline --filter @deeix/web
 
-COPY frontend ./
+COPY VERSION /src/VERSION
+COPY scripts /src/scripts
+COPY frontend ./frontend
+COPY packages/api-contract ./packages/api-contract
+
+WORKDIR /src/frontend
 
 # 如果你的 Next 版本支持，可以在 next.config 里开启 turbopack build filesystem cache
 RUN --mount=type=cache,id=next-cache,target=/src/frontend/.next/cache \
     pnpm build
 
 
-FROM --platform=$TARGETPLATFORM golang:1.26-bookworm AS backend-builder
+FROM golang:1.26.5-bookworm AS backend-builder
 
 WORKDIR /src/backend
 
@@ -58,7 +64,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
        -o /out/deeix-chat ./cmd/server
 
 
-FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS runtime-deps
+FROM debian:bookworm-slim AS runtime-deps
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates tzdata \
@@ -75,6 +81,9 @@ COPY --from=runtime-deps /etc/localtime /etc/localtime
 COPY --from=runtime-deps /etc/timezone /etc/timezone
 COPY --from=backend-builder /out/deeix-chat /app/deeix-chat
 COPY --from=frontend-builder /src/frontend/out /app/frontend/out
+COPY LICENSE NOTICE /app/licenses/DEEIX-Chat/
+
+ENV FRONTEND_DIST_DIR=/app/frontend/out
 
 EXPOSE 8080
 

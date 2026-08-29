@@ -1,9 +1,11 @@
 {
   "adminTitle": "Admin",
   "sections": {
+    "statistics": "Statistics",
     "accounts": "Accounts",
-    "channels": "Upstreams",
+    "upstreams": "Upstreams",
     "models": "Models",
+    "groups": "Permission Groups",
     "toolSettings": "Tools",
     "billing": "Billing",
     "announcements": "Announcements",
@@ -11,7 +13,9 @@
     "loginSettings": "Sign-in & auth",
     "conversationSettings": "Conversation",
     "chatFiles": "Files & retrieval",
-    "about": "About"
+    "knowledgeBases": "Knowledge bases",
+    "about": "About",
+    "contentModeration": "Content moderation"
   },
   "aboutPage": {
     "title": "About",
@@ -58,6 +62,32 @@
   "title": "Users",
   "pageTitle": "Account management",
   "create": "Create",
+  "importOpenWebUI": {
+    "import": "Import",
+    "title": "Import OpenWebUI users",
+    "description": "Connect to an OpenWebUI database and import users with balances.",
+    "dedupeTitle": "Dedupe rule",
+    "dedupeDescription": "Dedupe by email. Existing users are not modified or overwritten.",
+    "dsnLabel": "DB connection string",
+    "dsnPlaceholder": "postgres://... or /data/openwebui.db",
+    "creditMultiplierLabel": "Credit multiplier",
+    "cancel": "Cancel",
+    "preview": "Preview",
+    "submit": "Import",
+    "previewing": "Previewing",
+    "importing": "Importing",
+    "toastPreviewSucceeded": "OpenWebUI preview finished: {imported} can be added, {skipped} skipped",
+    "toastSucceeded": "OpenWebUI import finished: {imported} added, {skipped} skipped",
+    "toastFailed": "OpenWebUI import failed",
+    "summary": {
+      "scanned": "Scanned {count}",
+      "imported": "Can add {count}",
+      "skippedExistingEmail": "Existing emails {count}",
+      "skippedDuplicateSourceEmail": "Duplicate source emails {count}",
+      "skippedInvalidEmail": "Invalid emails {count}",
+      "skippedInvalidRow": "Invalid rows {count}"
+    }
+  },
   "edit": "Edit user",
   "delete": "Delete user",
   "fallbackUser": "User",
@@ -67,8 +97,10 @@
     "status": "Status",
     "subscription": "Subscription",
     "balance": "Balance",
+    "balanceUSDInput": "Balance (USD)",
     "timezone": "Timezone",
-    "lastLogin": "Last login"
+    "lastLogin": "Last login",
+    "lastActive": "Last active"
   },
   "actions": {
     "apply": "Apply",
@@ -83,6 +115,7 @@
     "idDesc": "ID newest first",
     "idAsc": "ID oldest first",
     "lastLoginDesc": "Last login",
+    "lastActiveDesc": "Last active",
     "updatedDesc": "Recently updated",
     "displayNameAsc": "Display name A-Z"
   },
@@ -193,7 +226,7 @@
     "language": "Language",
     "reason": "Reason",
     "reasonPlaceholder": "Record the reason for this status change (optional)",
-    "accountBalance": "Account balance",
+    "accountBalance": "Account balance (USD)",
     "billingStatus": "Billing status",
     "twoFactor": "Two-factor authentication",
     "twoFactorEnabled": "Enabled (recovery codes {count})",
@@ -246,6 +279,7 @@
     "bulkStatusFailed": "Failed to update statuses",
     "bulkStatusUpdated": "Updated status for {count} users",
     "bulkDeletePartialFailed": "Some users could not be deleted",
+    "bulkDeleting": "Deleting users",
     "bulkDeleteFailed": "Failed to delete users",
     "bulkDeleted": "{count} users deleted",
     "bulkPartialDescription": "{success} succeeded, {failed} failed.",

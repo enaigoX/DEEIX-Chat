@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/nativetool"
 )
 
@@ -29,6 +29,10 @@ var hardDeniedModelOptionPaths = [][]string{
 	{"baseURL"},
 	{"stream"},
 	{"previous_response_id"},
+	{"prompt_cache_key"},
+	{"prompt_cache_options"},
+	{"prompt_cache_breakpoint"},
+	{"prompt_cache_retention"},
 }
 
 type modelOptionPolicyConfig struct {
@@ -39,10 +43,6 @@ type modelOptionPolicyConfig struct {
 }
 
 func filterModelOptions(options map[string]interface{}, protocol string, cfg modelOptionPolicyConfig) map[string]interface{} {
-	if len(options) == 0 {
-		return nil
-	}
-
 	mode := strings.TrimSpace(cfg.Mode)
 	if mode == "" {
 		mode = modelOptionPolicyAllowlist
@@ -52,8 +52,16 @@ func filterModelOptions(options map[string]interface{}, protocol string, cfg mod
 	}
 
 	protocolKey := modelOptionPolicyProtocolKey(protocol)
-	nativeTools := nativeProviderToolsFromOption(protocolKey, options["tools"], cfg.ModelCapabilitiesJSON)
-	policyOptions := cloneModelOptionMap(options)
+	defaultOptions := modelCapabilityDefaultOptions(cfg.ModelCapabilitiesJSON)
+	policyOptions := mergeModelOptionDefaults(
+		defaultOptions,
+		options,
+		modelCapabilityLockedOptionPaths(cfg.ModelCapabilitiesJSON),
+	)
+	if len(policyOptions) == 0 {
+		return nil
+	}
+	nativeTools := nativeProviderToolsFromOption(protocolKey, policyOptions["tools"], cfg.ModelCapabilitiesJSON)
 	delete(policyOptions, "tools")
 	denied := append([][]string{}, hardDeniedModelOptionPaths...)
 
@@ -83,6 +91,59 @@ func filterModelOptions(options map[string]interface{}, protocol string, cfg mod
 		return nil
 	}
 	return filtered
+}
+
+// modelCapabilityDefaultOptions 提取管理员在模型能力 JSON 中声明的默认请求参数。
+func modelCapabilityDefaultOptions(raw string) map[string]interface{} {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil
+	}
+	var config struct {
+		DefaultOptions map[string]interface{} `json:"defaultOptions"`
+	}
+	if err := json.Unmarshal([]byte(value), &config); err != nil {
+		return nil
+	}
+	return cloneModelOptionMap(config.DefaultOptions)
+}
+
+func modelCapabilityLockedOptionPaths(raw string) [][]string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil
+	}
+	var config struct {
+		LockedOptionPaths []string `json:"lockedOptionPaths"`
+	}
+	if err := json.Unmarshal([]byte(value), &config); err != nil {
+		return nil
+	}
+	paths := make([][]string, 0, len(config.LockedOptionPaths))
+	for _, value := range config.LockedOptionPaths {
+		if path := splitModelOptionPath(value); len(path) > 0 {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+// mergeModelOptionDefaults 以能力默认值为基础合并本次显式参数，并对锁定路径恢复默认值。
+func mergeModelOptionDefaults(defaults map[string]interface{}, options map[string]interface{}, lockedPaths [][]string) map[string]interface{} {
+	merged := cloneModelOptionMap(defaults)
+	if merged == nil {
+		merged = make(map[string]interface{}, len(options))
+	}
+	mergeModelOptionMap(merged, options)
+	for _, path := range lockedPaths {
+		if value, ok := readModelOptionPath(defaults, path); ok {
+			writeModelOptionPath(merged, path, cloneModelOptionValue(value))
+		}
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
 }
 
 // nativeProviderToolsFromOption 将用户 options.tools 收敛为当前协议允许的官方原生工具。
@@ -435,21 +496,11 @@ func sanitizeModelOptionValues(options map[string]interface{}, protocolKey strin
 	}
 	switch protocolKey {
 	case "openai_chat_completions", "openai_responses", "openrouter_responses":
-		serviceTier, ok := options["service_tier"]
-		if !ok {
-			return
-		}
-		value, ok := serviceTier.(string)
-		if !ok {
-			delete(options, "service_tier")
-			return
-		}
-		switch strings.TrimSpace(strings.ToLower(value)) {
-		case "default", "flex", "priority":
-			options["service_tier"] = strings.TrimSpace(strings.ToLower(value))
-		default:
-			delete(options, "service_tier")
-		}
+		sanitizeOpenAIServiceTier(options)
+	case "xai_video":
+		llm.SanitizeXAIVideoOptions(options)
+	case "xai_video_extensions":
+		llm.SanitizeXAIVideoExtensionOptions(options)
 	case "openai_image_generations", "openai_image_edits":
 		value, ok := modelParamIntFromOption(options["partial_images"])
 		if !ok {
@@ -459,6 +510,24 @@ func sanitizeModelOptionValues(options map[string]interface{}, protocolKey strin
 		if value < 0 || value > 3 {
 			delete(options, "partial_images")
 		}
+	}
+}
+
+func sanitizeOpenAIServiceTier(options map[string]interface{}) {
+	serviceTier, ok := options["service_tier"]
+	if !ok {
+		return
+	}
+	value, ok := serviceTier.(string)
+	if !ok {
+		delete(options, "service_tier")
+		return
+	}
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "default", "flex", "priority":
+		options["service_tier"] = strings.TrimSpace(strings.ToLower(value))
+	default:
+		delete(options, "service_tier")
 	}
 }
 
@@ -491,8 +560,12 @@ func modelOptionPolicyProtocolKey(protocol string) string {
 		return "gemini_generate_content"
 	case llm.AdapterGoogleImageGeneration:
 		return "google_image_generation"
+	case llm.AdapterGeminiInteractions:
+		return "gemini_interactions"
 	case llm.AdapterOpenAIChatCompletions:
 		return "openai_chat_completions"
+	case llm.AdapterOpenRouterChat:
+		return "openrouter_chat_completions"
 	case llm.AdapterOpenRouterResponses:
 		return "openrouter_responses"
 	case llm.AdapterOpenAIImageGenerations:
@@ -505,6 +578,10 @@ func modelOptionPolicyProtocolKey(protocol string) string {
 		return "xai_image"
 	case llm.AdapterXAIImageEdits:
 		return "xai_image_edits"
+	case llm.AdapterXAIVideo:
+		return "xai_video"
+	case llm.AdapterXAIVideoExtensions:
+		return "xai_video_extensions"
 	case llm.AdapterXAIResponses:
 		return "xai_responses"
 	default:
@@ -541,11 +618,94 @@ func splitModelOptionPath(value string) []string {
 }
 
 func copyModelOptionPath(dst map[string]interface{}, src map[string]interface{}, path []string) {
-	value, ok := readModelOptionPath(src, path)
+	value, ok := copyModelOptionValueAtPath(src, path)
 	if !ok {
 		return
 	}
-	writeModelOptionPath(dst, path, cloneModelOptionValue(value))
+	mergeModelOptionPathValue(dst, value)
+}
+
+func copyModelOptionValueAtPath(value interface{}, path []string) (interface{}, bool) {
+	if len(path) == 0 {
+		return cloneModelOptionValue(value), true
+	}
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		child, ok := typed[path[0]]
+		if !ok {
+			return nil, false
+		}
+		copied, ok := copyModelOptionValueAtPath(child, path[1:])
+		if !ok {
+			return nil, false
+		}
+		return map[string]interface{}{path[0]: copied}, true
+	case []interface{}:
+		items := make([]interface{}, len(typed))
+		matched := false
+		for index, item := range typed {
+			copied, ok := copyModelOptionValueAtPath(item, path)
+			if ok {
+				items[index] = copied
+				matched = true
+			} else {
+				items[index] = map[string]interface{}{}
+			}
+		}
+		if !matched {
+			return nil, false
+		}
+		return items, true
+	default:
+		return nil, false
+	}
+}
+
+func mergeModelOptionPathValue(dst map[string]interface{}, value interface{}) {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return
+	}
+	mergeModelOptionPathMap(dst, payload)
+}
+
+func mergeModelOptionPathMap(dst map[string]interface{}, src map[string]interface{}) {
+	for key, value := range src {
+		if existingMap, ok := dst[key].(map[string]interface{}); ok {
+			if incomingMap, ok := value.(map[string]interface{}); ok {
+				mergeModelOptionPathMap(existingMap, incomingMap)
+				continue
+			}
+		}
+		if existingItems, ok := dst[key].([]interface{}); ok {
+			if incomingItems, ok := value.([]interface{}); ok {
+				dst[key] = mergeModelOptionPathArray(existingItems, incomingItems)
+				continue
+			}
+		}
+		dst[key] = cloneModelOptionValue(value)
+	}
+}
+
+func mergeModelOptionPathArray(existing []interface{}, incoming []interface{}) []interface{} {
+	result := make([]interface{}, len(existing))
+	for index, item := range existing {
+		result[index] = cloneModelOptionValue(item)
+	}
+	for index, item := range incoming {
+		if index >= len(result) {
+			result = append(result, cloneModelOptionValue(item))
+			continue
+		}
+		existingMap, existingOK := result[index].(map[string]interface{})
+		incomingMap, incomingOK := item.(map[string]interface{})
+		if existingOK && incomingOK {
+			mergeModelOptionPathMap(existingMap, incomingMap)
+			continue
+		}
+		result[index] = cloneModelOptionValue(item)
+	}
+	return result
 }
 
 func readModelOptionPath(src map[string]interface{}, path []string) (interface{}, bool) {
@@ -628,4 +788,66 @@ func cloneModelOptionValue(value interface{}) interface{} {
 	default:
 		return typed
 	}
+}
+
+// shouldApplyReasoningPassbackRequestOptions 判断本轮是否需要下发厂商私有的回传配套入参。
+//
+// 三个条件缺一不可：
+//   - 回传实际生效（路由能力 AND 用户设置），否则等于付费读历史推理却没有历史推理可读；
+//   - 该路由确有配套入参要求；
+//   - 本轮真实发送的历史里已存在非空推理。这些入参只影响「历史」思维链的处理方式，
+//     首轮或非思考模型下发它没有收益，且能规避自建后端把未知顶层字段判为非法入参。
+func shouldApplyReasoningPassbackRequestOptions(
+	passbackEnabled bool,
+	required map[string]interface{},
+	messages []llm.Message,
+) bool {
+	if !passbackEnabled || len(required) == 0 {
+		return false
+	}
+	return promptCarriesAssistantReasoning(messages)
+}
+
+// promptCarriesAssistantReasoning 判断本轮真实发送的历史里是否已有非空 assistant 推理内容。
+func promptCarriesAssistantReasoning(messages []llm.Message) bool {
+	for _, item := range messages {
+		if item.Role == "assistant" && strings.TrimSpace(item.ReasoningContent) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// withReasoningPassbackRequestOptions 补齐厂商要求的回传配套入参。
+//
+// 该入参属于协议正确性而非用户偏好，因此绕过管理员选项白名单——白名单收窄时不应让回传
+// 静默退化成「传了字段但模型不读」。但用户或管理员显式声明过的值一律不覆盖：除了已过滤
+// 结果，还需回看 rawOptions 与模型能力 defaultOptions，因为白名单模式会把未放行的键丢掉，
+// 只看 options 会把管理员刻意设的 false 覆盖成 true。
+func withReasoningPassbackRequestOptions(
+	options map[string]interface{},
+	required map[string]interface{},
+	rawOptions map[string]interface{},
+	capabilitiesJSON string,
+) map[string]interface{} {
+	if len(required) == 0 {
+		return options
+	}
+	defaults := modelCapabilityDefaultOptions(capabilitiesJSON)
+	for key, value := range required {
+		if _, ok := options[key]; ok {
+			continue
+		}
+		if _, ok := rawOptions[key]; ok {
+			continue
+		}
+		if _, ok := defaults[key]; ok {
+			continue
+		}
+		if options == nil {
+			options = make(map[string]interface{}, len(required))
+		}
+		options[key] = value
+	}
+	return options
 }

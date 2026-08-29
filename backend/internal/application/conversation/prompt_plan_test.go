@@ -6,7 +6,7 @@ import (
 
 	model "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 )
 
 func TestBuildPromptPlanLayersStableDynamicAndToolGuidance(t *testing.T) {
@@ -25,6 +25,12 @@ func TestBuildPromptPlanLayersStableDynamicAndToolGuidance(t *testing.T) {
 			ExtractedText: "稳定文件全文",
 		}},
 		DynamicContext: userContextInput{
+			Snapshot: &snapshotContext{
+				Summary:  "第一轮之前的摘要",
+				FromTurn: 1,
+				ToTurn:   1,
+				Strategy: "turn_cap",
+			},
 			HistoricalArtifacts: []model.ContextArtifact{{
 				Kind:          model.ContextArtifactFileRAGChunk,
 				ID:            42,
@@ -82,6 +88,9 @@ func TestBuildPromptPlanLayersStableDynamicAndToolGuidance(t *testing.T) {
 	if !strings.HasPrefix(strings.TrimSpace(plan.Messages[2].Content), "# tool_use") {
 		t.Fatalf("expected tool guidance after leading system messages, got %#v", plan.Messages[2])
 	}
+	if strings.Contains(plan.Messages[3].Content, "第一轮之前的摘要") {
+		t.Fatalf("expected snapshot summary to stay out of retained transcript, got %q", plan.Messages[3].Content)
+	}
 	for index := 0; index <= 2; index++ {
 		if plan.Messages[index].CacheControl == nil || plan.Messages[index].CacheControl.Type != "ephemeral" {
 			t.Fatalf("expected leading system message %d to be cacheable, got %#v", index, plan.Messages[index].CacheControl)
@@ -91,7 +100,7 @@ func TestBuildPromptPlanLayersStableDynamicAndToolGuidance(t *testing.T) {
 		t.Fatalf("expected historical user content to stay raw, got %q", plan.Messages[3].Content)
 	}
 	last := plan.Messages[len(plan.Messages)-1]
-	for _, want := range []string{"<evs>", "旧轮命中的证据", "<rag>", "本轮 RAG 片段", "<q>第二轮问题</q>"} {
+	for _, want := range []string{"<sum", "第一轮之前的摘要", "<evs>", "旧轮命中的证据", "<rag>", "本轮 RAG 片段", "<q>第二轮问题</q>"} {
 		if !strings.Contains(last.Content, want) {
 			t.Fatalf("expected latest user to contain %q, got %q", want, last.Content)
 		}
@@ -174,6 +183,32 @@ func TestBuildPromptPlanKeepsRawMessagesWhenNoContext(t *testing.T) {
 
 func promptTraceHasBlock(trace PromptTrace, kind PromptBlockKind) bool {
 	return promptTraceBlock(trace, kind) != nil
+}
+
+func TestPromptPlanApplyMessagesReconcilesTranscriptTrace(t *testing.T) {
+	plan := buildPromptPlan(t.Context(), promptPlanInput{
+		BaseMessages: []llm.Message{
+			{Role: "system", Content: "policy"},
+			{Role: "user", Content: "old question"},
+			{Role: "assistant", Content: "old answer"},
+			{Role: "user", Content: "current question"},
+		},
+		Config: config.Config{},
+	})
+	trimmed := []llm.Message{
+		{Role: "system", Content: "policy"},
+		{Role: "user", Content: "current question"},
+	}
+
+	plan.applyMessages(trimmed)
+
+	if len(plan.Messages) != 2 || plan.Trace.TotalTokenEstimate != estimatePromptTokens(trimmed) {
+		t.Fatalf("expected plan to reflect final messages, got %#v", plan)
+	}
+	transcript := promptTraceBlock(plan.Trace, PromptBlockTranscript)
+	if transcript == nil || transcript.SourceCount != 1 || transcript.TokenEstimate != estimateTranscriptTokens(trimmed) {
+		t.Fatalf("expected reconciled transcript trace, got %#v", transcript)
+	}
 }
 
 func promptTraceBlock(trace PromptTrace, kind PromptBlockKind) *PromptBlockTrace {

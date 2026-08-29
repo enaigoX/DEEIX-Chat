@@ -11,6 +11,7 @@ import (
 	"time"
 
 	domainbilling "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/billing"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/dberror"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/models"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 	"gorm.io/gorm"
@@ -22,14 +23,10 @@ func translateError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if dberror.IsRecordNotFound(err) {
 		return repository.ErrNotFound
 	}
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return repository.ErrDuplicate
-	}
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint") {
+	if dberror.IsUniqueConstraint(err) {
 		return repository.ErrDuplicate
 	}
 	return err
@@ -70,6 +67,13 @@ func (r *Repo) usageMonthKeyExpression() string {
 	return "TO_CHAR(date_trunc('month', usage_date), 'YYYY-MM-DD')"
 }
 
+func (r *Repo) usageWeekKeyExpression() string {
+	if r.sqliteDialect() {
+		return "date(usage_date, '-' || ((CAST(strftime('%w', usage_date) AS INTEGER) + 6) % 7) || ' days')"
+	}
+	return "TO_CHAR(date_trunc('week', usage_date), 'YYYY-MM-DD')"
+}
+
 // ListActivePlans 查询启用套餐。
 func (r *Repo) ListActivePlans(ctx context.Context) ([]domainbilling.Plan, error) {
 	items := make([]model.BillingPlan, 0)
@@ -81,19 +85,7 @@ func (r *Repo) ListActivePlans(ctx context.Context) ([]domainbilling.Plan, error
 	}
 	results := make([]domainbilling.Plan, 0, len(items))
 	for _, item := range items {
-		results = append(results, domainbilling.Plan{
-			ID:                  item.ID,
-			Code:                item.Code,
-			Name:                item.Name,
-			Description:         item.Description,
-			FeatureJSON:         item.FeatureJSON,
-			PeriodCreditNanousd: item.PeriodCreditNanousd,
-			DiscountPercent:     item.DiscountPercent,
-			SortOrder:           item.SortOrder,
-			IsActive:            item.IsActive,
-			CreatedAt:           item.CreatedAt,
-			UpdatedAt:           item.UpdatedAt,
-		})
+		results = append(results, toPlanDomain(item))
 	}
 	return results, nil
 }
@@ -156,19 +148,8 @@ func (r *Repo) GetPlanByID(ctx context.Context, planID uint) (*domainbilling.Pla
 	if err := r.db.WithContext(ctx).Where("id = ?", planID).First(&item).Error; err != nil {
 		return nil, translateError(err)
 	}
-	return &domainbilling.Plan{
-		ID:                  item.ID,
-		Code:                item.Code,
-		Name:                item.Name,
-		Description:         item.Description,
-		FeatureJSON:         item.FeatureJSON,
-		PeriodCreditNanousd: item.PeriodCreditNanousd,
-		DiscountPercent:     item.DiscountPercent,
-		SortOrder:           item.SortOrder,
-		IsActive:            item.IsActive,
-		CreatedAt:           item.CreatedAt,
-		UpdatedAt:           item.UpdatedAt,
-	}, nil
+	result := toPlanDomain(item)
+	return &result, nil
 }
 
 // ListPlansByIDs 查询一批套餐。
@@ -184,19 +165,7 @@ func (r *Repo) ListPlansByIDs(ctx context.Context, planIDs []uint) ([]domainbill
 	}
 	results := make([]domainbilling.Plan, 0, len(items))
 	for _, item := range items {
-		results = append(results, domainbilling.Plan{
-			ID:                  item.ID,
-			Code:                item.Code,
-			Name:                item.Name,
-			Description:         item.Description,
-			FeatureJSON:         item.FeatureJSON,
-			PeriodCreditNanousd: item.PeriodCreditNanousd,
-			DiscountPercent:     item.DiscountPercent,
-			SortOrder:           item.SortOrder,
-			IsActive:            item.IsActive,
-			CreatedAt:           item.CreatedAt,
-			UpdatedAt:           item.UpdatedAt,
-		})
+		results = append(results, toPlanDomain(item))
 	}
 	return results, nil
 }
@@ -209,19 +178,8 @@ func (r *Repo) GetActivePlanByCode(ctx context.Context, code string) (*domainbil
 		First(&item).Error; err != nil {
 		return nil, translateError(err)
 	}
-	return &domainbilling.Plan{
-		ID:                  item.ID,
-		Code:                item.Code,
-		Name:                item.Name,
-		Description:         item.Description,
-		FeatureJSON:         item.FeatureJSON,
-		PeriodCreditNanousd: item.PeriodCreditNanousd,
-		DiscountPercent:     item.DiscountPercent,
-		SortOrder:           item.SortOrder,
-		IsActive:            item.IsActive,
-		CreatedAt:           item.CreatedAt,
-		UpdatedAt:           item.UpdatedAt,
-	}, nil
+	result := toPlanDomain(item)
+	return &result, nil
 }
 
 // UpdatePlanWithDefaultPrice 更新套餐与默认价格。
@@ -236,6 +194,7 @@ func (r *Repo) UpdatePlanWithDefaultPrice(ctx context.Context, plan *domainbilli
 			"period_credit_nanousd": clampNonNegative(plan.PeriodCreditNanousd),
 			"discount_percent":      clampPercent(plan.DiscountPercent),
 			"is_active":             true,
+			"permission_group_id":   plan.PermissionGroupID,
 		}
 		if err := tx.Model(&model.BillingPlan{}).
 			Where("id = ?", plan.ID).
@@ -277,6 +236,18 @@ func (r *Repo) UpdatePlanWithDefaultPrice(ctx context.Context, plan *domainbilli
 		}
 		return translateError(tx.Model(&record).Updates(updates).Error)
 	})
+}
+
+// CountPlansWithPermissionGroup 统计绑定指定权限组的套餐数量。
+func (r *Repo) CountPlansWithPermissionGroup(ctx context.Context, groupID uint) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&model.BillingPlan{}).
+		Where("permission_group_id = ?", groupID).
+		Count(&count).Error; err != nil {
+		return 0, translateError(err)
+	}
+	return count, nil
 }
 
 // ListCurrentSubscriptionsByUserIDs 查询一批用户当前有效的活跃订阅。
@@ -547,15 +518,7 @@ func (r *Repo) AddUsage(ctx context.Context, usage *domainbilling.UsageLedger) e
 	return r.db.WithContext(ctx).Create(&record).Error
 }
 
-// AddUsageAndDebitBalance 写入用量并按实际金额扣减余额。
-func (r *Repo) AddUsageAndDebitBalance(ctx context.Context, usage *domainbilling.UsageLedger) error {
-	if usage == nil {
-		return nil
-	}
-	return r.AddUsageAndSettleBalance(ctx, usage, nil)
-}
-
-// AddUsageAndSettleBalance 写入用量，并结算预扣差额。
+// AddUsageAndSettleBalance 写入真实用量，并消费对应的预算预留。
 func (r *Repo) AddUsageAndSettleBalance(ctx context.Context, usage *domainbilling.UsageLedger, reservation *domainbilling.UsageBalanceReservation) error {
 	if usage == nil {
 		return nil
@@ -566,183 +529,184 @@ func (r *Repo) AddUsageAndSettleBalance(ctx context.Context, usage *domainbillin
 		if usage.IsFreeModel || chargeNanousd <= 0 {
 			chargeNanousd = 0
 		}
-		reservedNanousd := int64(0)
-		if reservation != nil {
-			reservedNanousd = reservation.AmountNanousd
-			if reservedNanousd < 0 {
-				return repository.ErrInvalidInput
-			}
+		account, err := getOrCreateBillingAccountForUpdate(tx, usage.UserID)
+		if err != nil {
+			return err
 		}
-		deltaNanousd := chargeNanousd - reservedNanousd
-		needsBalanceChange := deltaNanousd != 0
-
-		var account *model.BillingAccount
-		if needsBalanceChange {
-			var err error
-			account, err = getOrCreateBillingAccountForUpdate(tx, usage.UserID)
-			if err != nil {
-				return err
-			}
-			if deltaNanousd > 0 && account.BalanceNanousd < deltaNanousd {
-				return repository.ErrInsufficientBalance
-			}
+		reservationRow, alreadySettled, err := getUsageReservationForSettlement(tx, usage.UserID, reservation)
+		if err != nil {
+			return err
+		}
+		if reservationRow != nil && reservationRow.Mode != "usage" {
+			return repository.ErrConflict
+		}
+		if alreadySettled {
+			return restoreSettledUsageLedger(tx, reservationRow.UsageLedgerID, usage)
 		}
 
+		nextBalance := account.BalanceNanousd - chargeNanousd
+		record.BalanceAfterNanousd = &nextBalance
 		if err := tx.Create(&record).Error; err != nil {
 			return translateError(err)
 		}
-		if !needsBalanceChange {
-			return nil
+		if chargeNanousd > 0 {
+			if err := tx.Model(account).Updates(map[string]interface{}{
+				"balance_nanousd": gorm.Expr("balance_nanousd - ?", chargeNanousd),
+				"currency":        "USD",
+				"status":          "active",
+			}).Error; err != nil {
+				return translateError(err)
+			}
+			transaction := model.BalanceTransaction{
+				AccountID:           account.ID,
+				UserID:              usage.UserID,
+				Type:                domainbilling.BalanceTransactionTypeUsage,
+				AmountNanousd:       -chargeNanousd,
+				BalanceAfterNanousd: nextBalance,
+				RefType:             "usage_ledger",
+				RefID:               record.ID,
+				RefNo:               reservationRefNo(reservation),
+				Description:         "按量模型用量扣费",
+			}
+			if err := tx.Create(&transaction).Error; err != nil {
+				return translateError(err)
+			}
 		}
-
-		nextBalance := account.BalanceNanousd - deltaNanousd
-		if err := tx.Model(account).Updates(map[string]interface{}{
-			"balance_nanousd": nextBalance,
-			"currency":        "USD",
-			"status":          "active",
-		}).Error; err != nil {
-			return translateError(err)
-		}
-		transactionType := domainbilling.BalanceTransactionTypeUsage
-		description := "按量模型用量扣费"
-		if deltaNanousd < 0 {
-			transactionType = domainbilling.BalanceTransactionTypeUsageRefund
-			description = "按量模型预扣差额退回"
-		}
-		transaction := model.BalanceTransaction{
-			AccountID:           account.ID,
-			UserID:              usage.UserID,
-			Type:                transactionType,
-			AmountNanousd:       -deltaNanousd,
-			BalanceAfterNanousd: nextBalance,
-			RefType:             "usage_ledger",
-			RefID:               record.ID,
-			RefNo:               reservationRefNo(reservation),
-			Description:         description,
-		}
-		return translateError(tx.Create(&transaction).Error)
+		return settleUsageReservation(tx, reservationRow, record.ID)
 	})
 }
 
-// ReserveUsageBalance 在真实调用前预扣固定金额，避免并发请求透支余额。
-func (r *Repo) ReserveUsageBalance(ctx context.Context, userID uint, amountNanousd int64, refNo string) (*domainbilling.UsageBalanceReservation, error) {
-	refNo = strings.TrimSpace(refNo)
-	if userID == 0 || amountNanousd < 0 || refNo == "" {
-		return nil, repository.ErrInvalidInput
+// AddPeriodUsageAndSettleOverage 写入周期用量，并将超出套餐额度的部分按量结算。
+func (r *Repo) AddPeriodUsageAndSettleOverage(
+	ctx context.Context,
+	usage *domainbilling.UsageLedger,
+	periodStart time.Time,
+	periodEnd time.Time,
+	periodCreditNanousd int64,
+	reservation *domainbilling.UsageBalanceReservation,
+) error {
+	if usage == nil {
+		return nil
 	}
-	if amountNanousd == 0 {
-		return nil, nil
+	if usage.UserID == 0 || periodStart.IsZero() || !periodEnd.After(periodStart) || periodCreditNanousd < 0 {
+		return repository.ErrInvalidInput
 	}
-	var result *domainbilling.UsageBalanceReservation
+	settledSnapshotJSON := ""
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		account, err := getOrCreateBillingAccountForUpdate(tx, userID)
+		// 余额账户行锁是周期额度结算的串行化锚点，确保同一用户并发请求按提交顺序重算已用额度。
+		account, err := getOrCreateBillingAccountForUpdate(tx, usage.UserID)
 		if err != nil {
 			return err
 		}
-		var existing model.BalanceTransaction
-		err = tx.Where("user_id = ? AND type = ? AND ref_no = ?", userID, domainbilling.BalanceTransactionTypeUsageReserve, refNo).
-			First(&existing).Error
-		if err == nil {
-			result = &domainbilling.UsageBalanceReservation{
-				UserID:        userID,
-				AmountNanousd: -existing.AmountNanousd,
-				RefNo:         refNo,
+		reservationRow, alreadySettled, err := getUsageReservationForSettlement(tx, usage.UserID, reservation)
+		if err != nil {
+			return err
+		}
+		if reservationRow != nil && !matchesPeriodReservation(reservationRow, periodStart, periodEnd, periodCreditNanousd) {
+			return repository.ErrConflict
+		}
+		if alreadySettled {
+			if err = restoreSettledUsageLedger(tx, reservationRow.UsageLedgerID, usage); err != nil {
+				return err
 			}
+			settledSnapshotJSON = usage.PricingSnapshotJSON
 			return nil
 		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+
+		var usedBeforeNanousd int64
+		if err = tx.Model(&model.UsageLedger{}).
+			Select("COALESCE(SUM(billed_nanousd), 0)").
+			Where("user_id = ? AND is_free_model = ? AND billing_at >= ? AND billing_at < ?", usage.UserID, false, periodStart, periodEnd).
+			Scan(&usedBeforeNanousd).Error; err != nil {
 			return translateError(err)
 		}
-		if account.BalanceNanousd < amountNanousd {
-			return repository.ErrInsufficientBalance
+
+		chargeNanousd := usage.BilledNanousd
+		if usage.IsFreeModel || chargeNanousd <= 0 {
+			chargeNanousd = 0
 		}
-		nextBalance := account.BalanceNanousd - amountNanousd
-		if err = tx.Model(account).Updates(map[string]interface{}{
-			"balance_nanousd": nextBalance,
-			"currency":        "USD",
-			"status":          "active",
-		}).Error; err != nil {
+		excludeReservationID := uint(0)
+		if reservationRow != nil {
+			excludeReservationID = reservationRow.ID
+		}
+		otherReservedCreditNanousd, err := sumActivePeriodCreditReservations(
+			tx,
+			usage.UserID,
+			periodStart,
+			periodEnd,
+			excludeReservationID,
+			time.Now(),
+		)
+		if err != nil {
+			return err
+		}
+		remainingNanousd := remainingNonNegativeBudget(periodCreditNanousd, usedBeforeNanousd, otherReservedCreditNanousd)
+		coveredNanousd := minInt64(chargeNanousd, remainingNanousd)
+		overageNanousd := chargeNanousd - coveredNanousd
+		reservedBalanceNanousd := int64(0)
+		reservedCreditNanousd := int64(0)
+		if reservationRow != nil {
+			reservedBalanceNanousd = reservationRow.BalanceNanousd
+			reservedCreditNanousd = reservationRow.PeriodCreditNanousd
+		}
+		reservationDeltaNanousd := overageNanousd - reservedBalanceNanousd
+		nextBalance := account.BalanceNanousd - overageNanousd
+
+		ledger := *usage
+		ledger.BalanceAfterNanousd = &nextBalance
+		ledger.PricingSnapshotJSON = withPeriodSettlementSnapshot(ledger.PricingSnapshotJSON, map[string]interface{}{
+			"period_credit_nanousd":                   periodCreditNanousd,
+			"period_used_before_nanousd":              usedBeforeNanousd,
+			"period_used_after_nanousd":               addNonNegativeInt64(usedBeforeNanousd, chargeNanousd),
+			"period_credit_covered_nanousd":           coveredNanousd,
+			"period_credit_reserved_nanousd":          reservedCreditNanousd,
+			"period_overage_billed_nanousd":           overageNanousd,
+			"period_balance_charged_nanousd":          overageNanousd,
+			"period_balance_reserved_nanousd":         reservedBalanceNanousd,
+			"period_balance_settlement_delta_nanousd": reservationDeltaNanousd,
+		})
+		record := toModelUsageLedger(&ledger)
+		if err := tx.Create(&record).Error; err != nil {
 			return translateError(err)
 		}
-		transaction := model.BalanceTransaction{
-			AccountID:           account.ID,
-			UserID:              userID,
-			Type:                domainbilling.BalanceTransactionTypeUsageReserve,
-			AmountNanousd:       -amountNanousd,
-			BalanceAfterNanousd: nextBalance,
-			RefType:             "usage_reservation",
-			RefNo:               refNo,
-			Description:         "按量模型调用预扣",
+		if overageNanousd > 0 {
+			// 超出周期额度的真实用量必须完整入账；预留仅限制并发风险，不改变最终扣费金额。
+			// 扣减使用表达式更新而非内存值写回，避免任何绕开行锁的并发写导致覆盖。
+			if err := tx.Model(account).Updates(map[string]interface{}{
+				"balance_nanousd": gorm.Expr("balance_nanousd - ?", overageNanousd),
+				"currency":        "USD",
+				"status":          "active",
+			}).Error; err != nil {
+				return translateError(err)
+			}
+			transaction := model.BalanceTransaction{
+				AccountID:           account.ID,
+				UserID:              usage.UserID,
+				Type:                domainbilling.BalanceTransactionTypeUsage,
+				AmountNanousd:       -overageNanousd,
+				BalanceAfterNanousd: nextBalance,
+				RefType:             "usage_ledger",
+				RefID:               record.ID,
+				RefNo:               reservationRefNo(reservation),
+				Description:         "周期套餐超额按量扣费",
+			}
+			if err := tx.Create(&transaction).Error; err != nil {
+				return translateError(err)
+			}
 		}
-		if err = tx.Create(&transaction).Error; err != nil {
-			return translateError(err)
+		if err := settleUsageReservation(tx, reservationRow, record.ID); err != nil {
+			return err
 		}
-		result = &domainbilling.UsageBalanceReservation{
-			UserID:        userID,
-			AmountNanousd: amountNanousd,
-			RefNo:         refNo,
-		}
+		settledSnapshotJSON = ledger.PricingSnapshotJSON
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return result, nil
-}
-
-// ReleaseUsageBalanceReservation 在调用失败时退回预扣金额，重复调用保持幂等。
-func (r *Repo) ReleaseUsageBalanceReservation(ctx context.Context, userID uint, refNo string, description string) error {
-	refNo = strings.TrimSpace(refNo)
-	if userID == 0 || refNo == "" {
-		return repository.ErrInvalidInput
+	if settledSnapshotJSON != "" {
+		usage.PricingSnapshotJSON = settledSnapshotJSON
 	}
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		account, err := getOrCreateBillingAccountForUpdate(tx, userID)
-		if err != nil {
-			return err
-		}
-		var reserve model.BalanceTransaction
-		if err = tx.Where("user_id = ? AND type = ? AND ref_no = ?", userID, domainbilling.BalanceTransactionTypeUsageReserve, refNo).
-			First(&reserve).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil
-			}
-			return translateError(err)
-		}
-		var existingRefund model.BalanceTransaction
-		err = tx.Where("user_id = ? AND type = ? AND ref_no = ?", userID, domainbilling.BalanceTransactionTypeUsageRefund, refNo).
-			First(&existingRefund).Error
-		if err == nil {
-			return nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return translateError(err)
-		}
-		refundNanousd := -reserve.AmountNanousd
-		if refundNanousd <= 0 {
-			return nil
-		}
-		nextBalance := account.BalanceNanousd + refundNanousd
-		if err = tx.Model(account).Updates(map[string]interface{}{
-			"balance_nanousd": nextBalance,
-			"currency":        "USD",
-			"status":          "active",
-		}).Error; err != nil {
-			return translateError(err)
-		}
-		transaction := model.BalanceTransaction{
-			AccountID:           account.ID,
-			UserID:              userID,
-			Type:                domainbilling.BalanceTransactionTypeUsageRefund,
-			AmountNanousd:       refundNanousd,
-			BalanceAfterNanousd: nextBalance,
-			RefType:             "usage_reservation",
-			RefID:               reserve.ID,
-			RefNo:               refNo,
-			Description:         firstNonEmpty(strings.TrimSpace(description), "按量模型调用失败退回预扣"),
-		}
-		return translateError(tx.Create(&transaction).Error)
-	})
+	return nil
 }
 
 func reservationRefNo(reservation *domainbilling.UsageBalanceReservation) string {
@@ -750,6 +714,35 @@ func reservationRefNo(reservation *domainbilling.UsageBalanceReservation) string
 		return ""
 	}
 	return strings.TrimSpace(reservation.RefNo)
+}
+
+// restoreSettledUsageLedger 在幂等重试时返回首次结算的权威账本内容。
+func restoreSettledUsageLedger(tx *gorm.DB, usageLedgerID uint, usage *domainbilling.UsageLedger) error {
+	if usageLedgerID == 0 || usage == nil {
+		return repository.ErrConflict
+	}
+	var existing model.UsageLedger
+	if err := tx.First(&existing, usageLedgerID).Error; err != nil {
+		return translateError(err)
+	}
+	restored := toDomainUsageLedger(existing)
+	*usage = restored
+	return nil
+}
+
+func withPeriodSettlementSnapshot(raw string, values map[string]interface{}) string {
+	snapshot := map[string]interface{}{}
+	if trimmed := strings.TrimSpace(raw); trimmed != "" {
+		_ = json.Unmarshal([]byte(trimmed), &snapshot)
+	}
+	for key, value := range values {
+		snapshot[key] = value
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		return raw
+	}
+	return string(encoded)
 }
 
 // GetOrCreateBillingAccount 查询或创建用户按量余额账户。
@@ -926,10 +919,21 @@ func (r *Repo) ListRedemptionCodes(ctx context.Context, filter repository.Redemp
 	if limit > 200 {
 		limit = 200
 	}
-	items := make([]model.RedemptionCode, 0, limit)
+	items := make([]model.RedemptionCode, 0)
 	var total int64
 	query := r.db.WithContext(ctx).Model(&model.RedemptionCode{})
-	if mode := strings.TrimSpace(filter.Mode); mode != "" {
+	if len(filter.Modes) > 0 {
+		modes := make([]string, 0, len(filter.Modes))
+		for _, mode := range filter.Modes {
+			if normalized := normalizeRedemptionMode(mode); normalized != "" {
+				modes = append(modes, normalized)
+			}
+		}
+		if len(modes) == 0 {
+			return []domainbilling.RedemptionCode{}, 0, nil
+		}
+		query = query.Where("mode IN ?", modes)
+	} else if mode := strings.TrimSpace(filter.Mode); mode != "" {
 		query = query.Where("mode = ?", mode)
 	}
 	if status := strings.TrimSpace(filter.Status); status != "" {
@@ -964,6 +968,112 @@ func (r *Repo) ListRedemptionCodes(ctx context.Context, filter repository.Redemp
 	results := make([]domainbilling.RedemptionCode, 0, len(items))
 	for _, item := range items {
 		results = append(results, toDomainRedemptionCode(item))
+	}
+	return results, total, nil
+}
+
+// redemptionRecordRow 承载兑换记录与联表出的兑换码、套餐、余额流水上下文。
+type redemptionRecordRow struct {
+	ID                   uint
+	CodeID               uint
+	UserID               uint
+	Mode                 string
+	RewardType           string
+	CreditNanousd        int64
+	PlanID               uint
+	SubscriptionID       uint
+	BalanceTransactionID uint
+	RefNo                string
+	SnapshotJSON         string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	CodeHint             string
+	CodeDescription      string
+	CodeStatus           string
+	PlanName             string
+	BalanceAmountNanousd *int64
+	BalanceAfterNanousd  *int64
+}
+
+// ListRedemptions 分页查询兑换记录，联表补齐兑换码、套餐与余额流水上下文。
+// 兑换码为状态软删，已删除码的历史兑换仍可查询。
+func (r *Repo) ListRedemptions(ctx context.Context, filter repository.RedemptionListFilter, offset int, limit int) ([]repository.RedemptionRecord, int64, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	query := r.db.WithContext(ctx).Model(&model.Redemption{}).
+		Joins("LEFT JOIN billing_redemption_codes AS rc ON rc.id = billing_redemptions.code_id").
+		Joins("LEFT JOIN billing_plans AS rp ON rp.id = billing_redemptions.plan_id AND billing_redemptions.plan_id > 0").
+		Joins("LEFT JOIN billing_balance_transactions AS rt ON rt.id = billing_redemptions.balance_transaction_id AND billing_redemptions.balance_transaction_id > 0")
+	if filter.CodeID > 0 {
+		query = query.Where("billing_redemptions.code_id = ?", filter.CodeID)
+	}
+	if filter.UserID > 0 {
+		query = query.Where("billing_redemptions.user_id = ?", filter.UserID)
+	}
+	if rewardType := strings.TrimSpace(filter.RewardType); rewardType != "" {
+		query = query.Where("billing_redemptions.reward_type = ?", rewardType)
+	}
+	if keyword := strings.TrimSpace(filter.Query); keyword != "" {
+		like := "%" + strings.ToLower(keyword) + "%"
+		query = query.Where(
+			"LOWER(billing_redemptions.ref_no) LIKE ? OR LOWER(rc.code_hint) LIKE ? OR LOWER(rc.description) LIKE ?",
+			like,
+			like,
+			like,
+		)
+	}
+	if filter.CreatedFrom != nil {
+		query = query.Where("billing_redemptions.created_at >= ?", *filter.CreatedFrom)
+	}
+	if filter.CreatedTo != nil {
+		query = query.Where("billing_redemptions.created_at <= ?", *filter.CreatedTo)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, translateError(err)
+	}
+	order := "billing_redemptions.created_at DESC, billing_redemptions.id DESC"
+	if strings.TrimSpace(filter.Sort) == "created_asc" {
+		order = "billing_redemptions.created_at ASC, billing_redemptions.id ASC"
+	}
+	rows := make([]redemptionRecordRow, 0)
+	if err := query.
+		Select("billing_redemptions.*, rc.code_hint AS code_hint, rc.description AS code_description, rc.status AS code_status, rp.name AS plan_name, rt.amount_nanousd AS balance_amount_nanousd, rt.balance_after_nanousd AS balance_after_nanousd").
+		Order(order).
+		Offset(offset).
+		Limit(limit).
+		Scan(&rows).Error; err != nil {
+		return nil, 0, translateError(err)
+	}
+	results := make([]repository.RedemptionRecord, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, repository.RedemptionRecord{
+			Redemption: domainbilling.Redemption{
+				ID:                   row.ID,
+				CodeID:               row.CodeID,
+				UserID:               row.UserID,
+				Mode:                 row.Mode,
+				RewardType:           row.RewardType,
+				CreditNanousd:        row.CreditNanousd,
+				PlanID:               row.PlanID,
+				SubscriptionID:       row.SubscriptionID,
+				BalanceTransactionID: row.BalanceTransactionID,
+				RefNo:                row.RefNo,
+				SnapshotJSON:         row.SnapshotJSON,
+				CreatedAt:            row.CreatedAt,
+				UpdatedAt:            row.UpdatedAt,
+			},
+			CodeHint:             row.CodeHint,
+			CodeDescription:      row.CodeDescription,
+			CodeStatus:           row.CodeStatus,
+			PlanName:             row.PlanName,
+			BalanceAmountNanousd: row.BalanceAmountNanousd,
+			BalanceAfterNanousd:  row.BalanceAfterNanousd,
+		})
 	}
 	return results, total, nil
 }
@@ -1202,7 +1312,7 @@ func (r *Repo) GetBillingMode(ctx context.Context) (string, error) {
 	}
 }
 
-// GetBillingPrepaidAmountNanousd 查询按量调用前要求保留的最低预付余额。
+// GetBillingPrepaidAmountNanousd 查询兼容旧设置键对应的单次风险预算。
 func (r *Repo) GetBillingPrepaidAmountNanousd(ctx context.Context) (int64, error) {
 	var item model.SystemSetting
 	if err := r.db.WithContext(ctx).
@@ -1342,7 +1452,7 @@ func (r *Repo) UpsertModelPricing(ctx context.Context, item *domainbilling.Model
 
 // ListUsageByUser 分页查询账本。
 func (r *Repo) ListUsageByUser(ctx context.Context, userID uint, filter repository.UsageListFilter, offset int, limit int) ([]domainbilling.UsageLedger, int64, error) {
-	items := make([]model.UsageLedger, 0)
+	items := make([]usageLedgerListRow, 0)
 	var total int64
 	query := r.db.WithContext(ctx).Model(&model.UsageLedger{}).Where("user_id = ?", userID)
 	if search := strings.TrimSpace(filter.Query); search != "" {
@@ -1370,7 +1480,7 @@ func (r *Repo) ListUsageByUser(ctx context.Context, userID uint, filter reposito
 	case "latency_desc":
 		order = "latency_ms DESC, id DESC"
 	}
-	if err := query.
+	if err := selectUsageLedgerRows(query).
 		Order(order).
 		Offset(offset).
 		Limit(limit).
@@ -1379,14 +1489,14 @@ func (r *Repo) ListUsageByUser(ctx context.Context, userID uint, filter reposito
 	}
 	results := make([]domainbilling.UsageLedger, 0, len(items))
 	for _, item := range items {
-		results = append(results, toDomainUsageLedger(item))
+		results = append(results, toDomainUsageLedgerRow(item))
 	}
 	return results, total, nil
 }
 
 // ListUsageLogs 分页查询管理员调用日志。
 func (r *Repo) ListUsageLogs(ctx context.Context, filter repository.UsageLogListFilter, offset int, limit int) ([]domainbilling.UsageLedger, int64, error) {
-	items := make([]model.UsageLedger, 0)
+	items := make([]usageLedgerListRow, 0)
 	var total int64
 	query := r.db.WithContext(ctx).Model(&model.UsageLedger{})
 	if filter.UserID > 0 {
@@ -1434,7 +1544,7 @@ func (r *Repo) ListUsageLogs(ctx context.Context, filter repository.UsageLogList
 	case "latency_desc":
 		order = "latency_ms DESC, id DESC"
 	}
-	if err := query.
+	if err := selectUsageLedgerRows(query).
 		Order(order).
 		Offset(offset).
 		Limit(limit).
@@ -1443,9 +1553,325 @@ func (r *Repo) ListUsageLogs(ctx context.Context, filter repository.UsageLogList
 	}
 	results := make([]domainbilling.UsageLedger, 0, len(items))
 	for _, item := range items {
-		results = append(results, toDomainUsageLedger(item))
+		results = append(results, toDomainUsageLedgerRow(item))
 	}
 	return results, total, nil
+}
+
+type usageLedgerListRow struct {
+	model.UsageLedger
+	ResolvedBalanceAfterNanousd *int64 `gorm:"column:resolved_balance_after_nanousd"`
+}
+
+func selectUsageLedgerRows(query *gorm.DB) *gorm.DB {
+	return query.Select(
+		`billing_usage_ledgers.*,
+		COALESCE(
+			billing_usage_ledgers.balance_after_nanousd,
+			(
+				SELECT balance_after_nanousd
+				FROM billing_balance_transactions
+				WHERE ref_type = ?
+					AND type = ?
+					AND ref_id = billing_usage_ledgers.id
+				ORDER BY id DESC
+				LIMIT 1
+			)
+		) AS resolved_balance_after_nanousd`,
+		"usage_ledger",
+		domainbilling.BalanceTransactionTypeUsage,
+	)
+}
+
+func toDomainUsageLedgerRow(item usageLedgerListRow) domainbilling.UsageLedger {
+	item.UsageLedger.BalanceAfterNanousd = item.ResolvedBalanceAfterNanousd
+	return toDomainUsageLedger(item.UsageLedger)
+}
+
+type usageStatisticsMetricRow struct {
+	RecordCount      int64 `gorm:"column:record_count"`
+	InputTokens      int64 `gorm:"column:input_tokens"`
+	CacheReadTokens  int64 `gorm:"column:cache_read_tokens"`
+	CacheWriteTokens int64 `gorm:"column:cache_write_tokens"`
+	OutputTokens     int64 `gorm:"column:output_tokens"`
+	ReasoningTokens  int64 `gorm:"column:reasoning_tokens"`
+	TotalTokens      int64 `gorm:"column:total_tokens"`
+	CallCount        int64 `gorm:"column:call_count"`
+	AvgLatencyMS     int64 `gorm:"column:avg_latency_ms"`
+	BilledNanousd    int64 `gorm:"column:billed_nanousd"`
+}
+
+type usageStatisticsTrendRow struct {
+	PeriodKey string                   `gorm:"column:period_key"`
+	Metrics   usageStatisticsMetricRow `gorm:"embedded"`
+}
+
+type usageStatisticsModelRow struct {
+	PlatformModelName string                   `gorm:"column:platform_model_name"`
+	Metrics           usageStatisticsMetricRow `gorm:"embedded"`
+}
+
+type usageStatisticsModelTrendRow struct {
+	PeriodKey         string                   `gorm:"column:period_key"`
+	PlatformModelName string                   `gorm:"column:platform_model_name"`
+	Metrics           usageStatisticsMetricRow `gorm:"embedded"`
+}
+
+type usageStatisticsUserRow struct {
+	UserID  uint                     `gorm:"column:user_id"`
+	Metrics usageStatisticsMetricRow `gorm:"embedded"`
+}
+
+type usageStatisticsUserTrendRow struct {
+	PeriodKey string                   `gorm:"column:period_key"`
+	UserID    uint                     `gorm:"column:user_id"`
+	Metrics   usageStatisticsMetricRow `gorm:"embedded"`
+}
+
+const usageStatisticsMetricsSelect = `
+	COUNT(*) AS record_count,
+	COALESCE(SUM(input_tokens), 0) AS input_tokens,
+	COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+	COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
+	COALESCE(SUM(output_tokens), 0) AS output_tokens,
+	COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
+	COALESCE(SUM(input_tokens + cache_read_tokens + cache_write_tokens + output_tokens + reasoning_tokens), 0) AS total_tokens,
+	COALESCE(SUM(call_count), 0) AS call_count,
+	COALESCE(ROUND(AVG(NULLIF(latency_ms, 0))), 0) AS avg_latency_ms,
+	COALESCE(SUM(billed_nanousd), 0) AS billed_nanousd`
+
+func usageStatisticsMetricsFromRow(row usageStatisticsMetricRow) domainbilling.UsageStatisticsMetrics {
+	return domainbilling.UsageStatisticsMetrics{
+		RecordCount:      row.RecordCount,
+		InputTokens:      row.InputTokens,
+		CacheReadTokens:  row.CacheReadTokens,
+		CacheWriteTokens: row.CacheWriteTokens,
+		OutputTokens:     row.OutputTokens,
+		ReasoningTokens:  row.ReasoningTokens,
+		CallCount:        row.CallCount,
+		AvgLatencyMS:     row.AvgLatencyMS,
+		BilledNanousd:    row.BilledNanousd,
+	}
+}
+
+func (r *Repo) usageStatisticsQuery(ctx context.Context, filter repository.UsageStatisticsFilter) *gorm.DB {
+	query := r.db.WithContext(ctx).
+		Model(&model.UsageLedger{}).
+		Where("usage_date >= ? AND usage_date < ?", filter.StartDate, filter.EndDateExclusive)
+	if filter.UserID > 0 {
+		query = query.Where("user_id = ?", filter.UserID)
+	}
+	if filter.PermissionGroupID > 0 {
+		membershipAt := filter.MembershipAt
+		if membershipAt.IsZero() {
+			membershipAt = time.Now()
+		}
+		query = query.Where(`
+			EXISTS (
+				SELECT 1
+				FROM permission_groups AS permission_group
+				WHERE permission_group.id = ?
+					AND (
+						permission_group.is_default = ?
+						OR EXISTS (
+							SELECT 1
+							FROM permission_group_user_access AS manual_access
+							WHERE manual_access.group_id = permission_group.id
+								AND manual_access.user_id = billing_usage_ledgers.user_id
+						)
+						OR EXISTS (
+							SELECT 1
+							FROM billing_subscriptions AS subscription
+							JOIN billing_plans AS plan ON plan.id = subscription.plan_id
+							WHERE plan.permission_group_id = permission_group.id
+								AND subscription.user_id = billing_usage_ledgers.user_id
+								AND plan.deleted_at IS NULL
+								AND subscription.deleted_at IS NULL
+								AND plan.is_active = ?
+								AND subscription.status = ?
+								AND subscription.current_period_start_at <= ?
+								AND (subscription.current_period_end_at IS NULL OR subscription.current_period_end_at > ?)
+						)
+					)
+			)
+		`, filter.PermissionGroupID, true, true, "active", membershipAt, membershipAt)
+	}
+	if platformModelName := strings.TrimSpace(filter.PlatformModelName); platformModelName != "" {
+		query = query.Where("platform_model_name = ?", platformModelName)
+	}
+	switch strings.TrimSpace(filter.BillingScope) {
+	case "free":
+		query = query.Where("is_free_model = ?", true)
+	case "billable":
+		query = query.Where("is_free_model = ?", false)
+	}
+	return query
+}
+
+func usageStatisticsRankOrder(rankBy string, finalTieBreaker string) string {
+	primary := "billed_nanousd DESC"
+	switch strings.TrimSpace(rankBy) {
+	case "tokens":
+		primary = "total_tokens DESC"
+	case "calls":
+		primary = "call_count DESC"
+	}
+	return primary + ", total_tokens DESC, billed_nanousd DESC, " + finalTieBreaker
+}
+
+// GetUsageStatistics 查询管理员仪表盘使用的全局用量聚合。
+func (r *Repo) GetUsageStatistics(ctx context.Context, filter repository.UsageStatisticsFilter) (domainbilling.UsageStatistics, error) {
+	result := domainbilling.UsageStatistics{
+		Granularity: filter.Granularity,
+		Trend:       []domainbilling.UsageStatisticsTrendPoint{},
+		TopModels:   []domainbilling.UsageStatisticsModelRank{},
+		TopUsers:    []domainbilling.UsageStatisticsUserRank{},
+	}
+	section := strings.TrimSpace(filter.Section)
+	includeOverview := section == "" || section == "all"
+	includeModels := includeOverview || section == "models"
+	includeUsers := includeOverview || section == "users"
+	periodExpression := r.usageDayKeyExpression()
+	if filter.Granularity == "week" {
+		periodExpression = r.usageWeekKeyExpression()
+	} else if filter.Granularity == "month" {
+		periodExpression = r.usageMonthKeyExpression()
+	}
+
+	if includeOverview {
+		var totals usageStatisticsMetricRow
+		if err := r.usageStatisticsQuery(ctx, filter).
+			Select(usageStatisticsMetricsSelect).
+			Scan(&totals).Error; err != nil {
+			return result, translateError(err)
+		}
+		result.Totals = usageStatisticsMetricsFromRow(totals)
+
+		trendRows := make([]usageStatisticsTrendRow, 0)
+		if err := r.usageStatisticsQuery(ctx, filter).
+			Select(periodExpression + " AS period_key," + usageStatisticsMetricsSelect).
+			Group(periodExpression).
+			Order("period_key ASC").
+			Scan(&trendRows).Error; err != nil {
+			return result, translateError(err)
+		}
+		for _, row := range trendRows {
+			periodStart, err := time.Parse("2006-01-02", row.PeriodKey)
+			if err != nil {
+				return result, err
+			}
+			result.Trend = append(result.Trend, domainbilling.UsageStatisticsTrendPoint{
+				PeriodStart: periodStart,
+				Metrics:     usageStatisticsMetricsFromRow(row.Metrics),
+			})
+		}
+	}
+
+	rankLimit := filter.RankLimit
+	if rankLimit <= 0 || rankLimit > 50 {
+		rankLimit = 10
+	}
+	if includeModels {
+		modelRows := make([]usageStatisticsModelRow, 0, rankLimit)
+		if err := r.usageStatisticsQuery(ctx, filter).
+			Select("platform_model_name," + usageStatisticsMetricsSelect).
+			Group("platform_model_name").
+			Order(usageStatisticsRankOrder(filter.ModelRankBy, "platform_model_name ASC")).
+			Limit(rankLimit).
+			Scan(&modelRows).Error; err != nil {
+			return result, translateError(err)
+		}
+		for _, row := range modelRows {
+			result.TopModels = append(result.TopModels, domainbilling.UsageStatisticsModelRank{
+				PlatformModelName: row.PlatformModelName,
+				Metrics:           usageStatisticsMetricsFromRow(row.Metrics),
+				Trend:             []domainbilling.UsageStatisticsTrendPoint{},
+			})
+		}
+		if len(result.TopModels) > 0 {
+			modelNames := make([]string, 0, len(result.TopModels))
+			modelIndexes := make(map[string]int, len(result.TopModels))
+			for index, item := range result.TopModels {
+				modelNames = append(modelNames, item.PlatformModelName)
+				modelIndexes[item.PlatformModelName] = index
+			}
+			modelTrendRows := make([]usageStatisticsModelTrendRow, 0)
+			if err := r.usageStatisticsQuery(ctx, filter).
+				Where("platform_model_name IN ?", modelNames).
+				Select(periodExpression + " AS period_key, platform_model_name," + usageStatisticsMetricsSelect).
+				Group(periodExpression + ", platform_model_name").
+				Order("period_key ASC, platform_model_name ASC").
+				Scan(&modelTrendRows).Error; err != nil {
+				return result, translateError(err)
+			}
+			for _, row := range modelTrendRows {
+				periodStart, err := time.Parse("2006-01-02", row.PeriodKey)
+				if err != nil {
+					return result, err
+				}
+				index, exists := modelIndexes[row.PlatformModelName]
+				if !exists {
+					continue
+				}
+				result.TopModels[index].Trend = append(result.TopModels[index].Trend, domainbilling.UsageStatisticsTrendPoint{
+					PeriodStart: periodStart,
+					Metrics:     usageStatisticsMetricsFromRow(row.Metrics),
+				})
+			}
+		}
+	}
+
+	if includeUsers {
+		userRows := make([]usageStatisticsUserRow, 0, rankLimit)
+		if err := r.usageStatisticsQuery(ctx, filter).
+			Select("user_id," + usageStatisticsMetricsSelect).
+			Group("user_id").
+			Order(usageStatisticsRankOrder(filter.UserRankBy, "user_id ASC")).
+			Limit(rankLimit).
+			Scan(&userRows).Error; err != nil {
+			return result, translateError(err)
+		}
+		for _, row := range userRows {
+			result.TopUsers = append(result.TopUsers, domainbilling.UsageStatisticsUserRank{
+				UserID:  row.UserID,
+				Metrics: usageStatisticsMetricsFromRow(row.Metrics),
+				Trend:   []domainbilling.UsageStatisticsTrendPoint{},
+			})
+		}
+		if len(result.TopUsers) > 0 {
+			userIDs := make([]uint, 0, len(result.TopUsers))
+			userIndexes := make(map[uint]int, len(result.TopUsers))
+			for index, item := range result.TopUsers {
+				userIDs = append(userIDs, item.UserID)
+				userIndexes[item.UserID] = index
+			}
+			userTrendRows := make([]usageStatisticsUserTrendRow, 0)
+			if err := r.usageStatisticsQuery(ctx, filter).
+				Where("user_id IN ?", userIDs).
+				Select(periodExpression + " AS period_key, user_id," + usageStatisticsMetricsSelect).
+				Group(periodExpression + ", user_id").
+				Order("period_key ASC, user_id ASC").
+				Scan(&userTrendRows).Error; err != nil {
+				return result, translateError(err)
+			}
+			for _, row := range userTrendRows {
+				periodStart, err := time.Parse("2006-01-02", row.PeriodKey)
+				if err != nil {
+					return result, err
+				}
+				index, exists := userIndexes[row.UserID]
+				if !exists {
+					continue
+				}
+				result.TopUsers[index].Trend = append(result.TopUsers[index].Trend, domainbilling.UsageStatisticsTrendPoint{
+					PeriodStart: periodStart,
+					Metrics:     usageStatisticsMetricsFromRow(row.Metrics),
+				})
+			}
+		}
+	}
+
+	return result, nil
 }
 
 // ListPaymentOrders 分页查询管理员支付订单记录。
@@ -1522,7 +1948,6 @@ func (r *Repo) ListMonthlyUsageByUser(ctx context.Context, userID uint, limit in
 	}
 	now := time.Now()
 	endMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, 1, 0)
-	startMonth := endMonth.AddDate(0, -limit, 0)
 
 	type monthlyUsageRow struct {
 		MonthKey         string `gorm:"column:month_key"`
@@ -1538,7 +1963,7 @@ func (r *Repo) ListMonthlyUsageByUser(ctx context.Context, userID uint, limit in
 		BilledNanousd    int64  `gorm:"column:billed_nanousd"`
 	}
 
-	rows := make([]monthlyUsageRow, 0, limit)
+	rows := make([]monthlyUsageRow, 0)
 	monthKeyExpression := r.usageMonthKeyExpression()
 	if err := r.db.WithContext(ctx).
 		Model(&model.UsageLedger{}).
@@ -1553,8 +1978,8 @@ func (r *Repo) ListMonthlyUsageByUser(ctx context.Context, userID uint, limit in
 			COALESCE(SUM(duration_seconds), 0) AS duration_seconds,
 			COALESCE(ROUND(AVG(NULLIF(latency_ms, 0))), 0) AS avg_latency_ms,
 			COALESCE(SUM(billed_nanousd), 0) AS billed_nanousd
-		`).
-		Where("user_id = ? AND usage_date >= ? AND usage_date < ?", userID, startMonth, endMonth).
+			`).
+		Where("user_id = ? AND usage_date < ?", userID, endMonth).
 		Group(monthKeyExpression).
 		Order("month_key DESC").
 		Limit(limit).
@@ -1708,7 +2133,7 @@ func (r *Repo) SumBillableNanousd(ctx context.Context, userID uint, startAt time
 	err := r.db.WithContext(ctx).
 		Model(&model.UsageLedger{}).
 		Select("COALESCE(SUM(billed_nanousd), 0)").
-		Where("user_id = ? AND is_free_model = ? AND created_at >= ? AND created_at < ?", userID, false, startAt, endAt).
+		Where("user_id = ? AND is_free_model = ? AND billing_at >= ? AND billing_at < ?", userID, false, startAt, endAt).
 		Scan(&total).Error
 	if err != nil {
 		return 0, translateError(err)
@@ -1774,6 +2199,7 @@ func toModelUsageLedger(usage *domainbilling.UsageLedger) model.UsageLedger {
 		RoutedBindingCode:   usage.RoutedBindingCode,
 		UpstreamModelName:   usage.UpstreamModelName,
 		IsFreeModel:         usage.IsFreeModel,
+		BillingAt:           usage.BillingAt,
 		UsageDate:           usage.UsageDate,
 		InputTokens:         usage.InputTokens,
 		CacheReadTokens:     usage.CacheReadTokens,
@@ -1789,6 +2215,7 @@ func toModelUsageLedger(usage *domainbilling.UsageLedger) model.UsageLedger {
 		ServiceTier:         usage.ServiceTier,
 		BilledCurrency:      usage.BilledCurrency,
 		BilledNanousd:       usage.BilledNanousd,
+		BalanceAfterNanousd: usage.BalanceAfterNanousd,
 		PricingSnapshotJSON: usage.PricingSnapshotJSON,
 	}
 }
@@ -1804,6 +2231,7 @@ func toDomainUsageLedger(item model.UsageLedger) domainbilling.UsageLedger {
 		RoutedBindingCode:   item.RoutedBindingCode,
 		UpstreamModelName:   item.UpstreamModelName,
 		IsFreeModel:         item.IsFreeModel,
+		BillingAt:           item.BillingAt,
 		UsageDate:           item.UsageDate,
 		InputTokens:         item.InputTokens,
 		CacheReadTokens:     item.CacheReadTokens,
@@ -1819,6 +2247,7 @@ func toDomainUsageLedger(item model.UsageLedger) domainbilling.UsageLedger {
 		ServiceTier:         item.ServiceTier,
 		BilledCurrency:      item.BilledCurrency,
 		BilledNanousd:       item.BilledNanousd,
+		BalanceAfterNanousd: item.BalanceAfterNanousd,
 		PricingSnapshotJSON: item.PricingSnapshotJSON,
 		CreatedAt:           item.CreatedAt,
 		UpdatedAt:           item.UpdatedAt,
@@ -1843,10 +2272,13 @@ func getOrCreateBillingAccountForUpdate(tx *gorm.DB, userID uint) (*model.Billin
 		BalanceNanousd: 0,
 		Status:         "active",
 	}
-	if err := tx.Create(&account).Error; err != nil {
+	if err := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}},
+		DoNothing: true,
+	}).Create(&account).Error; err != nil {
 		return nil, translateError(err)
 	}
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", account.ID).First(&account).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", userID).First(&account).Error; err != nil {
 		return nil, translateError(err)
 	}
 	return &account, nil
@@ -1925,7 +2357,7 @@ func toDomainRedemption(item model.Redemption) domainbilling.Redemption {
 
 func validateRedeemableCode(tx *gorm.DB, code model.RedemptionCode, userID uint, currentMode string, now time.Time) error {
 	if code.Status != domainbilling.RedemptionCodeStatusActive ||
-		code.Mode != currentMode ||
+		!domainbilling.RedemptionCodeModeAvailableInBillingMode(code.Mode, currentMode) ||
 		(code.ExpiresAt != nil && !code.ExpiresAt.After(now)) {
 		return repository.ErrRedemptionUnavailable
 	}
@@ -2595,6 +3027,13 @@ func clampNonNegative(value int64) int64 {
 	return value
 }
 
+func minInt64(a int64, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func clampPercent(value int) int {
 	if value < 0 {
 		return 0
@@ -2623,4 +3062,21 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func toPlanDomain(item model.BillingPlan) domainbilling.Plan {
+	return domainbilling.Plan{
+		ID:                  item.ID,
+		Code:                item.Code,
+		Name:                item.Name,
+		Description:         item.Description,
+		FeatureJSON:         item.FeatureJSON,
+		PeriodCreditNanousd: item.PeriodCreditNanousd,
+		DiscountPercent:     item.DiscountPercent,
+		SortOrder:           item.SortOrder,
+		IsActive:            item.IsActive,
+		PermissionGroupID:   item.PermissionGroupID,
+		CreatedAt:           item.CreatedAt,
+		UpdatedAt:           item.UpdatedAt,
+	}
 }

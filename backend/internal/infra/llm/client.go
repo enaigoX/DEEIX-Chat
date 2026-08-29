@@ -8,25 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
-	"unicode"
 
 	platformtracing "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/observability/tracing"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/outboundhttp"
+	portllm "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/security"
-)
-
-const (
-	// EndpointResponses 表示 OpenAI Responses API 端点。
-	EndpointResponses = "responses"
-	// EndpointChatCompletions 表示 OpenAI Chat Completions API 端点。
-	EndpointChatCompletions = "chat_completions"
-	// EndpointImageGenerations 表示 OpenAI Images API 生成端点。
-	EndpointImageGenerations = "image_generations"
-	// EndpointImageEdits 表示 OpenAI Images API 编辑端点。
-	EndpointImageEdits = "image_edits"
+	"github.com/google/uuid"
 )
 
 // 超时默认值。
@@ -35,30 +27,16 @@ const (
 	defaultReadTimeoutMS       = 120000 // 非流式/首字节超时 120s（含 LLM 推理）
 	defaultStreamIdleTimeoutMS = 60000  // 流式 chunk 间隔超时 60s
 	maxUpstreamBodyBytes       = 64 * 1024 * 1024
+	// maxStreamToolCallIndex 防止异常稀疏的上游索引触发无界切片扩容。
+	maxStreamToolCallIndex = 1024
 )
+
+const upstreamRequestIDHeaderTemplate = "${DEEIX_UPSTREAM_REQUEST_ID}"
 
 // Client 负责跨厂商共享的 HTTP client、adapter 路由和上游调试能力。
 type Client struct {
-	baseTransport         *http.Transport
-	httpClients           sync.Map
-	adapters              map[string]transportAdapter
-	env                   string
-	ssrfProtectionEnabled bool
-}
-
-// RouteConfig 定义渠道路由调用参数。
-type RouteConfig struct {
-	Protocol            string
-	BaseURL             string
-	APIKey              string
-	HeadersJSON         string
-	ConnectTimeoutMS    int // TCP 建连超时（默认 10s）
-	ReadTimeoutMS       int // 非流式整体超时 / 流式首字节超时（默认 120s）
-	StreamIdleTimeoutMS int // 流式两个 chunk 之间最大间隔（默认 60s）
-	Endpoint            string
-	UpstreamModel       string
-	AttributionReferer  string
-	AttributionTitle    string
+	httpClients *outboundhttp.Pool
+	adapters    map[string]transportAdapter
 }
 
 func resolveConnectTimeout(ms int) time.Duration {
@@ -84,67 +62,6 @@ func resolveStreamIdleTimeout(ms int) time.Duration {
 		return time.Duration(defaultStreamIdleTimeoutMS) * time.Millisecond
 	}
 	return time.Duration(ms) * time.Millisecond
-}
-
-// ContentPart 类型常量。
-const (
-	ContentPartText  = "text"  // 纯文本
-	ContentPartImage = "image" // 图片（原始字节，序列化时 base64 编码）
-	ContentPartFile  = "file"  // 文件提取文本（前端解析后注入）
-)
-
-// ContentPart 表示多模态消息中的一个内容片段。
-type ContentPart struct {
-	Kind         string        // text | image | file
-	Text         string        // Kind=text 或 Kind=file 时的文本内容
-	MimeType     string        // Kind=image 时的 MIME 类型（如 "image/jpeg"）
-	Data         []byte        // Kind=image 时的原始字节（发送时 base64 编码）
-	FileName     string        // Kind=file 时的文件显示名
-	CacheControl *CacheControl // 支持块级缓存的 adapter 可读取该提示
-}
-
-// CacheControl 表示可被支持方言渲染为 prompt cache breakpoint 的提示。
-type CacheControl struct {
-	Type string
-	TTL  string
-}
-
-// Message 定义发送给上游的消息结构。
-// Parts 非空时覆盖 Content 用于多模态内容。
-type Message struct {
-	Role             string
-	Content          string        // 纯文本消息内容（Parts 为空时使用）
-	Parts            []ContentPart // 多模态内容片段（设置后优先于 Content）
-	ReasoningContent string        // OpenAI-compatible thinking mode 的 reasoning_content 回灌字段
-	ToolCalls        []ToolCall    // assistant 请求执行的工具调用
-	ToolResults      []ToolResult  // 工具执行结果，用于回灌下一轮模型调用
-	CacheControl     *CacheControl // 支持块级缓存的 adapter 可读取该提示
-}
-
-// GenerateInput 定义上游推理请求入参。
-type GenerateInput struct {
-	RequestID      string
-	ConversationID uint
-	Messages       []Message
-	Tools          []ToolDefinition
-	// DisableTools 表示本轮调用必须只生成文本，adapter 不再声明 MCP 或厂商原生工具。
-	DisableTools bool
-	// Options 承载本次调用的自由 JSON 参数。系统字段（model/messages/input/stream）
-	// 由 adapter 固定构造；Options 只表达采样、推理、工具、缓存和厂商原生扩展。
-	Options map[string]interface{}
-	// PreviousResponseID 供 OpenAI/xAI Responses API 实现有状态会话。
-	// 非空时：仅在 input 中发送本轮新消息，服务端从存储状态续接历史。
-	// 空串时：退回全量发送模式，适用于所有 adapter。
-	PreviousResponseID string
-	// ImageEditMask 仅供图片编辑 adapter 使用，表示透明区域掩码。
-	ImageEditMask *ContentPart
-}
-
-// ToolDefinition 是模型可调用工具的统一声明。
-type ToolDefinition struct {
-	Name        string
-	Description string
-	InputSchema json.RawMessage
 }
 
 func modelParamString(params map[string]interface{}, key string) string {
@@ -480,20 +397,6 @@ func shouldSkipNormalizedProviderOption(key string, value interface{}) bool {
 	}
 }
 
-// Usage 记录上游返回 token 使用量。
-type Usage struct {
-	InputTokens        int64
-	OutputTokens       int64
-	CacheReadTokens    int64
-	CacheWriteTokens   int64
-	CacheWrite5mTokens int64
-	CacheWrite1hTokens int64
-	ReasoningTokens    int64
-	Speed              string
-	ServiceTier        string
-	RawUsageJSON       string
-}
-
 func nonCachedInputTokens(totalInputTokens int64, cacheReadTokens int64) int64 {
 	if totalInputTokens <= 0 {
 		return 0
@@ -542,195 +445,75 @@ func rawUsageJSONFromPath(payload map[string]interface{}, keys ...string) string
 	return string(raw)
 }
 
-func MergeRawUsageJSON(left string, right string) string {
-	left = strings.TrimSpace(left)
-	right = strings.TrimSpace(right)
-	if left == "" {
-		return right
-	}
-	if right == "" || right == left {
-		return left
-	}
-	items := make([]interface{}, 0, 2)
-	items = appendRawUsageJSON(items, left)
-	items = appendRawUsageJSON(items, right)
-	if len(items) == 0 {
-		return ""
-	}
-	if len(items) == 1 {
-		raw, err := json.Marshal(items[0])
-		if err != nil {
-			return ""
+// generatedMediaDurationSeconds 将上游媒体时长统一向上取整为可计费秒数。
+func generatedMediaDurationSeconds(values ...interface{}) int64 {
+	for _, value := range values {
+		var seconds float64
+		switch typed := value.(type) {
+		case int:
+			seconds = float64(typed)
+		case int64:
+			seconds = float64(typed)
+		case float64:
+			seconds = typed
+		case float32:
+			seconds = float64(typed)
+		case string:
+			text := strings.TrimSpace(strings.ToLower(typed))
+			for _, suffix := range []string{"seconds", "second", "secs", "sec", "s"} {
+				text = strings.TrimSuffix(text, suffix)
+			}
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+			if err != nil {
+				continue
+			}
+			seconds = parsed
+		default:
+			continue
 		}
-		return string(raw)
+		if seconds <= 0 {
+			continue
+		}
+		whole := int64(seconds)
+		if float64(whole) < seconds {
+			whole++
+		}
+		return whole
 	}
-	raw, err := json.Marshal(items)
-	if err != nil {
-		return ""
+	return 0
+}
+
+// doGenerationRequest 记录 POST 请求是否已经写入连接。请求写出后若在响应头
+// 返回前断线，无法判断上游是否已开始生成，因此按已接受处理，避免跨路由重复生成。
+func doGenerationRequest(do func(*http.Request) (*http.Response, error), req *http.Request) (*http.Response, error) {
+	if do == nil || req == nil {
+		return nil, errors.New("generation request is nil")
 	}
-	return string(raw)
-}
-
-func appendRawUsageJSON(items []interface{}, raw string) []interface{} {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return items
+	var wroteRequest atomic.Bool
+	trace := &httptrace.ClientTrace{
+		WroteRequest: func(httptrace.WroteRequestInfo) {
+			wroteRequest.Store(true)
+		},
 	}
-	var decoded interface{}
-	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-		return items
+	tracedRequest := req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	resp, err := do(tracedRequest)
+	if err != nil && wroteRequest.Load() {
+		return resp, MarkRequestAccepted(err)
 	}
-	switch value := decoded.(type) {
-	case []interface{}:
-		return append(items, value...)
-	case map[string]interface{}:
-		return append(items, value)
-	default:
-		return items
-	}
-}
-
-// ToolCall 记录上游返回的工具调用请求。
-type ToolCall struct {
-	ToolCallID    string
-	ToolType      string
-	ToolName      string
-	ArgumentsJSON string
-	Status        string
-	OutputJSON    string
-	ErrorJSON     string
-}
-
-// ToolResult 记录工具执行结果，由各 adapter 序列化为对应 SDK/API 所需格式。
-type ToolResult struct {
-	ToolCallID string
-	ToolName   string
-	OutputJSON string
-	Status     string
-	Error      string
-}
-
-// ReasoningOutput 定义结构化 reasoning 输出。
-type ReasoningOutput struct {
-	ItemID           string
-	Status           string
-	Summary          string
-	Text             string
-	Signature        string
-	EncryptedContent string
-}
-
-// GenerateOutput 定义上游推理结果。
-type GenerateOutput struct {
-	ResponseID          string
-	Text                string
-	Reasoning           *ReasoningOutput
-	Usage               Usage
-	ToolCalls           []ToolCall
-	ServerToolCalls     []ToolCall
-	ServerSideToolUsage map[string]int64
-	Citations           []string
-	GeneratedImages     []GeneratedImage
-	RawJSON             string
-	Debug               *UpstreamDebugSnapshot `json:"-"`
-}
-
-// GeneratedImage 表示图片生成/编辑接口返回的一张图片。
-type GeneratedImage struct {
-	URL           string
-	B64JSON       string
-	MIMEType      string
-	RevisedPrompt string
-}
-
-// ReasoningDelta 定义流式 reasoning 增量。
-type ReasoningDelta struct {
-	EventType        string
-	ItemID           string
-	Status           string
-	Kind             string
-	Text             string
-	Signature        string
-	EncryptedContent string
-}
-
-// GenerateStreamEvent 定义上游流式增量片段。
-type GenerateStreamEvent struct {
-	Delta                 string
-	Reasoning             *ReasoningDelta
-	Usage                 Usage
-	ServerToolCall        *ToolCall
-	ResponseID            string
-	GeneratedImage        *GeneratedImage
-	GeneratedImageIndex   int
-	GeneratedImagePartial bool
-}
-
-// ModelItem 定义上游模型目录项。
-type ModelItem struct {
-	ID      string
-	OwnedBy string
-}
-
-// UpstreamError 是上游 HTTP 调用错误。
-type UpstreamError struct {
-	StatusCode int
-	Message    string
-	Body       string
-	Debug      *UpstreamDebugSnapshot
+	return resp, err
 }
 
 var errStreamDone = errors.New("llm stream done")
 
-// UpstreamDebugSnapshot 记录上游请求与响应的调试快照。
-// 对外返回前必须先经过 application 层脱敏，避免泄漏源站、密钥或上游响应头。
-type UpstreamDebugSnapshot struct {
-	Request  UpstreamDebugRequest  `json:"request"`
-	Response UpstreamDebugResponse `json:"response"`
-}
-
-// UpstreamDebugRequest 表示上游请求侧的调试信息。
-type UpstreamDebugRequest struct {
-	Method  string            `json:"method"`
-	Path    string            `json:"path"`
-	Headers map[string]string `json:"headers,omitempty"`
-	Body    string            `json:"body"`
-}
-
-// UpstreamDebugResponse 表示上游响应侧的调试信息。
-type UpstreamDebugResponse struct {
-	StatusCode int               `json:"statusCode"`
-	Headers    map[string]string `json:"headers,omitempty"`
-	Body       string            `json:"body"`
-}
-
-func (e *UpstreamError) Error() string {
-	if strings.TrimSpace(e.Message) == "" {
-		return fmt.Sprintf("upstream request failed: status=%d", e.StatusCode)
-	}
-	return fmt.Sprintf("upstream request failed: status=%d message=%s", e.StatusCode, e.Message)
-}
-
-// NewClient 创建上游调用客户端。
-func NewClient() *Client {
-	return NewClientWithEnv("", false)
-}
-
-// NewClientWithEnv 创建带运行环境的上游调用客户端。
-func NewClientWithEnv(env string, ssrfProtectionEnabled bool) *Client {
-	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 20,
-		IdleConnTimeout:     90 * time.Second,
-		ForceAttemptHTTP2:   true,
-	}
-	client := &Client{
-		baseTransport:         transport,
-		env:                   strings.TrimSpace(env),
-		ssrfProtectionEnabled: ssrfProtectionEnabled,
-	}
+// NewClient 创建带出站安全策略的上游调用客户端。
+func NewClient(outboundPolicy security.OutboundPolicy) *Client {
+	client := &Client{}
+	client.httpClients = outboundhttp.NewPool(outboundPolicy, outboundhttp.DefaultCacheLimit, func(policy security.OutboundPolicy, trustedOrigin string, variant string) (outboundhttp.ManagedClient, error) {
+		return newRouteHTTPClient(policy, outboundPolicy, trustedOrigin, variant)
+	})
 	client.adapters = map[string]transportAdapter{
 		AdapterOpenAIResponses:        &openAIResponsesAdapter{client: client},
+		AdapterOpenRouterChat:         &openRouterChatCompletionsAdapter{client: client},
 		AdapterOpenRouterResponses:    &openRouterResponsesAdapter{client: client},
 		AdapterOpenAIChatCompletions:  &openAIChatCompletionsAdapter{client: client},
 		AdapterOpenAIImageGenerations: &openAIImageGenerationsAdapter{client: client},
@@ -738,9 +521,12 @@ func NewClientWithEnv(env string, ssrfProtectionEnabled bool) *Client {
 		AdapterXAIResponses:           &xAIResponsesAdapter{client: client},
 		AdapterXAIImage:               &xAIImageAdapter{client: client},
 		AdapterXAIImageEdits:          &xAIImageEditsAdapter{client: client},
+		AdapterXAIVideo:               &xAIVideoAdapter{client: client},
+		AdapterXAIVideoExtensions:     &xAIVideoExtensionsAdapter{client: client},
 		AdapterAnthropicMessages:      &anthropicMessagesAdapter{client: client},
 		AdapterGoogleGenerateContent:  &geminiGenerateContentAdapter{client: client},
 		AdapterGoogleImageGeneration:  &geminiImageGenerationAdapter{client: client},
+		AdapterGeminiInteractions:     &geminiInteractionsAdapter{client: client},
 	}
 	return client
 }
@@ -757,29 +543,49 @@ func (c *Client) adapterFor(route RouteConfig) (transportAdapter, error) {
 	return adapter, nil
 }
 
-func (c *Client) httpClientForRoute(route RouteConfig) *http.Client {
-	connectTimeoutMS := normalizeConnectTimeoutMS(route.ConnectTimeoutMS)
-	if value, ok := c.httpClients.Load(connectTimeoutMS); ok {
-		if client, castOK := value.(*http.Client); castOK {
-			return client
-		}
+func newRouteHTTPClient(policy security.OutboundPolicy, redirectPolicy security.OutboundPolicy, trustedOrigin string, variant string) (outboundhttp.ManagedClient, error) {
+	connectTimeoutMS, err := strconv.Atoi(variant)
+	if err != nil || connectTimeoutMS <= 0 {
+		return outboundhttp.ManagedClient{}, fmt.Errorf("invalid LLM connect timeout %q", variant)
 	}
+	transport := security.NewOutboundHTTPTransport(policy, time.Duration(connectTimeoutMS)*time.Millisecond)
+	transport.MaxIdleConns = 100
+	transport.MaxIdleConnsPerHost = 20
+	transport.IdleConnTimeout = 90 * time.Second
+	transport.ForceAttemptHTTP2 = true
 
-	created := c.newHTTPClient(connectTimeoutMS)
-	actual, _ := c.httpClients.LoadOrStore(connectTimeoutMS, created)
-	if client, ok := actual.(*http.Client); ok {
-		return client
-	}
-	return created
-}
-
-func (c *Client) newHTTPClient(connectTimeoutMS int) *http.Client {
-	transport := c.baseTransport.Clone()
-	transport.DialContext = security.NewOutboundDialContext(c.env, c.ssrfProtectionEnabled, time.Duration(connectTimeoutMS)*time.Millisecond, 30*time.Second)
-
-	return &http.Client{
+	client := &http.Client{
 		Timeout:   0,
 		Transport: platformtracing.NewHTTPTransport(transport),
+	}
+	if trustedOrigin != "" {
+		client.CheckRedirect = outboundhttp.NewRedirectPolicy(redirectPolicy, trustedOrigin, "model provider")
+	}
+	return outboundhttp.ManagedClient{Client: client, CloseIdleConnections: transport.CloseIdleConnections}, nil
+}
+
+func (c *Client) doRouteRequest(route RouteConfig, request *http.Request) (*http.Response, error) {
+	if request == nil || request.URL == nil {
+		return nil, fmt.Errorf("model provider request is nil")
+	}
+	connectTimeoutMS := normalizeConnectTimeoutMS(route.ConnectTimeoutMS)
+	return c.httpClients.Do(request, route.BaseURL, strconv.Itoa(connectTimeoutMS))
+}
+
+func (c *Client) doRouteGenerationRequest(route RouteConfig, request *http.Request) (*http.Response, error) {
+	if request == nil || request.URL == nil {
+		return nil, fmt.Errorf("model provider request is nil")
+	}
+	connectTimeoutMS := normalizeConnectTimeoutMS(route.ConnectTimeoutMS)
+	return doGenerationRequest(func(tracedRequest *http.Request) (*http.Response, error) {
+		return c.httpClients.Do(tracedRequest, route.BaseURL, strconv.Itoa(connectTimeoutMS))
+	}, request)
+}
+
+// CloseIdleConnections 释放所有模型 origin 客户端的空闲连接。
+func (c *Client) CloseIdleConnections() {
+	if c != nil && c.httpClients != nil {
+		c.httpClients.CloseIdleConnections()
 	}
 }
 
@@ -897,39 +703,6 @@ func decodeToolSchema(raw json.RawMessage) map[string]interface{} {
 	return payload
 }
 
-func NormalizeToolName(name string) string {
-	value := strings.TrimSpace(name)
-	if value == "" {
-		return ""
-	}
-	var builder strings.Builder
-	lastUnderscore := false
-	for _, r := range value {
-		valid := r == '_' || r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r)
-		if valid {
-			builder.WriteRune(r)
-			lastUnderscore = false
-			continue
-		}
-		if !lastUnderscore {
-			builder.WriteByte('_')
-			lastUnderscore = true
-		}
-	}
-	normalized := strings.Trim(builder.String(), "_-")
-	if normalized == "" {
-		return ""
-	}
-	first := []rune(normalized)[0]
-	if !unicode.IsLetter(first) && first != '_' {
-		normalized = "tool_" + normalized
-	}
-	if len(normalized) > 64 {
-		normalized = normalized[:64]
-	}
-	return normalized
-}
-
 func buildToolResultContent(item ToolResult) string {
 	if strings.TrimSpace(item.Error) != "" {
 		payload := map[string]interface{}{
@@ -974,6 +747,13 @@ func normalizeMessages(messages []Message) []Message {
 }
 
 func setAdditionalHeaders(req *http.Request, headersJSON string) {
+	setAdditionalHeadersForInput(req, headersJSON, nil)
+}
+
+func setAdditionalHeadersForInput(req *http.Request, headersJSON string, input *GenerateInput) {
+	if req == nil {
+		return
+	}
 	value := strings.TrimSpace(headersJSON)
 	if value == "" {
 		return
@@ -982,13 +762,55 @@ func setAdditionalHeaders(req *http.Request, headersJSON string) {
 	if err := json.Unmarshal([]byte(value), &parsed); err != nil {
 		return
 	}
+	dynamicHeaderInput := input
+	if input == nil || (strings.TrimSpace(input.ConversationPublicID) == "" && strings.TrimSpace(input.ConversationSessionKey) == "") {
+		dynamicHeaderInput = nil
+	}
+	upstreamRequestID := ""
+	if dynamicHeaderInput != nil && strings.Contains(value, upstreamRequestIDHeaderTemplate) {
+		upstreamRequestID = uuid.NewString()
+	}
 	for key, rawValue := range parsed {
 		headerKey := strings.TrimSpace(key)
 		if headerKey == "" {
 			continue
 		}
-		req.Header.Set(headerKey, stringify(rawValue))
+		headerValue, ok := expandAdditionalHeaderValue(stringify(rawValue), dynamicHeaderInput, upstreamRequestID)
+		if !ok || strings.TrimSpace(headerValue) == "" {
+			continue
+		}
+		req.Header.Set(headerKey, headerValue)
 	}
+}
+
+func expandAdditionalHeaderValue(value string, input *GenerateInput, upstreamRequestID string) (string, bool) {
+	replacements := []struct {
+		template string
+		value    string
+	}{
+		{template: "${DEEIX_CONVERSATION_ID}"},
+		{template: "${DEEIX_SESSION_ID}"},
+		{template: "${DEEIX_REQUEST_ID}"},
+		{template: upstreamRequestIDHeaderTemplate},
+	}
+	if input != nil {
+		replacements[0].value = strings.TrimSpace(input.ConversationPublicID)
+		replacements[1].value = strings.TrimSpace(input.ConversationSessionKey)
+		replacements[2].value = strings.TrimSpace(input.RequestID)
+		replacements[3].value = strings.TrimSpace(upstreamRequestID)
+	}
+
+	expanded := value
+	for _, replacement := range replacements {
+		if !strings.Contains(expanded, replacement.template) {
+			continue
+		}
+		if replacement.value == "" {
+			return "", false
+		}
+		expanded = strings.ReplaceAll(expanded, replacement.template, replacement.value)
+	}
+	return expanded, true
 }
 
 func readUpstreamBody(reader io.Reader) ([]byte, error) {
@@ -1059,17 +881,25 @@ func upstreamDebugSnapshot(req *http.Request, requestBody []byte, resp *http.Res
 			path += "?" + req.URL.RawQuery
 		}
 	}
+	requestDebugBody := portllm.SanitizeUpstreamDebugPayload(requestBody)
+	responseDebugBody := portllm.SanitizeUpstreamDebugPayload(responseBody)
 	return &UpstreamDebugSnapshot{
 		Request: UpstreamDebugRequest{
-			Method:  req.Method,
-			Path:    path,
-			Headers: redactHeaders(req.Header),
-			Body:    string(requestBody),
+			Method:        req.Method,
+			Path:          path,
+			Headers:       redactHeaders(req.Header),
+			Body:          requestDebugBody.Body,
+			BodyBytes:     requestDebugBody.OriginalBytes,
+			BodyTruncated: requestDebugBody.Truncated,
+			RedactedParts: requestDebugBody.RedactedParts,
 		},
 		Response: UpstreamDebugResponse{
-			StatusCode: responseStatusCode(resp),
-			Headers:    responseHeaders(resp),
-			Body:       string(responseBody),
+			StatusCode:    responseStatusCode(resp),
+			Headers:       responseHeaders(resp),
+			Body:          responseDebugBody.Body,
+			BodyBytes:     responseDebugBody.OriginalBytes,
+			BodyTruncated: responseDebugBody.Truncated,
+			RedactedParts: responseDebugBody.RedactedParts,
 		},
 	}
 }
@@ -1278,6 +1108,9 @@ func mergeToolCall(existing ToolCall, incoming ToolCall) ToolCall {
 	if value := strings.TrimSpace(incoming.ArgumentsJSON); value != "" {
 		merged.ArgumentsJSON = value
 	}
+	if value := strings.TrimSpace(incoming.ThoughtSignature); value != "" {
+		merged.ThoughtSignature = value
+	}
 	if value := strings.TrimSpace(incoming.OutputJSON); value != "" {
 		merged.OutputJSON = value
 	}
@@ -1344,8 +1177,8 @@ func updateToolCallInput(items *[]ToolCall, itemID string, input string, done bo
 }
 
 func appendUniqueStrings(items []string, values ...string) []string {
-	seen := make(map[string]struct{}, len(items)+len(values))
-	result := make([]string, 0, len(items)+len(values))
+	seen := make(map[string]struct{}, len(items))
+	result := make([]string, 0, len(items))
 	for _, item := range items {
 		value := strings.TrimSpace(item)
 		if value == "" {
@@ -1481,6 +1314,12 @@ func normalizeEndpoint(raw string) string {
 		return EndpointImageGenerations
 	case EndpointImageEdits:
 		return EndpointImageEdits
+	case EndpointVideoGenerations:
+		return EndpointVideoGenerations
+	case EndpointVideoExtensions:
+		return EndpointVideoExtensions
+	case EndpointInteractions:
+		return EndpointInteractions
 	default:
 		return EndpointResponses
 	}
@@ -1595,6 +1434,17 @@ func toInt64(raw interface{}) int64 {
 	default:
 		return 0
 	}
+}
+
+func streamToolCallIndex(raw interface{}, fallback int) int {
+	if fallback < 0 || fallback > maxStreamToolCallIndex {
+		fallback = 0
+	}
+	index, err := strconv.Atoi(strings.TrimSpace(getString(raw)))
+	if err != nil || index < 0 || index > maxStreamToolCallIndex {
+		return fallback
+	}
+	return index
 }
 
 func normalizeJSONString(raw interface{}) string {

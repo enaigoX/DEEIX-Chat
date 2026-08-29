@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  English | <a href="./README.zh-CN.md">简体中文</a>
+  English | <a href="./docs/README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@ DEEIX Chat is an open-source, deployable AI platform for individuals, teams, and
 
 The system is designed around simple deployment, efficient static delivery, and a low runtime resource footprint: lightweight without feeling limited, restrained without losing capability, and open without becoming disorderly.
 
-![DEEIX Chat workspace](./frontend/public/DEEIX-Chat.jpg)
+![DEEIX Chat workspace](./docs/assets/screenshots/DEEIX-Chat.jpg)
 
 ## Features
 
@@ -48,14 +48,14 @@ The system is designed around simple deployment, efficient static delivery, and 
 | Deployment and operations | Single-runtime frontend/API serving, Docker deployment, SQLite or PostgreSQL, in-memory cache or Redis, S3-compatible storage, Swagger, structured logs, version endpoint, GeoIP, and OpenTelemetry. |
 
 <p align="center">
-  <img src="./frontend/public/DEEIX-Chat-Image.png" alt="DEEIX Chat image generation" width="49.45%" />
-  <img src="./frontend/public/DEEIX-Chat-Dark.png" alt="DEEIX Chat dark mode" width="49.45%" />
+  <img src="./docs/assets/screenshots/DEEIX-Chat-Image.png" alt="DEEIX Chat image generation" width="49.45%" />
+  <img src="./docs/assets/screenshots/DEEIX-Chat-Dark.png" alt="DEEIX Chat dark mode" width="49.45%" />
 </p>
 
 <p align="center">
-  <img src="./frontend/public/DEEIX-Chat-Usage.png" alt="DEEIX Chat usage and billing" width="32.3%" />
-  <img src="./frontend/public/DEEIX-Chat-Artifacts.png" alt="DEEIX Chat artifacts" width="32.3%" />
-  <img src="./frontend/public/DEEIX-Chat-Html.png" alt="DEEIX Chat HTML rendering" width="32.3%" />
+  <img src="./docs/assets/screenshots/DEEIX-Chat-Usage.png" alt="DEEIX Chat usage and billing" width="32.3%" />
+  <img src="./docs/assets/screenshots/DEEIX-Chat-Artifacts.png" alt="DEEIX Chat artifacts" width="32.3%" />
+  <img src="./docs/assets/screenshots/DEEIX-Chat-Html.png" alt="DEEIX Chat HTML rendering" width="32.3%" />
 </p>
 
 ## Architecture and Tech Stack
@@ -130,21 +130,20 @@ cp config.example.yaml config.yaml
 
 Adjust `database.postgres.dsn`, `database.redis.*`, and public URLs in `config.yaml` for your local environment.
 
-2. Start the backend:
+2. Install workspace dependencies and prepare the frontend environment:
 
 ```bash
-cd backend
-make run
+pnpm install
+cp frontend/.env.example frontend/.env.local
 ```
 
-3. Start the frontend:
+3. Start the frontend and backend together:
 
 ```bash
-cd frontend
-pnpm install
-cp .env.example .env.local
 pnpm dev
 ```
+
+Use `pnpm dev:web` or `pnpm dev:api` to start only one workspace.
 
 The frontend uses `NEXT_PUBLIC_API_BASE_URL` for API requests. For local development, confirm that `frontend/.env.local` contains:
 
@@ -268,9 +267,8 @@ Use this mode when the frontend and backend are served from different public ori
 2. Build and publish the frontend.
 
    ```bash
-   cd frontend
    pnpm install
-   NEXT_PUBLIC_API_BASE_URL=https://api.example.com pnpm build
+   NEXT_PUBLIC_API_BASE_URL=https://api.example.com pnpm --filter @deeix/web build
    ```
 
    The static output is `frontend/out`. Serve it with Nginx, CDN, object storage, or any static web server. To let the Go backend serve the frontend, place `frontend/out` under `server.frontend_dist_dir`; the Docker image defaults to `/app/frontend/out`.
@@ -281,7 +279,7 @@ Use this mode when the frontend and backend are served from different public ori
    | --- | --- |
    | `/_next/static/*` | Cache for 1 year with immutable assets enabled. |
    | `/logo*.svg`, `/*.ico`, `/*.png`, `/*.jpg`, `/*.webp`, `/*.woff2` | Cache for 1 day to 30 days. |
-   | `/`, `/*.html`, `/chat*`, `/recent*`, `/files*`, `/setting*`, `/admin*`, `/share*` | Do not long-cache. Use `no-cache` or a short TTL. |
+   | `/`, `/*.html`, `/chat*`, `/recent*`, `/files*`, `/knowledges*`, `/setting*`, `/admin*`, `/share*` | Do not long-cache. Use `no-cache` or a short TTL. |
    | `/api/*`, `/healthz`, `/readyz`, `/swagger/*` | Bypass CDN cache and forward all request headers, methods, query strings, and request bodies. |
 
    If the CDN serves `frontend/out` from object storage, enable route fallback so clean URLs resolve to their exported `index.html` files, for example `/chat` -> `/chat/index.html`.
@@ -311,9 +309,11 @@ If a superadmin already exists, the service does not regenerate or print the ini
 
 > Full configuration guide: [Configuration](https://deeix.com/docs/deeix-chat/configuration).
 
-Backend configuration is split into static runtime configuration and runtime business settings. Static runtime configuration describes the infrastructure, security, and storage parameters required to start the service, and is provided through `config.yaml` and environment variables. Runtime business settings cover product capabilities such as authentication, conversations, models, files, and billing; they are stored in `system_settings` and maintained from the admin console. Environment variables override matching config-file values, which is useful for containerized deployments, separated deployments, and secret injection.
+Backend configuration is split into static runtime configuration and runtime business settings. Static runtime configuration describes branding and the infrastructure, security, and storage parameters required to start the service, and is provided through `config.yaml` and environment variables. Runtime business settings cover product capabilities such as authentication, conversations, models, files, and billing; they are stored in `system_settings` and maintained from the admin console. Environment variables override matching config-file values, which is useful for containerized deployments, separated deployments, and secret injection.
 
 At startup, the backend resolves the default config file from the working directory: starting from the repository root reads `config.yaml`, while starting from `backend/` reads `../config.yaml`. Docker deployments usually mount host `./config.yaml` as read-only `/app/config.yaml` inside the container. If the config file is stored elsewhere, set `CONFIG_FILE` to a path accessible from the running process or container.
+
+Frontend branding is also runtime configuration. Set the `branding` section in `config.yaml`, then restart the application; rebuilding the frontend or Docker image is not required. See [Custom branding](docs/BRANDING.md).
 
 Static configuration environment variables:
 
@@ -336,6 +336,8 @@ Static configuration environment variables:
 | Security | `JWT_SECRET` | JWT signing secret. |
 | Security | `DATA_ENCRYPTION_KEY` | Key material for upstream API keys, SSO secrets, MCP tokens, sensitive settings, and TOTP secrets. |
 | Security | `SSRF_PROTECTION_ENABLED` | Enables outbound SSRF protection. |
+| Security | `SSRF_ALLOWED_HOSTS` | Exact hostnames for deployment-level integrations or trusted private redirect targets, comma-separated. |
+| Security | `SSRF_ALLOWED_CIDRS` | Trusted deployment-level integration or private redirect CIDRs, comma-separated. |
 | Security | `TURNSTILE_SITEVERIFY_URL` | Cloudflare Turnstile siteverify endpoint. |
 | Database | `DATABASE_DRIVER` | `postgres` or `sqlite`. |
 | PostgreSQL | `POSTGRES_DSN` | PostgreSQL DSN. |
@@ -356,6 +358,8 @@ Static configuration environment variables:
 | Redis | `REDIS_USERNAME` | Redis ACL username; leave empty for password-only/default-user Redis. |
 | Redis | `REDIS_PASSWORD` | Redis password. |
 | Redis | `REDIS_DB` | Redis DB number. |
+| Redis | `REDIS_TLS_ENABLED` | Enable TLS for Redis connections, for example Upstash Redis. |
+| Redis | `REDIS_TLS_INSECURE_SKIP_VERIFY` | Skip Redis TLS certificate verification; keep `false` unless required by a nonstandard endpoint. |
 | Storage | `STORAGE_BACKEND` | `local` or `s3`. |
 | Local storage | `STORAGE_ROOT_DIR` | Local file storage directory. |
 | S3 storage | `STORAGE_S3_ENDPOINT` | S3-compatible endpoint. |
@@ -374,12 +378,25 @@ Static configuration environment variables:
 | GeoIP | `GEOIP_DATABASE_MAX_BYTES` | Maximum MMDB download size. |
 | GeoIP | `GEOIP_REFRESH_INTERVAL_HOURS` | MMDB refresh interval. |
 | OpenTelemetry | `OTEL_ENABLED` | Enables tracing; when omitted, a configured endpoint enables tracing automatically. |
-| OpenTelemetry | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC collector endpoint. |
+| OpenTelemetry | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint. |
 | OpenTelemetry | `OTEL_EXPORTER_OTLP_HEADERS` | OTLP headers in `key=value,key2=value2` format. |
-| OpenTelemetry | `OTEL_EXPORTER_OTLP_INSECURE` | Whether to use plaintext gRPC. |
+| OpenTelemetry | `OTEL_EXPORTER_OTLP_INSECURE` | Whether to use plaintext transport. |
+| OpenTelemetry | `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP exporter protocol: `grpc`, `http`, or `http/protobuf`; defaults to `grpc`. |
 | OpenTelemetry | `OTEL_TRACES_SAMPLER_ARG` / `OTEL_SAMPLING_RATE` | Trace sampling rate from `0` to `1`; `OTEL_TRACES_SAMPLER_ARG` takes priority. |
 
 Authentication, registration, conversation settings, model option policies, file processing, RAG, embedding, MCP, billing, payments, and announcements are runtime business settings, not static YAML configuration. Their defaults are seeded by the backend and maintained in the admin console.
+
+When SSRF protection is enabled in production, administrator-saved model, MCP, Embedding, OIDC/OAuth2, and custom Turnstile endpoints are authorized locally by exact origin (`scheme + host + port`) and do not require entries in the global allowlist. Model, MCP, and Embedding redirects retain standard compatibility: public cross-origin targets are allowed, while private cross-origin targets must match `SSRF_ALLOWED_HOSTS` or `SSRF_ALLOWED_CIDRS`; OIDC/OAuth2 and Turnstile keep their stricter identity boundary. Generated media is downloaded, validated, and stored by the backend: a private artifact URL inherits trust only when it has the same origin as the selected model endpoint; public cross-origin artifact URLs remain subject to the strict public-network policy, and private cross-origin artifact URLs are blocked. The global allowlist also remains available for deployment-level integrations that cannot be tied to an administrator-saved endpoint, such as selected GeoIP or extraction deployments. Link-local, multicast, unspecified, and known metadata targets always remain blocked. Invalid allowlist entries stop backend startup, and global allowlist changes require a restart.
+
+### OAuth callbacks for Web, App, and Desktop (multi-platform clients not yet released)
+
+Set `PUBLIC_API_BASE_URL` to the externally reachable API origin before enabling the provider auth bridge. For every OIDC/OAuth2 provider, register the server callback shown in the admin provider dialog:
+
+```text
+<PUBLIC_API_BASE_URL>/api/v1/auth/providers/<provider-slug>/callback
+```
+
+Web, App, and Desktop clients then reuse that instance callback automatically. The external provider authorization code and client secret remain on the self-hosted server; public clients receive only a short-lived, one-time DEEIX grant bound to their PKCE verifier. Keep the legacy Web callback shown by the admin dialog registered when account identity binding or older Web clients are still in use.
 
 ## Feature Guides
 
@@ -406,8 +423,8 @@ Authentication, registration, conversation settings, model option policies, file
 - Backend guide: [backend/README.md](./backend/README.md)
 - Backend standards: [backend/docs/README.md](./backend/docs/README.md)
 - Frontend guide: [frontend/README.md](./frontend/README.md)
-- Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
-- Security policy: [SECURITY.md](./SECURITY.md)
+- Contributing: [CONTRIBUTING.md](./.github/CONTRIBUTING.md)
+- Security policy: [SECURITY.md](./.github/SECURITY.md)
 - Swagger UI: `http://localhost:8080/swagger/index.html`
 
 ## Acknowledgements

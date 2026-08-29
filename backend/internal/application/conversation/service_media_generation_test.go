@@ -8,7 +8,7 @@ import (
 	"image/png"
 	"testing"
 
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 )
 
 func TestDetectGeneratedImageMIMERejectsNonImageBytes(t *testing.T) {
@@ -115,6 +115,12 @@ func TestMediaImageStreamEnabledUsesModelCapabilitiesOverride(t *testing.T) {
 			upstreamModel:    "gemini-3-pro-image",
 			capabilitiesJSON: `{`,
 			want:             true,
+		},
+		{
+			name:          "gemini interactions streams image media",
+			protocol:      llm.AdapterGeminiInteractions,
+			upstreamModel: "gemini-3.5-flash",
+			want:          true,
 		},
 		{
 			name:             "unsupported protocol cannot be enabled by capabilities",

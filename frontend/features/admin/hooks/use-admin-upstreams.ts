@@ -9,7 +9,8 @@ import {
 } from "@/features/admin/api";
 import type { AdminBatchDeleteData, AdminLLMStatus, AdminLLMUpstreamView } from "@/features/admin/api/llm.types";
 import { useLocalizedErrorMessage } from "@/i18n/use-localized-error";
-import { patchByID, replaceByID } from "@/shared/lib/optimistic-list";
+import { replaceByID } from "@/shared/lib/optimistic-list";
+import { runSettledBulkItems } from "@/shared/lib/bulk-action";
 
 export const UPSTREAM_SORT_OPTIONS = [
   { labelKey: "sort.idDesc", value: "id_desc" },
@@ -60,7 +61,6 @@ type UseAdminUpstreamsState = {
   circuitState: UpstreamCircuitState;
   modelsTarget: AdminLLMUpstreamView | null;
   modelsOpen: boolean;
-  setModelsOpen: (open: boolean) => void;
   load: () => Promise<void>;
   handleSelectAll: (checked: boolean) => void;
   handleSelectOne: (id: number, checked: boolean) => void;
@@ -87,8 +87,25 @@ type UseAdminUpstreamsState = {
   handleUpstreamUpdated: (updated: AdminLLMUpstreamView) => void;
 };
 
+function mergeUpstreamListView(current: AdminLLMUpstreamView, updated: AdminLLMUpstreamView): AdminLLMUpstreamView {
+  return {
+    ...current,
+    ...updated,
+  };
+}
+
+function normalizeUpstreamListAvailability(item: AdminLLMUpstreamView): AdminLLMUpstreamView {
+  if (item.status === "active" && !item.circuitOpen) {
+    return item;
+  }
+  return {
+    ...item,
+    activeModelsCount: 0,
+  };
+}
+
 export function useAdminUpstreams(): UseAdminUpstreamsState {
-  const t = useTranslations("adminChannels.toast");
+  const t = useTranslations("adminUpstreams.toast");
   const resolveErrorMessage = useLocalizedErrorMessage();
   const [items, setItems] = React.useState<AdminLLMUpstreamView[]>([]);
   const [total, setTotal] = React.useState(0);
@@ -238,13 +255,19 @@ export function useAdminUpstreams(): UseAdminUpstreamsState {
     const newStatus = item.status === "active" ? "inactive" : "active";
     const previousItem = items.find((current) => current.id === item.id) ?? item;
     setTogglingStatusIDs((prev) => new Set(prev).add(item.id));
-    setItems((prev) => patchByID(prev, item.id, (current) => current.id, { status: newStatus }));
+    setItems((prev) =>
+      prev.map((current) =>
+        current.id === item.id
+          ? normalizeUpstreamListAvailability({ ...current, status: newStatus })
+          : current,
+      ),
+    );
     try {
       const token = await resolveAccessToken();
       const data = await updateAdminLLMUpstream(token, item.id, {
         status: newStatus,
       });
-      setItems((prev) => replaceByID(prev, item.id, (current) => current.id, data.upstream));
+      setItems((prev) => prev.map((current) => (current.id === item.id ? mergeUpstreamListView(current, data.upstream) : current)));
       toast.success(newStatus === "active" ? t("upstreamEnabled") : t("upstreamDisabled"));
     } catch (error) {
       setItems((prev) => replaceByID(prev, item.id, (current) => current.id, previousItem));
@@ -275,20 +298,29 @@ export function useAdminUpstreams(): UseAdminUpstreamsState {
     const targetIDs = new Set(targets.map((item) => item.id));
     setBatchApplying(true);
     setItems((prev) =>
-      prev.map((item) => (targetIDs.has(item.id) ? { ...item, status: nextStatus } : item)),
+      prev.map((item) =>
+        targetIDs.has(item.id)
+          ? normalizeUpstreamListAvailability({ ...item, status: nextStatus })
+          : item,
+      ),
     );
     try {
-      const results = await Promise.allSettled(
-        targets.map((item) => updateAdminLLMUpstream(token, item.id, { status: nextStatus })),
-      );
-      const failedUpstreams = targets.filter((_, index) => results[index]?.status === "rejected");
-      const successUpstreams = targets.filter((_, index) => results[index]?.status === "fulfilled");
+      const results = await runSettledBulkItems({
+        items: targets,
+        title: t("bulkStatusUpdated", { count: targets.length }),
+        runItem: (item) => updateAdminLLMUpstream(token, item.id, { status: nextStatus }),
+      });
+      const failedUpstreams = results.filter((result) => result.status === "rejected").map((result) => result.item);
+      const successUpstreams = results.filter((result) => result.status === "fulfilled").map((result) => result.item);
       const successResponses = results
-        .filter((result): result is PromiseFulfilledResult<{ upstream: AdminLLMUpstreamView }> => result.status === "fulfilled")
+        .filter((result): result is Extract<typeof result, { status: "fulfilled" }> => result.status === "fulfilled")
         .map((result) => result.value.upstream);
 
       setItems((prev) =>
-        successResponses.reduce((next, upstream) => replaceByID(next, upstream.id, (item) => item.id, upstream), prev),
+        successResponses.reduce(
+          (next, upstream) => next.map((item) => (item.id === upstream.id ? mergeUpstreamListView(item, upstream) : item)),
+          prev,
+        ),
       );
       if (failedUpstreams.length > 0) {
         const failedIDs = new Set(failedUpstreams.map((item) => item.id));
@@ -342,7 +374,7 @@ export function useAdminUpstreams(): UseAdminUpstreamsState {
       const index = prev.findIndex((current) => current.id === item.id);
       if (index >= 0) {
         const next = [...prev];
-        next[index] = item;
+        next[index] = mergeUpstreamListView(next[index], item);
         return next;
       }
       setTotal((current) => current + 1);
@@ -370,7 +402,9 @@ export function useAdminUpstreams(): UseAdminUpstreamsState {
     setTotal((prev) => Math.max(0, prev - removedIDs.size));
     setSelected((prev) => {
       const next = new Set(prev);
-      removedIDs.forEach((id) => next.delete(id));
+      removedIDs.forEach((id) => {
+        next.delete(id);
+      });
       return next;
     });
     setBulkDeleteTargets([]);
@@ -378,13 +412,14 @@ export function useAdminUpstreams(): UseAdminUpstreamsState {
 
   function handleCircuitDone(updated: AdminLLMUpstreamView) {
     setItems((prev) =>
-      prev.map((item) => (item.id === updated.id ? updated : item)),
+      prev.map((item) => (item.id === updated.id ? normalizeUpstreamListAvailability(mergeUpstreamListView(item, updated)) : item)),
     );
+    void load();
   }
 
   function handleUpstreamUpdated(updated: AdminLLMUpstreamView) {
     setItems((prev) =>
-      prev.map((item) => (item.id === updated.id ? updated : item)),
+      prev.map((item) => (item.id === updated.id ? mergeUpstreamListView(item, updated) : item)),
     );
     if (modelsTarget?.id === updated.id) {
       setModelsTarget(updated);
@@ -423,7 +458,6 @@ export function useAdminUpstreams(): UseAdminUpstreamsState {
     circuitState,
     modelsTarget,
     modelsOpen,
-    setModelsOpen,
     load,
     handleSelectAll,
     handleSelectOne,

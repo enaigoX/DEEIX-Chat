@@ -1,6 +1,12 @@
 import type { ChatAreaMessage } from "@/features/chat/types/messages";
+import { getBrandingSnapshot } from "@/shared/config/branding";
+import {
+  type ArtifactPreviewKind,
+  resolveArtifactPreviewKind,
+} from "@/shared/lib/artifact-preview";
+import type { HTMLVisualThemeSnapshot } from "@/shared/lib/html-visual-theme";
 
-export type ArtifactPreviewKind = "html" | "css" | "javascript";
+export type { ArtifactPreviewKind } from "@/shared/lib/artifact-preview";
 
 export type ChatArtifact = {
   id: string;
@@ -22,7 +28,6 @@ export type OpenCodeArtifactInput = {
   kind: ArtifactPreviewKind;
 };
 
-const HTML_LIKE_RE = /^\s*(?:<!doctype\s+html|<html\b|<head\b|<body\b|<(?:article|canvas|div|main|section|style|script|svg)\b)/i;
 const SCRIPT_CLOSE_RE = /<\/script/gi;
 const STYLE_CLOSE_RE = /<\/style/gi;
 const FENCE_OPEN_RE = /^[ \t]*(`{3,}|~{3,})([^\n]*)$/;
@@ -42,17 +47,12 @@ const ARTIFACT_CSP = [
   "connect-src 'none'",
   "manifest-src 'none'",
   "prefetch-src 'none'",
-  "navigate-to 'none'",
   "img-src data: blob:",
   "media-src data: blob:",
   "font-src data:",
   "style-src 'unsafe-inline'",
   "script-src 'unsafe-inline'",
 ].join("; ");
-
-function normalizeLanguage(language: string): string {
-  return language.trim().toLowerCase();
-}
 
 function parseFenceLanguage(info: string): string {
   const raw = info.trim().split(/\s+/)[0] ?? "";
@@ -69,15 +69,6 @@ function isFenceClose(line: string, marker: string): boolean {
   const escaped = marker[0] === "`" ? "`" : "~";
   const re = new RegExp(`^[ \\t]*${escaped}{${marker.length},}[ \\t]*$`);
   return re.test(line);
-}
-
-export function resolveArtifactPreviewKind(language: string, code: string): ArtifactPreviewKind | null {
-  const normalized = normalizeLanguage(language);
-  if (["html", "htm", "xhtml"].includes(normalized)) return "html";
-  if (["css", "scss", "sass", "less"].includes(normalized)) return "css";
-  if (["js", "javascript", "mjs", "cjs"].includes(normalized)) return "javascript";
-  if ((!normalized || normalized === "markdown") && HTML_LIKE_RE.test(code)) return "html";
-  return null;
 }
 
 function escapeHTML(value: string): string {
@@ -109,7 +100,7 @@ function artifactRuntimeScript(): string {
     const message = formatError(value);
     const node = document.createElement("pre");
     node.textContent = message;
-    node.style.cssText = "margin:16px;padding:12px;border:1px solid #ef4444;border-radius:8px;background:#fef2f2;color:#991b1b;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;";
+    node.style.cssText = "margin:16px;padding:12px;border:1px solid var(--destructive);border-radius:var(--radius);background:color-mix(in oklch,var(--destructive) 12%,var(--background));color:var(--destructive);font:12px/1.5 var(--font-mono);white-space:pre-wrap;";
     document.body.appendChild(node);
   };
   window.addEventListener("error", (event) => showError(event.error || event.message));
@@ -139,19 +130,28 @@ body {
 </style>`;
 }
 
-function previewHead(title: string): string {
+function artifactThemeStyle(theme: HTMLVisualThemeSnapshot): string {
+  const declarations = theme.variables.map(([name, value]) => `${name}:${value}`).join(";");
+  return `<style data-deeix-artifact-theme>
+:root { color-scheme: ${theme.colorScheme}; ${escapeStyleContent(declarations)} }
+html, body { color: var(--foreground); background: var(--background); }
+</style>`;
+}
+
+function previewHead(title: string, theme: HTMLVisualThemeSnapshot): string {
   return [
     `<meta charset="utf-8">`,
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}">`,
     `<title>${escapeHTML(title)}</title>`,
+    artifactThemeStyle(theme),
     artifactPreviewResetStyle(),
     artifactRuntimeScript(),
   ].join("");
 }
 
-function htmlPreviewDocument(code: string): string {
-  const safeHead = previewHead("Artifact Preview");
+function htmlPreviewDocument(code: string, theme: HTMLVisualThemeSnapshot): string {
+  const safeHead = previewHead("Artifact Preview", theme);
   const userHead = HEAD_BLOCK_RE.exec(code)?.[1]?.trim() ?? "";
   const bodyMatch = BODY_BLOCK_RE.exec(code);
   const body = bodyMatch
@@ -166,17 +166,18 @@ function htmlPreviewDocument(code: string): string {
   return `<!doctype html><html><head>${safeHead}${userHead}</head><body>${body}</body></html>`;
 }
 
-function cssPreviewDocument(code: string): string {
+function cssPreviewDocument(code: string, theme: HTMLVisualThemeSnapshot): string {
+  const branding = getBrandingSnapshot();
   return `<!doctype html>
 <html>
 <head>
-${previewHead("CSS Preview")}
+${previewHead("CSS Preview", theme)}
 <style>${escapeStyleContent(code)}</style>
 </head>
 <body>
   <main class="artifact-preview">
     <section class="preview-panel">
-      <p class="eyebrow">DEEIX Artifact</p>
+      <p class="eyebrow">${escapeHTML(branding.shortName)} Artifact</p>
       <h1>Preview Surface</h1>
       <p>Generated CSS is applied to this isolated document.</p>
       <div class="preview-row">
@@ -193,15 +194,15 @@ ${previewHead("CSS Preview")}
 </html>`;
 }
 
-function javascriptPreviewDocument(code: string): string {
+function javascriptPreviewDocument(code: string, theme: HTMLVisualThemeSnapshot): string {
   return `<!doctype html>
 <html>
 <head>
-${previewHead("JavaScript Preview")}
+${previewHead("JavaScript Preview", theme)}
 <style>
-body { margin: 0; font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111827; background: #ffffff; }
+body { margin: 0; font: 14px/1.5 var(--font-sans); color: var(--foreground); background: var(--background); }
 #root { min-height: 100vh; padding: 20px; box-sizing: border-box; }
-.artifact-console { position: fixed; inset-inline: 12px; bottom: 12px; max-height: 32vh; overflow: auto; border: 1px solid #d1d5db; border-radius: 8px; background: #f9fafb; color: #374151; padding: 10px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.artifact-console { position: fixed; inset-inline: 12px; bottom: 12px; max-height: 32vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--muted); color: var(--muted-foreground); padding: 10px; font: 12px/1.5 var(--font-mono); white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -231,28 +232,21 @@ body { margin: 0; font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "
 </html>`;
 }
 
-export function buildArtifactPreviewDocument(kind: ArtifactPreviewKind, code: string): string {
-  if (kind === "css") return cssPreviewDocument(code);
-  if (kind === "javascript") return javascriptPreviewDocument(code);
-  return htmlPreviewDocument(code);
+export function buildArtifactPreviewDocument(
+  kind: Exclude<ArtifactPreviewKind, "svg">,
+  code: string,
+  theme: HTMLVisualThemeSnapshot,
+): string {
+  if (kind === "css") return cssPreviewDocument(code, theme);
+  if (kind === "javascript") return javascriptPreviewDocument(code, theme);
+  return htmlPreviewDocument(code, theme);
 }
 
 export function resolveArtifactDownloadName(kind: ArtifactPreviewKind): string {
   if (kind === "css") return "artifact-css-preview.html";
   if (kind === "javascript") return "artifact-js-preview.html";
+  if (kind === "svg") return "artifact.svg";
   return "artifact-preview.html";
-}
-
-export function downloadArtifactHTML(fileName: string, value: string): void {
-  const blob = new Blob([value], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 }
 
 export function extractArtifactsFromContent(

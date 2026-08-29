@@ -22,11 +22,6 @@
     }
   },
   "fields": {
-    "loginPageTitle": {
-      "label": "Browser title",
-      "description": "Shown in the browser tab for the sign-in page.",
-      "placeholder": "Sign in to DEEIX Chat"
-    },
     "loginDefaultNextPath": {
       "label": "Default redirect path",
       "description": "Default destination after sign-in when /login has no next parameter."
@@ -38,6 +33,10 @@
     "emailRegistrationEnabled": {
       "label": "Email registration",
       "description": "Allow users to create accounts with email."
+    },
+    "passwordResetEnabled": {
+      "label": "Password reset",
+      "description": "Allow users to reset passwords from the sign-in page. Requires email verification."
     },
     "usernameLoginEnabled": {
       "label": "Username login",
@@ -147,6 +146,8 @@
     "loginControlDescription": "Allow platform sign-in.",
     "registrationControlDescription": "Allow automatic account creation.",
     "callbackURL": "Callback URL",
+    "serverCallbackURL": "Server callback URL (recommended)",
+    "legacyWebCallbackURL": "Legacy Web callback URL (deprecated soon)",
     "copyCallbackURL": "Copy URL",
     "logoURL": "Logo URL",
     "clientID": "Client ID",

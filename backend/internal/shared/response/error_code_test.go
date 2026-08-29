@@ -25,7 +25,6 @@ func TestInferErrorCode(t *testing.T) {
 		{name: "provider", status: http.StatusBadRequest, msg: "invalid oauth state", want: "auth.oauth_state_invalid"},
 		{name: "verification", status: http.StatusBadRequest, msg: "verification code is invalid or expired", want: "auth.verification_code_invalid"},
 		{name: "email registration", status: http.StatusBadRequest, msg: "email registration is disabled", want: "auth.email_registration_disabled"},
-		{name: "provider email conflict", status: http.StatusBadRequest, msg: "email already exists; bind the provider before login", want: "auth.provider_email_conflict"},
 		{name: "two factor already enabled", status: http.StatusBadRequest, msg: "two factor authentication is already enabled", want: "auth.two_factor_already_enabled"},
 		{name: "provider redirect uri", status: http.StatusBadRequest, msg: "invalid redirect uri", want: "auth.invalid_redirect_uri"},
 		{name: "user setting value", status: http.StatusBadRequest, msg: "invalid value for chat.file_mode: must be one of 'auto', 'rag'", want: "user_settings.invalid_value"},
@@ -36,6 +35,8 @@ func TestInferErrorCode(t *testing.T) {
 		{name: "auth email", status: http.StatusBadRequest, msg: "invalid email", want: "auth.invalid_email"},
 		{name: "superadmin delete protected", status: http.StatusConflict, msg: "superadmin delete not allowed", want: "user.superadmin_delete_protected"},
 		{name: "billing pricing invalid", status: http.StatusBadRequest, msg: "invalid model pricing", want: "billing.invalid_model_pricing"},
+		{name: "billing reservation conflict", status: http.StatusConflict, msg: "usage reservation already exists", want: "billing.reservation_conflict"},
+		{name: "billing concurrency limit", status: http.StatusTooManyRequests, msg: "usage concurrency limit exceeded", want: "billing.concurrency_limit_exceeded"},
 		{name: "billing redemption conflict", status: http.StatusConflict, msg: "redemption code already exists", want: "billing.redemption_code_conflict"},
 		{name: "billing redemption unavailable", status: http.StatusBadRequest, msg: "redemption code is unavailable", want: "billing.redemption_code_unavailable"},
 		{name: "settings nested namespace", status: http.StatusBadRequest, msg: "invalid setting: invalid namespace: foo", want: "settings.invalid_namespace"},
@@ -102,6 +103,7 @@ func TestPublicErrorMessage(t *testing.T) {
 		want   string
 	}{
 		{name: "preserves bad request context", status: http.StatusBadRequest, code: CodeRequestInvalid, msg: "invalid user id", want: "invalid user id"},
+		{name: "hides unknown bad request internals", status: http.StatusBadRequest, code: CodeRequestInvalid, msg: "pq: permission denied for table users", want: "invalid request"},
 		{name: "hides internal details", status: http.StatusInternalServerError, code: CodeInternal, msg: "update settings failed: pq: bad column", want: "internal server error"},
 		{name: "hides upstream details", status: http.StatusBadGateway, code: CodeUpstreamUnavailable, msg: "provider said secret", want: "upstream service unavailable"},
 		{name: "normalizes service unavailable", status: http.StatusServiceUnavailable, code: CodeServiceUnavailable, msg: "embedding host down", want: "service unavailable"},

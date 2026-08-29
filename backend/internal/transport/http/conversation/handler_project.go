@@ -55,21 +55,35 @@ func (h *Handler) CreateConversationProject(c *gin.Context) {
 		return
 	}
 	item, err := h.service.CreateConversationProject(c.Request.Context(), userID, appconversation.ConversationProjectInput{
-		Name:         req.Name,
-		Description:  req.Description,
-		SystemPrompt: req.SystemPrompt,
-		Color:        req.Color,
-		Icon:         req.Icon,
+		Name:                    req.Name,
+		Description:             req.Description,
+		SystemPrompt:            req.SystemPrompt,
+		MCPDefaultMode:          req.MCPDefaultMode,
+		DefaultMCPToolIDs:       req.DefaultMCPToolIDs,
+		DefaultSkillIDs:         req.DefaultSkillIDs,
+		DefaultKnowledgeBaseIDs: req.DefaultKnowledgeBaseIDs,
+		Color:                   req.Color,
+		Icon:                    req.Icon,
 	})
 	if err != nil {
 		if errors.Is(err, appconversation.ErrInvalidConversationProject) {
 			response.Error(c, http.StatusBadRequest, "invalid conversation project")
 			return
 		}
+		if errors.Is(err, appconversation.ErrConversationProjectLimitExceeded) {
+			response.Error(c, http.StatusBadRequest, "conversation project limit exceeded")
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "create conversation project failed")
 		return
 	}
-	h.recordAudit(c, "create_conversation_project", "conversation_project", item.PublicID, map[string]string{"name": item.Name})
+	h.recordAudit(c, "create_conversation_project", "conversation_project", item.PublicID, map[string]interface{}{
+		"name":                         item.Name,
+		"mcp_default_mode":             item.MCPDefaultMode,
+		"default_mcp_tool_count":       len(item.DefaultMCPToolIDs),
+		"default_skill_count":          len(item.DefaultSkillIDs),
+		"default_knowledge_base_count": len(item.DefaultKnowledgeBaseIDs),
+	})
 	response.Success(c, toConversationProjectResponse(item))
 }
 
@@ -100,12 +114,16 @@ func (h *Handler) UpdateConversationProject(c *gin.Context) {
 		return
 	}
 	item, err := h.service.UpdateConversationProject(c.Request.Context(), userID, publicID, appconversation.ConversationProjectPatchInput{
-		Name:         req.Name,
-		Description:  req.Description,
-		SystemPrompt: req.SystemPrompt,
-		Color:        req.Color,
-		Icon:         req.Icon,
-		Status:       req.Status,
+		Name:                    req.Name,
+		Description:             req.Description,
+		SystemPrompt:            req.SystemPrompt,
+		MCPDefaultMode:          req.MCPDefaultMode,
+		DefaultMCPToolIDs:       req.DefaultMCPToolIDs,
+		DefaultSkillIDs:         req.DefaultSkillIDs,
+		DefaultKnowledgeBaseIDs: req.DefaultKnowledgeBaseIDs,
+		Color:                   req.Color,
+		Icon:                    req.Icon,
+		Status:                  req.Status,
 	})
 	if err != nil {
 		switch {
@@ -120,7 +138,13 @@ func (h *Handler) UpdateConversationProject(c *gin.Context) {
 			return
 		}
 	}
-	h.recordAudit(c, "update_conversation_project", "conversation_project", item.PublicID, map[string]string{"name": item.Name})
+	h.recordAudit(c, "update_conversation_project", "conversation_project", item.PublicID, map[string]interface{}{
+		"name":                         item.Name,
+		"mcp_default_mode":             item.MCPDefaultMode,
+		"default_mcp_tool_count":       len(item.DefaultMCPToolIDs),
+		"default_skill_count":          len(item.DefaultSkillIDs),
+		"default_knowledge_base_count": len(item.DefaultKnowledgeBaseIDs),
+	})
 	response.Success(c, toConversationProjectResponse(item))
 }
 

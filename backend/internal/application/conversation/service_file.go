@@ -70,6 +70,15 @@ func (s *Service) DeleteFile(ctx context.Context, userID uint, fileID string) (*
 	return s.uploadSvc.DeleteFile(ctx, userID, fileID)
 }
 
+// DeleteFileIfUnreferenced 仅删除不再被知识库、活跃会话或账户资料引用的文件。
+func (s *Service) DeleteFileIfUnreferenced(ctx context.Context, userID uint, fileID string) (bool, error) {
+	if s.uploadSvc == nil {
+		return false, nil
+	}
+	_, deleted, err := s.uploadSvc.DeleteFileIfUnreferenced(ctx, userID, fileID)
+	return deleted, err
+}
+
 // RenameFile 重命名当前用户文件。
 func (s *Service) RenameFile(ctx context.Context, userID uint, fileID string, fileName string) (*model.FileObject, error) {
 	return s.uploadSvc.RenameFile(ctx, userID, fileID, fileName)
@@ -83,6 +92,11 @@ func (s *Service) UpdateFileRagOptOut(ctx context.Context, userID uint, fileID s
 // OpenFileContent 打开当前用户的文件内容。
 func (s *Service) OpenFileContent(ctx context.Context, userID uint, fileID string) (*appupload.FileContentResult, error) {
 	return s.uploadSvc.OpenFileContent(ctx, userID, fileID)
+}
+
+// ValidateImageFile 确认文件属于当前用户且可作为图片使用。
+func (s *Service) ValidateImageFile(ctx context.Context, userID uint, fileID string) error {
+	return s.uploadSvc.ValidateImageFile(ctx, userID, fileID)
 }
 
 // GetFileExtract 读取当前用户文件的提取文本产物。

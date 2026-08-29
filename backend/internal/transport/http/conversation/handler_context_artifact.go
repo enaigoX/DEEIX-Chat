@@ -31,7 +31,7 @@ func (h *Handler) GetContextArtifact(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalid context artifact id")
 		return
 	}
-	parsedID, err := strconv.ParseUint(rawID, 10, 64)
+	parsedID, err := strconv.ParseUint(rawID, 10, strconv.IntSize)
 	if err != nil || parsedID == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid context artifact id")
 		return

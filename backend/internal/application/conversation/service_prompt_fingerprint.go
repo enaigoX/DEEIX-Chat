@@ -11,7 +11,7 @@ import (
 
 	domainmemory "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/memory"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 )
 
 type promptStateFingerprintInput struct {
@@ -180,7 +180,9 @@ func buildPromptContextConfigSignature(cfg config.Config) string {
 		"rag_min_similarity":          cfg.RAGMinSimilarity,
 		"rag_token_budget":            cfg.RAGTokenBudget,
 		"rag_query_history_turns":     cfg.RAGQueryHistoryTurns,
-		"context_compact_trigger":     cfg.ContextCompactTrigger,
+		"context_compact_enabled":     cfg.ContextCompactEnabled,
+		"context_window_fallback":     cfg.ContextWindowFallbackTokens,
+		"context_compact_percent":     cfg.ContextCompactTriggerPercent,
 		"context_compact_preserve":    cfg.ContextCompactPreserve,
 		"message_embedding_enabled":   cfg.MessageEmbeddingEnabled,
 		"semantic_context_enabled":    cfg.SemanticContextEnabled,
@@ -208,16 +210,16 @@ func promptStatePrefixMessages(messages []llm.Message) []llm.Message {
 	return cloneLLMMessages(messages[:lastUserIndex])
 }
 
-func appendAssistantStateMessage(messages []llm.Message, assistantText string) []llm.Message {
+func appendAssistantStateMessage(messages []llm.Message, assistantText string, reasoningContent string) []llm.Message {
 	result := cloneLLMMessages(messages)
-	result = append(result, llm.Message{Role: "assistant", Content: assistantText})
+	result = append(result, llm.Message{Role: "assistant", Content: assistantText, ReasoningContent: reasoningContent})
 	return result
 }
 
 // buildNextStatefulPrefixMessages 生成下一轮本地可重建的状态前缀。
 // 当前轮真实发送给上游的 user 可能包含文件、RAG、图片等动态 XML；数据库历史只保存用户原文。
 // 因此保存 previous_response_id 指纹时使用“稳定前缀 + 用户原文 + 助手回复”，避免下一轮因历史 XML 不可重建而误判失效。
-func buildNextStatefulPrefixMessages(messages []llm.Message, currentUserContent string, assistantText string) []llm.Message {
+func buildNextStatefulPrefixMessages(messages []llm.Message, currentUserContent string, assistantText string, reasoningContent string) []llm.Message {
 	lastUserIndex := -1
 	for index := len(messages) - 1; index >= 0; index-- {
 		if messages[index].Role == "user" {
@@ -226,11 +228,25 @@ func buildNextStatefulPrefixMessages(messages []llm.Message, currentUserContent 
 		}
 	}
 	if lastUserIndex < 0 {
-		return appendAssistantStateMessage(messages, assistantText)
+		return appendAssistantStateMessage(messages, assistantText, reasoningContent)
 	}
 	result := cloneLLMMessages(messages[:lastUserIndex])
-	result = append(result, llm.Message{Role: "user", Content: currentUserContent})
-	result = append(result, llm.Message{Role: "assistant", Content: assistantText})
+	currentUser := llm.Message{Role: "user", Content: currentUserContent}
+	imageParts := make([]llm.ContentPart, 0)
+	for _, part := range messages[lastUserIndex].Parts {
+		if part.Kind == llm.ContentPartImage && len(part.Data) > 0 {
+			imageParts = append(imageParts, part)
+		}
+	}
+	if len(imageParts) > 0 {
+		currentUser.Content = ""
+		if strings.TrimSpace(currentUserContent) != "" {
+			currentUser.Parts = append(currentUser.Parts, llm.ContentPart{Kind: llm.ContentPartText, Text: currentUserContent})
+		}
+		currentUser.Parts = append(currentUser.Parts, imageParts...)
+	}
+	result = append(result, currentUser)
+	result = append(result, llm.Message{Role: "assistant", Content: assistantText, ReasoningContent: reasoningContent})
 	return result
 }
 

@@ -75,13 +75,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AdminAnnouncementListResponseDoc"
+                            "$ref": "#/definitions/AdminAnnouncementListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     }
                 }
@@ -110,7 +110,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.CreateAnnouncementRequest"
+                            "$ref": "#/definitions/CreateAnnouncementRequest"
                         }
                     }
                 ],
@@ -118,19 +118,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementResponseDoc"
+                            "$ref": "#/definitions/AnnouncementResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     }
                 }
@@ -167,25 +167,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementDeleteResponseDoc"
+                            "$ref": "#/definitions/AnnouncementDeleteResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     }
                 }
@@ -221,7 +221,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.PatchAnnouncementRequestDoc"
+                            "$ref": "#/definitions/PatchAnnouncementRequestDoc"
                         }
                     }
                 ],
@@ -229,25 +229,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementResponseDoc"
+                            "$ref": "#/definitions/AnnouncementResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     }
                 }
@@ -331,13 +331,246 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.AuditLogListResponseDoc"
+                            "$ref": "#/definitions/AuditLogListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/auth/provider-order": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员保存第三方身份源的展示顺序",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-auth"
+                ],
+                "summary": "调整第三方身份源顺序",
+                "parameters": [
+                    {
+                        "description": "身份源顺序",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ReorderIdentityProvidersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/IdentityProviderReorderResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/auth/providers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员查看已配置的 OIDC 和 OAuth2 身份源",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-auth"
+                ],
+                "summary": "获取第三方身份源列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/IdentityProviderListResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员创建一个 OIDC 或 OAuth2 身份源",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-auth"
+                ],
+                "summary": "创建第三方身份源",
+                "parameters": [
+                    {
+                        "description": "身份源配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpsertIdentityProviderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/IdentityProviderResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/auth/providers/{provider_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员删除第三方身份源；force=true 时允许删除仍有关联用户的身份源",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-auth"
+                ],
+                "summary": "删除第三方身份源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "身份源 ID",
+                        "name": "provider_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否强制删除",
+                        "name": "force",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/IdentityProviderDeleteResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员更新一个 OIDC 或 OAuth2 身份源",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-auth"
+                ],
+                "summary": "更新第三方身份源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "身份源 ID",
+                        "name": "provider_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "身份源配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpsertIdentityProviderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/IdentityProviderResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -375,7 +608,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.UpdateBillingAccountBalanceRequest"
+                            "$ref": "#/definitions/UpdateBillingAccountBalanceRequest"
                         }
                     }
                 ],
@@ -383,19 +616,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BillingAccountResponseDoc"
+                            "$ref": "#/definitions/BillingAccountResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -423,13 +656,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BillingConfigResponseDoc"
+                            "$ref": "#/definitions/BillingConfigResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -458,7 +691,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BillingConfigRequest"
+                            "$ref": "#/definitions/BillingConfigRequest"
                         }
                     }
                 ],
@@ -466,19 +699,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BillingConfigResponseDoc"
+                            "$ref": "#/definitions/BillingConfigResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -526,13 +759,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ModelPricingListResponseDoc"
+                            "$ref": "#/definitions/ModelPricingListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -561,7 +794,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.UpsertModelPricingRequest"
+                            "$ref": "#/definitions/UpsertModelPricingRequest"
                         }
                     }
                 ],
@@ -569,19 +802,67 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ModelPricingDataResponse"
+                            "$ref": "#/definitions/ModelPricingDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/billing/official-pricing/openrouter": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "从 storage 缓存读取 OpenRouter 模型标识、定价和上下文限制；缓存不存在、过期或 refresh=true 时由后端刷新。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-billing"
+                ],
+                "summary": "管理员获取 OpenRouter 官方模型目录",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "强制刷新缓存",
+                        "name": "refresh",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/OpenRouterOfficialPricingResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/BillingErrorDoc"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -619,7 +900,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.UpdateBillingPlanRequest"
+                            "$ref": "#/definitions/UpdateBillingPlanRequest"
                         }
                     }
                 ],
@@ -627,19 +908,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BillingPlanResponseDoc"
+                            "$ref": "#/definitions/BillingPlanResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -705,13 +992,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeListResponseDoc"
+                            "$ref": "#/definitions/RedemptionCodeListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -740,7 +1027,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.CreateRedemptionCodeRequest"
+                            "$ref": "#/definitions/CreateRedemptionCodeRequest"
                         }
                     }
                 ],
@@ -748,19 +1035,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeCreateResponseDoc"
+                            "$ref": "#/definitions/RedemptionCodeCreateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -791,7 +1078,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BatchDeleteRedemptionCodeRequest"
+                            "$ref": "#/definitions/BatchDeleteRedemptionCodeRequest"
                         }
                     }
                 ],
@@ -799,13 +1086,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BatchDeleteRedemptionCodeResponseDoc"
+                            "$ref": "#/definitions/BatchDeleteRedemptionCodeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -842,25 +1129,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeDeleteResponseDoc"
+                            "$ref": "#/definitions/RedemptionCodeDeleteResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -896,7 +1183,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.PatchRedemptionCodeRequestDoc"
+                            "$ref": "#/definitions/PatchRedemptionCodeRequestDoc"
                         }
                     }
                 ],
@@ -904,19 +1191,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeResponseDoc"
+                            "$ref": "#/definitions/RedemptionCodeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -953,25 +1240,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeResponseDoc"
+                            "$ref": "#/definitions/RedemptionCodeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -1055,19 +1342,1883 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.UsageLogListResponseDoc"
+                            "$ref": "#/definitions/UsageLogListResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/content-moderation/config": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-content-moderation"
+                ],
+                "summary": "Get content moderation config",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ContentModerationConfigResponseDoc"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-content-moderation"
+                ],
+                "summary": "Update content moderation config",
+                "parameters": [
+                    {
+                        "description": "Content moderation configuration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ContentModerationUpdateConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ContentModerationConfigUpdateResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/content-moderation/events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-content-moderation"
+                ],
+                "summary": "List content moderation events",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exact event, user, run, model, result, or summary search",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Result filter",
+                        "name": "result",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Direction filter",
+                        "name": "direction",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Modality filter",
+                        "name": "modality",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Category filter",
+                        "name": "category",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Run ID",
+                        "name": "runId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start time (RFC3339)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End time (RFC3339)",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ContentModerationEventListResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/content-moderation/events/{eventID}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-content-moderation"
+                ],
+                "summary": "Get content moderation event detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Moderation event ID",
+                        "name": "eventID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ContentModerationEventDetailResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/content-moderation/events/{eventID}/images/{index}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "admin-content-moderation"
+                ],
+                "summary": "Stream a isolated moderation image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Moderation event ID",
+                        "name": "eventID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Image index",
+                        "name": "index",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/content-moderation/probe": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-content-moderation"
+                ],
+                "summary": "Probe content moderation service",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ContentModerationProbeResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/content-moderation/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-content-moderation"
+                ],
+                "summary": "Get content moderation daily stats",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start time (RFC3339)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End time (RFC3339)",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ContentModerationStatsResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/conversation-events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员分页查看对话运行轨迹、工具、MCP 与处理事件",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员查询对话事件",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索运行ID、事件、阶段、标题、工具名",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "事件范围(trace_block/trace_event/tool_call)",
+                        "name": "event_scope",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "事件类型",
+                        "name": "event_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "事件状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "会话ID",
+                        "name": "conversation_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "创建时间起点(RFC3339)",
+                        "name": "created_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "创建时间终点(RFC3339)",
+                        "name": "created_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "排序方式",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationEventListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/conversation-events/cleanup": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "物理删除指定运行的全部对话事件；保留消息、附件、调用与计费记录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员按运行清理对话事件",
+                "parameters": [
+                    {
+                        "description": "运行轨迹清理参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CleanupConversationRunsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/CleanupConversationRunsResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/conversation-events/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员按事件 ID 查看单条对话运行事件详情；超大历史负载会被安全省略",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员查询对话事件详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "事件 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationEventDetailResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/conversations/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "流式导出全量会话及消息为 NDJSON 文件，最后一行为 export_manifest 元数据",
+                "produces": [
+                    "application/x-ndjson"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员导出全量对话数据",
+                "responses": {
+                    "200": {
+                        "description": "NDJSON stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "查询内置知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "排序方式(default/name/created/updated/files)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "可用状态",
+                        "name": "enabled",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBasePageResponseDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "创建内置知识库",
+                "parameters": [
+                    {
+                        "description": "知识库配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/WriteKnowledgeBaseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/files": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页返回供内置知识库复用的全部平台资料",
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "查询平台资料",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "文件名搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFilePageResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "上传平台级资料，不占用管理员个人存储额度",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "上传内置知识库资料",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "文件",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFileResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/files/{file_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "仅允许删除未被任何知识库、会话或账户资料引用的平台资料",
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "删除平台资料",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "文件ID",
+                        "name": "file_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PlatformFileDeleteResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/files/{file_id}/content": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "仅允许管理员读取平台资料池中的文件",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "获取平台资料内容",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "文件ID",
+                        "name": "file_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "查询内置知识库详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseResponseDoc"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "删除内置知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否同步删除不再被其他资源引用的知识库文件",
+                        "name": "delete_files",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseDeleteResponseDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "更新内置知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新字段",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PatchKnowledgeBaseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/{id}/available-files": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页返回尚未关联到指定内置知识库的平台资料",
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "查询可加入内置知识库的文件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "文件名搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFilePageResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/{id}/files": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "查询内置知识库文件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFilePageResponseDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "将平台资料加入内置知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "文件ID列表",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/AddKnowledgeBaseFilesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFileMutationResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/{id}/files/processing/snapshot": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "查询内置知识库处理快照",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库公开ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "当前页处理中或待确认的文件ID，最多100个，可为空",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/GetKnowledgeBaseFileProcessingSnapshotRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFileProcessingSnapshotResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/{id}/files/processing/statuses": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "批量查询内置知识库文件处理状态",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "文件ID，最多100个",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/GetKnowledgeBaseFileProcessingStatusesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/KnowledgeBaseFileProcessingStatusResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/{id}/files/{file_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "将文件移出内置知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "文件ID",
+                        "name": "file_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFileMutationResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/knowledge-bases/{id}/files/{file_id}/content": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "仅允许读取仍与指定内置知识库关联的文件",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "admin-knowledge-bases"
+                ],
+                "summary": "获取内置知识库文件内容",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "文件ID",
+                        "name": "file_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/llm/icon-assets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询仍在图标库中的已上传图标，按上传时间倒序返回",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员查询已上传的模型展示图标",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelIconAssetListResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "上传 PNG、JPEG 或 WebP 图标；后端校验内容、尺寸并按 SHA-256 去重",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员上传模型展示图标",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "图标文件，最大 1 MiB",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelIconAssetResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/llm/icon-assets/{public_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "仅允许移除无引用图标；立即从图标库隐藏，持续 24 小时无引用后物理清理",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员从图标库移除已上传图标",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "图标公开 ID",
+                        "name": "public_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SuccessDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/ModelIconAssetDeleteConflictDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/llm/model-display-groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询自定义展示分组；未绑定分组的模型继续按技术厂商展示",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员查询模型展示分组",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索名称",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelDisplayGroupListResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建仅影响用户界面归类的自定义模型分组",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员创建模型展示分组",
+                "parameters": [
+                    {
+                        "description": "展示分组参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreateModelDisplayGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelDisplayGroupDataResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/llm/model-display-groups/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除展示分组后，关联模型恢复按技术厂商展示",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员删除模型展示分组",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "展示分组 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SuccessDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员更新模型展示分组",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "展示分组 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "展示分组参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdateModelDisplayGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelDisplayGroupDataResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/llm/model-vendors": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询模型技术厂商目录；技术厂商是路由、权限和计费使用的稳定身份",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员查询模型技术厂商",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索 key 或名称",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelVendorListResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建新的稳定技术厂商身份；创建后可供平台模型选择",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员创建模型技术厂商",
+                "parameters": [
+                    {
+                        "description": "技术厂商参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreateModelVendorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelVendorDataResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/llm/model-vendors/{key}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "仅允许删除未被平台模型引用的非内置厂商；冲突响应包含关联模型预览",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员删除自定义模型技术厂商",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "技术厂商 key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SuccessDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/ModelVendorDeleteConflictDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "更新厂商展示名称和图标；稳定技术 key 不可修改",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员更新模型技术厂商",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "技术厂商 key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "技术厂商参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdateModelVendorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelVendorDataResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1111,6 +3262,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "仅查询公开且可路由模型",
+                        "name": "only_available",
+                        "in": "query"
+                    },
+                    {
                         "type": "string",
                         "description": "搜索关键词",
                         "name": "q",
@@ -1135,6 +3292,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "integer",
+                        "description": "上游 ID",
+                        "name": "upstream",
+                        "in": "query"
+                    },
+                    {
                         "type": "string",
                         "description": "排序：sortOrder_asc/updated_desc/id_desc/platformModelName_asc/sourceCount_desc",
                         "name": "sort",
@@ -1145,13 +3308,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelListResponseDoc"
+                            "$ref": "#/definitions/ModelListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1180,7 +3343,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.CreateModelRequest"
+                            "$ref": "#/definitions/CreateModelRequest"
                         }
                     }
                 ],
@@ -1188,25 +3351,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.CreateModelResponseDoc"
+                            "$ref": "#/definitions/CreateModelResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1237,7 +3400,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.BatchDeleteRequest"
+                            "$ref": "#/definitions/BatchDeleteRequest"
                         }
                     }
                 ],
@@ -1245,13 +3408,64 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.BatchDeleteResponseDoc"
+                            "$ref": "#/definitions/BatchDeleteResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/llm/models/display-group": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "在单个事务中将指定模型归入展示分组；displayGroupID 为 0 时恢复按技术厂商展示",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员批量设置模型展示分组",
+                "parameters": [
+                    {
+                        "description": "批量归组参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SetModelsDisplayGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SuccessDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1282,7 +3496,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ReorderModelsRequest"
+                            "$ref": "#/definitions/ReorderModelsRequest"
                         }
                     }
                 ],
@@ -1290,25 +3504,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1345,25 +3559,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1399,7 +3613,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpdateModelRequest"
+                            "$ref": "#/definitions/UpdateModelRequest"
                         }
                     }
                 ],
@@ -1407,25 +3621,95 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpdateModelResponseDoc"
+                            "$ref": "#/definitions/UpdateModelResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/llm/models/{id}/protocols": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "在单个数据库事务中更新平台模型能力类型，并将该模型全部上游绑定替换为指定的完整协议集合",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "管理员替换模型全部来源的协议集合",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "模型ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "完整协议集合与模型能力类型",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SetModelProtocolsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SetModelProtocolsResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1474,25 +3758,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelUpstreamSourceListResponseDoc"
+                            "$ref": "#/definitions/ModelUpstreamSourceListResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1528,7 +3812,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.BindModelUpstreamSourceRequest"
+                            "$ref": "#/definitions/BindModelUpstreamSourceRequest"
                         }
                     }
                 ],
@@ -1536,31 +3820,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelUpstreamSourceDataResponse"
+                            "$ref": "#/definitions/ModelUpstreamSourceDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1605,7 +3889,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpdateModelUpstreamSourceRequest"
+                            "$ref": "#/definitions/UpdateModelUpstreamSourceRequest"
                         }
                     }
                 ],
@@ -1613,25 +3897,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpdateModelUpstreamSourceResponseDoc"
+                            "$ref": "#/definitions/UpdateModelUpstreamSourceResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1668,7 +3952,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelProbeRequest"
+                            "$ref": "#/definitions/ModelProbeRequest"
                         }
                     }
                 ],
@@ -1676,25 +3960,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelProbeResponseDoc"
+                            "$ref": "#/definitions/ModelProbeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1731,7 +4015,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelProbeRequest"
+                            "$ref": "#/definitions/ModelProbeRequest"
                         }
                     }
                 ],
@@ -1739,25 +4023,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelProbeBatchResponseDoc"
+                            "$ref": "#/definitions/ModelProbeBatchResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1785,13 +4069,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1840,25 +4124,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1924,13 +4208,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpstreamListResponseDoc"
+                            "$ref": "#/definitions/UpstreamListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -1959,7 +4243,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.CreateUpstreamRequest"
+                            "$ref": "#/definitions/CreateUpstreamRequest"
                         }
                     }
                 ],
@@ -1967,25 +4251,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.CreateUpstreamResponseDoc"
+                            "$ref": "#/definitions/CreateUpstreamResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2016,7 +4300,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.BatchDeleteRequest"
+                            "$ref": "#/definitions/BatchDeleteRequest"
                         }
                     }
                 ],
@@ -2024,13 +4308,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.BatchDeleteResponseDoc"
+                            "$ref": "#/definitions/BatchDeleteResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2067,25 +4351,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2121,7 +4405,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpdateUpstreamRequest"
+                            "$ref": "#/definitions/UpdateUpstreamRequest"
                         }
                     }
                 ],
@@ -2129,25 +4413,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpdateUpstreamResponseDoc"
+                            "$ref": "#/definitions/UpdateUpstreamResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2184,25 +4468,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2239,25 +4529,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ResetUpstreamCircuitResponseDoc"
+                            "$ref": "#/definitions/ResetUpstreamCircuitResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2336,25 +4626,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpstreamModelListResponseDoc"
+                            "$ref": "#/definitions/UpstreamModelListResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2390,7 +4680,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpsertUpstreamModelRequest"
+                            "$ref": "#/definitions/UpsertUpstreamModelRequest"
                         }
                     }
                 ],
@@ -2398,31 +4688,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpsertUpstreamModelResponseDoc"
+                            "$ref": "#/definitions/UpsertUpstreamModelResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2460,7 +4750,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.BatchDeleteRequest"
+                            "$ref": "#/definitions/BatchDeleteRequest"
                         }
                     }
                 ],
@@ -2468,13 +4758,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.BatchDeleteResponseDoc"
+                            "$ref": "#/definitions/BatchDeleteResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2512,7 +4802,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ImportUpstreamModelsRequest"
+                            "$ref": "#/definitions/ImportUpstreamModelsRequest"
                         }
                     }
                 ],
@@ -2520,31 +4810,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ImportUpstreamModelsResponseDoc"
+                            "$ref": "#/definitions/ImportUpstreamModelsResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "502": {
                         "description": "Bad Gateway",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2581,31 +4871,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.UpstreamRemoteModelsResponseDoc"
+                            "$ref": "#/definitions/UpstreamRemoteModelsResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "502": {
                         "description": "Bad Gateway",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2642,31 +4932,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.SyncUpstreamModelsResponseDoc"
+                            "$ref": "#/definitions/SyncUpstreamModelsResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "502": {
                         "description": "Bad Gateway",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2710,25 +5000,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2772,25 +5062,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2834,25 +5130,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ResetUpstreamCircuitResponseDoc"
+                            "$ref": "#/definitions/ResetUpstreamCircuitResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2893,25 +5189,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -2952,25 +5248,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     }
                 }
@@ -3014,7 +5310,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelProbeRequest"
+                            "$ref": "#/definitions/ModelProbeRequest"
                         }
                     }
                 ],
@@ -3022,25 +5318,1524 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ModelProbeResponseDoc"
+                            "$ref": "#/definitions/ModelProbeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/logs/cleanup": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按日志类型物理删除指定时间点之前的日志；操作不可恢复",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员清理日志",
+                "parameters": [
+                    {
+                        "description": "日志清理参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CleanupLogsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/CleanupLogsResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mcp/servers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员查看已配置的 MCP 服务及其工具统计",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "获取 MCP 服务列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ServerListResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员创建一个 MCP 服务配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "创建 MCP 服务",
+                "parameters": [
+                    {
+                        "description": "MCP 服务配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreateServerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ServerDataResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mcp/servers/order": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员保存 MCP 服务及其工具的展示顺序",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "调整 MCP 服务及工具顺序",
+                "parameters": [
+                    {
+                        "description": "MCP 排序配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ReorderServersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ServerToolOrderListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mcp/servers/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员删除一个 MCP 服务及其工具",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "删除 MCP 服务",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP 服务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/DeleteServerResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员更新一个 MCP 服务配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "更新 MCP 服务",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP 服务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "MCP 服务配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreateServerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ServerDataResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mcp/servers/{id}/sync": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员从 MCP 服务同步工具定义",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "同步 MCP 工具",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP 服务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否用远端元数据覆盖管理员自定义的工具名称和说明",
+                        "name": "overwrite_customized_metadata",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ToolListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mcp/servers/{id}/tools": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员查看指定 MCP 服务已同步的工具",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "获取 MCP 服务工具",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP 服务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ToolListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mcp/servers/{id}/tools/status": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员批量启用或停用指定 MCP 服务的工具",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "批量更新 MCP 工具状态",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP 服务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "MCP 工具状态",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdateServerToolsStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ToolListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mcp/tools/{id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员更新 MCP 工具的展示信息、附件处理配置或状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp"
+                ],
+                "summary": "更新 MCP 工具",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP 工具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "MCP 工具配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdateToolRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ToolResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/models/{modelID}/permission-groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回平台模型的手动权限组与动态规则命中的有效权限组",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员列出模型权限组",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "平台模型ID",
+                        "name": "modelID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelPermissionGroupsResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "全量替换平台模型的手动权限组，不影响权限组动态规则",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员设置模型手动权限组",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "平台模型ID",
+                        "name": "modelID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "权限组 ID 集合",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SetModelPermissionGroupsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ModelPermissionGroupsResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/payment-orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员分页查看订阅和充值支付单",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员查询支付订单记录",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索订单号、支付渠道、外部支付ID",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "订单类型(subscription/topup)",
+                        "name": "order_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "支付渠道",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "支付状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "创建时间起点(RFC3339)",
+                        "name": "created_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "创建时间终点(RFC3339)",
+                        "name": "created_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "排序方式",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PaymentOrderListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/permission-groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回全部模型访问权限组，默认组优先",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员列出权限组",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PermissionGroupListResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建模型访问权限组并设置计费倍率",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员创建权限组",
+                "parameters": [
+                    {
+                        "description": "权限组参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreatePermissionGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PermissionGroupDataResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/permission-groups/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除权限组及其模型、用户关联；默认组和被套餐引用的权限组不可删除",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员删除权限组",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "权限组ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/DeletePermissionGroupResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "更新权限组名称、说明与计费倍率",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员更新权限组",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "权限组ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "权限组参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdatePermissionGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PermissionGroupDataResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/permission-groups/{id}/models": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回权限组授权的平台模型 ID 集合",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员列出权限组模型",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "权限组ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/GroupModelsResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "全量替换权限组授权的平台模型 ID 集合与动态访问规则",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员设置权限组模型",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "权限组ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "平台模型 ID 集合",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SetGroupModelsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/GroupModelsResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/permission-groups/{id}/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回权限组内的用户 ID 集合",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员列出权限组用户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "权限组ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/GroupUsersResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "全量替换权限组内的用户 ID 集合",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员设置权限组用户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "权限组ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "用户 ID 集合",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SetGroupUsersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/GroupUsersResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/prompt-presets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-prompt-presets"
+                ],
+                "summary": "管理员查询内置提示词",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否启用",
+                        "name": "enabled",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetPageResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-prompt-presets"
+                ],
+                "summary": "管理员创建内置提示词",
+                "parameters": [
+                    {
+                        "description": "提示词配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/WritePromptPresetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/prompt-presets/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-prompt-presets"
+                ],
+                "summary": "管理员删除内置提示词",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "提示词ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetDeleteResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-prompt-presets"
+                ],
+                "summary": "管理员更新内置提示词",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "提示词ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新字段",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PatchPromptPresetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/redemptions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员分页查看兑换码兑换明细，含奖励内容与余额变动，已删除兑换码的历史仍可查询",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员查询兑换记录",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索兑换流水号、兑换码摘要、兑换码备注",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "兑换码ID",
+                        "name": "code_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "奖励类型(balance/subscription)",
+                        "name": "reward_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "兑换时间起点(RFC3339)",
+                        "name": "created_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "兑换时间终点(RFC3339)",
+                        "name": "created_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "排序方式",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/RedemptionRecordListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -3065,7 +6860,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3094,7 +6889,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_settings.PatchSettingsRequest"
+                            "$ref": "#/definitions/SettingsPatchSettingsRequest"
                         }
                     }
                 ],
@@ -3102,7 +6897,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3126,7 +6921,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3150,7 +6945,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3174,7 +6969,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3198,7 +6993,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3222,7 +7017,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3246,7 +7041,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3270,7 +7065,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3294,7 +7089,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3318,7 +7113,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3342,7 +7137,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3366,7 +7161,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3390,7 +7185,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3414,7 +7209,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3438,7 +7233,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -3472,7 +7267,241 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/skills": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-skills"
+                ],
+                "summary": "管理员查询内置技能",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否启用",
+                        "name": "enabled",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillPageResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-skills"
+                ],
+                "summary": "管理员创建内置技能",
+                "parameters": [
+                    {
+                        "description": "技能配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/WriteSkillRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/skills/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-skills"
+                ],
+                "summary": "管理员删除内置技能",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "技能ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillDeleteResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-skills"
+                ],
+                "summary": "管理员更新内置技能",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "技能ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新字段",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PatchSkillRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
                         }
                     }
                 }
@@ -3556,19 +7585,121 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.SystemEventListResponseDoc"
+                            "$ref": "#/definitions/SystemEventListResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/usage-statistics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员按日期、统计对象、平台模型和计费范围查看全局费用、Token、调用次数及排名；用户与权限组筛选互斥",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员查询全局用量统计",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "开始日期(YYYY-MM-DD)，默认近30天",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "结束日期(YYYY-MM-DD，包含当日)",
+                        "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "权限组ID，与 user_id 互斥",
+                        "name": "permission_group_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "平台模型名",
+                        "name": "platform_model_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "计费范围：all/free/billable",
+                        "name": "billing_scope",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "返回范围：all/models/users",
+                        "name": "section",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "模型排名指标：cost/tokens/calls",
+                        "name": "model_rank_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户排名指标：cost/tokens/calls",
+                        "name": "user_rank_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/UsageStatisticsResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -3628,19 +7759,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.UserAuthEventListResponseDoc"
+                            "$ref": "#/definitions/UserAuthEventListResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -3676,19 +7807,37 @@ const docTemplate = `{
                         "description": "每页数量",
                         "name": "page_size",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索用户名、昵称、邮箱或公开ID",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "订阅状态过滤(active/free)",
+                        "name": "subscription_status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "身份源 slug 过滤",
+                        "name": "identity_provider",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.UserListResponseDoc"
+                            "$ref": "#/definitions/UserListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -3717,7 +7866,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.CreateUserRequest"
+                            "$ref": "#/definitions/CreateUserRequest"
                         }
                     }
                 ],
@@ -3725,25 +7874,82 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.CreateUserResponseDoc"
+                            "$ref": "#/definitions/CreateUserResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/import/openwebui": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "从 OpenWebUI SQLite 或 PostgreSQL 数据库读取用户，按 email 去重导入；已存在用户不会修改",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员导入 OpenWebUI 用户",
+                "parameters": [
+                    {
+                        "description": "OpenWebUI 导入参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ImportOpenWebUIUsersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ImportOpenWebUIUsersResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -3780,31 +7986,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.DeleteUserResponseDoc"
+                            "$ref": "#/definitions/DeleteUserResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -3840,7 +8046,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.PatchUserRequest"
+                            "$ref": "#/definitions/PatchUserRequest"
                         }
                     }
                 ],
@@ -3848,31 +8054,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.UpdateUserStatusResponseDoc"
+                            "$ref": "#/definitions/UpdateUserStatusResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -3910,7 +8116,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ResetUserPasswordRequest"
+                            "$ref": "#/definitions/ResetUserPasswordRequest"
                         }
                     }
                 ],
@@ -3918,31 +8124,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ResetUserPasswordResponseDoc"
+                            "$ref": "#/definitions/ResetUserPasswordResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -3979,25 +8185,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.RevokeUserSessionsResponseDoc"
+                            "$ref": "#/definitions/RevokeUserSessionsResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -4035,7 +8241,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.UpdateUserStatusRequest"
+                            "$ref": "#/definitions/UpdateUserStatusRequest"
                         }
                     }
                 ],
@@ -4043,31 +8249,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.UpdateUserStatusResponseDoc"
+                            "$ref": "#/definitions/UpdateUserStatusResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_admin.ErrorDoc"
+                            "$ref": "#/definitions/AdminErrorDoc"
                         }
                     }
                 }
@@ -4091,17 +8297,25 @@ const docTemplate = `{
                     "announcements"
                 ],
                 "summary": "获取当前公告",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "是否包含今日不再显示的公告",
+                        "name": "include_dismissed",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementListResponseDoc"
+                            "$ref": "#/definitions/AnnouncementListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     }
                 }
@@ -4139,7 +8353,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementStateRequest"
+                            "$ref": "#/definitions/AnnouncementStateRequest"
                         }
                     }
                 ],
@@ -4147,25 +8361,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementCloseResponseDoc"
+                            "$ref": "#/definitions/AnnouncementCloseResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     }
                 }
@@ -4203,7 +8417,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementStateRequest"
+                            "$ref": "#/definitions/AnnouncementStateRequest"
                         }
                     }
                 ],
@@ -4211,25 +8425,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementDismissResponseDoc"
+                            "$ref": "#/definitions/AnnouncementDismissResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_announcement.ErrorDoc"
+                            "$ref": "#/definitions/AnnouncementErrorDoc"
                         }
                     }
                 }
@@ -4255,7 +8469,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.LoginRequest"
+                            "$ref": "#/definitions/LoginRequest"
                         }
                     }
                 ],
@@ -4263,25 +8477,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.LoginResponseDoc"
+                            "$ref": "#/definitions/LoginResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4301,13 +8515,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.LoginOptionsResponseDoc"
+                            "$ref": "#/definitions/LoginOptionsResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4335,19 +8549,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.LogoutResponseDoc"
+                            "$ref": "#/definitions/LogoutResponseDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4375,19 +8589,211 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.LogoutResponseDoc"
+                            "$ref": "#/definitions/LogoutResponseDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/password/reset/complete": {
+            "post": {
+                "description": "使用邮箱、验证码和新密码完成密码重置；失败时返回通用错误，避免暴露账号状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "完成密码重置",
+                "parameters": [
+                    {
+                        "description": "密码重置完成请求",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PasswordResetCompleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PasswordResetCompleteResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/password/reset/start": {
+            "post": {
+                "description": "SMTP 配置可用时，向已验证邮箱发送密码重置验证码；失败时返回通用错误，避免暴露账号状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "发送密码重置验证码",
+                "parameters": [
+                    {
+                        "description": "密码重置验证码请求",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PasswordResetStartRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PasswordResetStartResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/providers/{slug}/authorize": {
+            "post": {
+                "description": "为 Web、App 或桌面公共客户端创建 PKCE 保护的 OAuth 授权事务；外部身份源仅回调当前 DEEIX 实例",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "创建第三方登录授权桥事务",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "身份源 slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "授权桥参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ProviderAuthBridgeStartRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ProviderAuthBridgeStartResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/providers/{slug}/exchange": {
+            "post": {
+                "description": "使用客户端 PKCE verifier 原子兑换服务端回调签发的一次性授权码，并进入统一 2FA/会话流程",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "兑换第三方登录一次性授权码",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "身份源 slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "授权码兑换参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ProviderAuthBridgeExchangeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/LoginResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4407,25 +8813,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.RefreshTokenResponseDoc"
+                            "$ref": "#/definitions/RefreshTokenResponseDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4451,7 +8857,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.EmailRegistrationCompleteRequest"
+                            "$ref": "#/definitions/EmailRegistrationCompleteRequest"
                         }
                     }
                 ],
@@ -4459,13 +8865,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.LoginResponseDoc"
+                            "$ref": "#/definitions/LoginResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4491,7 +8897,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.EmailRegistrationStartRequest"
+                            "$ref": "#/definitions/EmailRegistrationStartRequest"
                         }
                     }
                 ],
@@ -4499,13 +8905,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.EmailRegistrationStartResponseDoc"
+                            "$ref": "#/definitions/EmailRegistrationStartResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4533,19 +8939,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ActiveSessionListResponseDoc"
+                            "$ref": "#/definitions/ActiveSessionListResponseDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4576,7 +8982,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.UpdateCurrentSessionLocationRequest"
+                            "$ref": "#/definitions/UpdateCurrentSessionLocationRequest"
                         }
                     }
                 ],
@@ -4584,25 +8990,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.UpdateCurrentSessionLocationResponseDoc"
+                            "$ref": "#/definitions/UpdateCurrentSessionLocationResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4639,19 +9045,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.LogoutResponseDoc"
+                            "$ref": "#/definitions/LogoutResponseDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -4679,13 +9085,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BillingAccountResponseDoc"
+                            "$ref": "#/definitions/BillingAccountResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -4713,13 +9119,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.BillingOverviewResponseDoc"
+                            "$ref": "#/definitions/BillingOverviewResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -4750,7 +9156,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.CreateCheckoutRequest"
+                            "$ref": "#/definitions/CreateCheckoutRequest"
                         }
                     }
                 ],
@@ -4758,19 +9164,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.CheckoutResponseDoc"
+                            "$ref": "#/definitions/CheckoutResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -4811,7 +9217,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -4839,13 +9245,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.PlanListResponseDoc"
+                            "$ref": "#/definitions/PlanListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -4876,7 +9282,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.RedeemCodeRequest"
+                            "$ref": "#/definitions/RedeemCodeRequest"
                         }
                     }
                 ],
@@ -4884,19 +9290,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.RedemptionApplyResponseDoc"
+                            "$ref": "#/definitions/RedemptionApplyResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -4927,7 +9333,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.SubscribeRequest"
+                            "$ref": "#/definitions/SubscribeRequest"
                         }
                     }
                 ],
@@ -4935,19 +9341,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.SubscribeResponseDoc"
+                            "$ref": "#/definitions/SubscribeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -5007,13 +9413,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.UsageLedgerListResponseDoc"
+                            "$ref": "#/definitions/UsageLedgerListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -5049,13 +9455,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.UsageDailyListResponseDoc"
+                            "$ref": "#/definitions/UsageDailyListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
                         }
                     }
                 }
@@ -5091,13 +9497,51 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.UsageMonthlyListResponseDoc"
+                            "$ref": "#/definitions/UsageMonthlyListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_billing.ErrorDoc"
+                            "$ref": "#/definitions/BillingErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/branding": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "查询公开品牌配置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/BrandingResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/branding/manifest.webmanifest": {
+            "get": {
+                "produces": [
+                    "application/manifest+json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "查询品牌 Web App Manifest",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/BrandingManifestResponse"
                         }
                     }
                 }
@@ -5134,25 +9578,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ContextArtifactResponseDoc"
+                            "$ref": "#/definitions/ContextArtifactResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5188,13 +9632,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationProjectListResponseDoc"
+                            "$ref": "#/definitions/ConversationProjectListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5223,7 +9667,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.CreateConversationProjectRequest"
+                            "$ref": "#/definitions/CreateConversationProjectRequest"
                         }
                     }
                 ],
@@ -5231,19 +9675,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationProjectResponseDoc"
+                            "$ref": "#/definitions/ConversationProjectResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5274,7 +9718,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ReorderConversationProjectsRequest"
+                            "$ref": "#/definitions/ReorderConversationProjectsRequest"
                         }
                     }
                 ],
@@ -5282,25 +9726,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationProjectListResponseDoc"
+                            "$ref": "#/definitions/ConversationProjectListResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5349,25 +9793,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationDeleteResponseDoc"
+                            "$ref": "#/definitions/ConversationDeleteResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5403,7 +9847,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.UpdateConversationProjectRequest"
+                            "$ref": "#/definitions/UpdateConversationProjectRequest"
                         }
                     }
                 ],
@@ -5411,25 +9855,110 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationProjectResponseDoc"
+                            "$ref": "#/definitions/ConversationProjectResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversation-runs/statuses": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按运行 ID 一次查询当前用户多个会话任务的最小状态快照",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "批量查询会话运行状态",
+                "parameters": [
+                    {
+                        "description": "运行ID，最多100个",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/GetConversationRunStatusesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ConversationRunStatusResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversation-runs/stream": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sends an authoritative snapshot followed by live user-scoped run state events; the snapshot is re-sent periodically for client-side reconciliation",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Stream active conversation generations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ActiveMessageGenerationEventResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5463,13 +9992,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc"
+                            "$ref": "#/definitions/SuccessDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5503,6 +10032,12 @@ const docTemplate = `{
                         "description": "已接收的最后事件序号",
                         "name": "after",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否返回可替换当前正文的权威文本快照",
+                        "name": "snapshot",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -5515,7 +10050,7 @@ const docTemplate = `{
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5575,19 +10110,25 @@ const docTemplate = `{
                         "description": "项目筛选: all|unassigned|项目 public_id",
                         "name": "project",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索关键词，匹配会话元数据、项目名称和消息正文",
+                        "name": "q",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationListResponseDoc"
+                            "$ref": "#/definitions/ConversationListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5616,7 +10157,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.CreateConversationRequest"
+                            "$ref": "#/definitions/CreateConversationRequest"
                         }
                     }
                 ],
@@ -5624,19 +10165,84 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationCreateResponseDoc"
+                            "$ref": "#/definitions/ConversationCreateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/default-model-candidate": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回后台配置的新会话系统推荐模型；未配置时返回空候选",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "查询新会话默认模型候选",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationDefaultModelCandidateResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "流式导出当前用户全部会话及消息为 NDJSON 文件",
+                "produces": [
+                    "application/x-ndjson"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "导出当前用户全部对话",
+                "responses": {
+                    "200": {
+                        "description": "NDJSON stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5667,7 +10273,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.BatchSetConversationProjectRequest"
+                            "$ref": "#/definitions/BatchSetConversationProjectRequest"
                         }
                     }
                 ],
@@ -5675,25 +10281,85 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.BatchSetConversationProjectResponseDoc"
+                            "$ref": "#/definitions/BatchSetConversationProjectResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/search": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页搜索当前用户的会话标题、元数据、项目和消息正文，并返回是否还有下一页",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "搜索会话",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索关键词；为空时返回最近会话",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationSearchListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5724,7 +10390,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.RevokeConversationSharesRequest"
+                            "$ref": "#/definitions/RevokeConversationSharesRequest"
                         }
                     }
                 ],
@@ -5732,25 +10398,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.RevokeConversationSharesResponseDoc"
+                            "$ref": "#/definitions/RevokeConversationSharesResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5787,25 +10453,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationUpdateResponseDoc"
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5846,25 +10512,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationDeleteResponseDoc"
+                            "$ref": "#/definitions/ConversationDeleteResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5902,7 +10568,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.SetConversationArchiveRequest"
+                            "$ref": "#/definitions/SetConversationArchiveRequest"
                         }
                     }
                 ],
@@ -5910,25 +10576,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationUpdateResponseDoc"
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -5965,25 +10631,147 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationExportResponseDoc"
+                            "$ref": "#/definitions/ConversationExportResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{id}/labels": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "替换指定会话的标签；传入空数组可清空标签",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "更新会话标签",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话 public_id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "会话标签",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdateConversationLabelsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{id}/media/videos/extensions/stream": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/x-ndjson"
+                ],
+                "tags": [
+                    "Conversations"
+                ],
+                "summary": "扩展会话视频",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话 Public ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "视频扩展请求",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/MediaVideoExtensionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "NDJSON stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/Envelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Envelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -6032,25 +10820,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.MessageListResponseDoc"
+                            "$ref": "#/definitions/MessageListResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6086,7 +10874,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.SendMessageRequest"
+                            "$ref": "#/definitions/SendMessageRequest"
                         }
                     }
                 ],
@@ -6094,25 +10882,80 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.SendMessageResponseDoc"
+                            "$ref": "#/definitions/SendMessageResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{id}/messages/preview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前用户会话最新分支最近 10 条用户或助手消息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "查询会话预览消息",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话 public_id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationPreviewMessageListResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6150,7 +10993,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.SendMessageRequest"
+                            "$ref": "#/definitions/SendMessageRequest"
                         }
                     }
                 ],
@@ -6164,19 +11007,87 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{id}/messages/{message_id}/fork": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "仅允许从助手消息 fork；将会话从开头到指定助手消息（含）的祖先链复制为一个新会话，保留历史展示轨迹；不携带原会话的运行记录与计费，附件以引用方式复用",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "从指定消息 fork 新会话",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话 public_id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "消息 public_id",
+                        "name": "message_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6214,7 +11125,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.SetConversationProjectRequest"
+                            "$ref": "#/definitions/SetConversationProjectRequest"
                         }
                     }
                 ],
@@ -6222,25 +11133,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationUpdateResponseDoc"
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6289,25 +11200,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationRunListResponseDoc"
+                            "$ref": "#/definitions/ConversationRunListResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6344,25 +11255,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationShareResponseDoc"
+                            "$ref": "#/definitions/ConversationShareResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6397,7 +11308,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.CreateConversationShareRequest"
+                            "$ref": "#/definitions/CreateConversationShareRequest"
                         }
                     }
                 ],
@@ -6405,25 +11316,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationShareResponseDoc"
+                            "$ref": "#/definitions/ConversationShareResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6458,25 +11369,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationShareResponseDoc"
+                            "$ref": "#/definitions/ConversationShareResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6513,7 +11424,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.CreateConversationShareRequest"
+                            "$ref": "#/definitions/CreateConversationShareRequest"
                         }
                     }
                 ],
@@ -6521,25 +11432,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationShareResponseDoc"
+                            "$ref": "#/definitions/ConversationShareResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6577,7 +11488,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.SetConversationStarRequest"
+                            "$ref": "#/definitions/SetConversationStarRequest"
                         }
                     }
                 ],
@@ -6585,25 +11496,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationUpdateResponseDoc"
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6641,7 +11552,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.RenameConversationRequest"
+                            "$ref": "#/definitions/RenameConversationRequest"
                         }
                     }
                 ],
@@ -6649,25 +11560,80 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationUpdateResponseDoc"
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{id}/title/regenerate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据指定会话已有内容重新生成标题",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "自动重新命名会话",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话 public_id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6727,13 +11693,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.FileListResponseDoc"
+                            "$ref": "#/definitions/FileListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6774,31 +11740,85 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.UploadFileResponseDoc"
+                            "$ref": "#/definitions/UploadFileResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "413": {
                         "description": "Request Entity Too Large",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/files/processing/statuses": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "一次查询当前用户多个文件的处理状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "批量查询文件处理状态",
+                "parameters": [
+                    {
+                        "description": "文件ID，最多100个",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/GetFileProcessingStatusesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/FileProcessingStatusResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6835,25 +11855,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.DeleteFileResponseDoc"
+                            "$ref": "#/definitions/DeleteFileResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6889,7 +11909,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.UpdateFileRequest"
+                            "$ref": "#/definitions/UpdateFileRequest"
                         }
                     }
                 ],
@@ -6897,25 +11917,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.FileUpdateResponseDoc"
+                            "$ref": "#/definitions/FileUpdateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -6955,19 +11975,707 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "查询当前用户可用知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "排序方式(default/name/created/updated/files)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBasePageResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/mine": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "查询我的知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "排序方式(default/name/created/updated/files)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "可用状态",
+                        "name": "enabled",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBasePageResponseDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "创建个人知识库",
+                "parameters": [
+                    {
+                        "description": "知识库配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/WriteMyKnowledgeBaseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/mine/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "删除个人知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否同步删除不再被其他资源引用的知识库文件",
+                        "name": "delete_files",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseDeleteResponseDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "更新个人知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新字段",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PatchMyKnowledgeBaseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/mine/{id}/available-files": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页返回当前用户尚未关联到指定个人知识库的有效文件",
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "查询可加入个人知识库的文件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "文件名搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFilePageResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/mine/{id}/files": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "将已有文件加入个人知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "文件ID列表",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/AddKnowledgeBaseFilesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFileMutationResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/mine/{id}/files/{file_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "将文件移出个人知识库",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "文件ID",
+                        "name": "file_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFileMutationResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "查询知识库详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/{id}/files": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "查询知识库文件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFilePageResponseDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/{id}/files/processing/snapshot": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "查询当前用户可见知识库处理快照",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库公开ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "当前页处理中或待确认的文件ID，最多100个，可为空",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/GetKnowledgeBaseFileProcessingSnapshotRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgeBaseFileProcessingSnapshotResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/{id}/files/processing/statuses": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "批量查询知识库文件处理状态",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "文件ID，最多100个",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/GetKnowledgeBaseFileProcessingStatusesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/KnowledgeBaseFileProcessingStatusResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/{id}/files/{file_id}/content": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "仅允许读取当前用户可见且仍与知识库关联的文件",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "knowledge-bases"
+                ],
+                "summary": "获取知识库文件内容",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "文件ID",
+                        "name": "file_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/KnowledgebaseErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/llm/icon-assets/{public_id}": {
+            "get": {
+                "description": "公开读取经过后端校验的不可变模型展示图标",
+                "produces": [
+                    "image/png",
+                    "image/jpeg",
+                    "image/webp"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "读取模型展示图标",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "图标公开 ID",
+                        "name": "public_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/tools": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取当前聊天侧可选择的 MCP 工具",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "获取可用 MCP 工具",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ToolListResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/McpErrorDoc"
                         }
                     }
                 }
@@ -6995,19 +12703,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.MeResponseDoc"
+                            "$ref": "#/definitions/MeResponseDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -7036,7 +12744,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.DeleteAccountRequest"
+                            "$ref": "#/definitions/DeleteAccountRequest"
                         }
                     }
                 ],
@@ -7044,25 +12752,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.DeleteAccountResponseDoc"
+                            "$ref": "#/definitions/DeleteAccountResponseDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -7091,7 +12805,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.PatchMeRequest"
+                            "$ref": "#/definitions/PatchMeRequest"
                         }
                     }
                 ],
@@ -7099,25 +12813,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.PatchMeResponseDoc"
+                            "$ref": "#/definitions/PatchMeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -7147,7 +12861,7 @@ const docTemplate = `{
                         "name": "payload",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.SecurityVerificationStartRequest"
+                            "$ref": "#/definitions/SecurityVerificationStartRequest"
                         }
                     }
                 ],
@@ -7155,25 +12869,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.EmailVerificationStartResponseDoc"
+                            "$ref": "#/definitions/EmailVerificationStartResponseDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -7201,25 +12915,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.PatchMeResponseDoc"
+                            "$ref": "#/definitions/PatchMeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -7250,7 +12964,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.PatchUsernameRequest"
+                            "$ref": "#/definitions/PatchUsernameRequest"
                         }
                     }
                 ],
@@ -7258,31 +12972,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.PatchMeResponseDoc"
+                            "$ref": "#/definitions/PatchMeResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_auth.ErrorDoc"
+                            "$ref": "#/definitions/AuthErrorDoc"
                         }
                     }
                 }
@@ -7310,13 +13024,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.UserMemoryListResponseDoc"
+                            "$ref": "#/definitions/UserMemoryListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.ErrorDoc"
+                            "$ref": "#/definitions/MemoryErrorDoc"
                         }
                     }
                 }
@@ -7345,7 +13059,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.UpsertUserMemoryRequest"
+                            "$ref": "#/definitions/UpsertUserMemoryRequest"
                         }
                     }
                 ],
@@ -7353,19 +13067,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.UpsertUserMemoryResponseDoc"
+                            "$ref": "#/definitions/UpsertUserMemoryResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.ErrorDoc"
+                            "$ref": "#/definitions/MemoryErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.ErrorDoc"
+                            "$ref": "#/definitions/MemoryErrorDoc"
                         }
                     }
                 }
@@ -7402,19 +13116,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.UpsertUserMemoryResponseDoc"
+                            "$ref": "#/definitions/UpsertUserMemoryResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.ErrorDoc"
+                            "$ref": "#/definitions/MemoryErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_memory.ErrorDoc"
+                            "$ref": "#/definitions/MemoryErrorDoc"
                         }
                     }
                 }
@@ -7452,7 +13166,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.UpdateMessageRequest"
+                            "$ref": "#/definitions/UpdateMessageRequest"
                         }
                     }
                 ],
@@ -7460,25 +13174,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.MessageResponseDoc"
+                            "$ref": "#/definitions/MessageResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -7516,7 +13230,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.SetMessageFeedbackRequest"
+                            "$ref": "#/definitions/SetMessageFeedbackRequest"
                         }
                     }
                 ],
@@ -7524,25 +13238,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.MessageFeedbackResponseDoc"
+                            "$ref": "#/definitions/MessageFeedbackResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -7570,13 +13284,326 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.PublicModelListResponseDoc"
+                            "$ref": "#/definitions/PublicModelListResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_channel.ErrorDoc"
+                            "$ref": "#/definitions/ChannelErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/prompt-presets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回管理员内置和当前用户自定义的已启用提示词，用于 slash 选择器",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "prompt-presets"
+                ],
+                "summary": "查询当前用户可用预制提示词",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetPageResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/prompt-presets/mine": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询当前用户自定义提示词",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "prompt-presets"
+                ],
+                "summary": "查询我的自定义提示词",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否启用",
+                        "name": "enabled",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetPageResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "prompt-presets"
+                ],
+                "summary": "创建我的自定义提示词",
+                "parameters": [
+                    {
+                        "description": "提示词配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/WritePromptPresetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/prompt-presets/mine/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "prompt-presets"
+                ],
+                "summary": "删除我的自定义提示词",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "提示词ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetDeleteResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "prompt-presets"
+                ],
+                "summary": "更新我的自定义提示词",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "提示词ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新字段",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PatchPromptPresetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/PromptPresetErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/settings/chat-context-policy": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "查询聊天上下文策略",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -7595,7 +13622,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -7619,7 +13646,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -7643,7 +13670,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -7675,25 +13702,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.PublicSharedConversationResponseDoc"
+                            "$ref": "#/definitions/PublicSharedConversationResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -7730,31 +13757,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ConversationUpdateResponseDoc"
+                            "$ref": "#/definitions/ConversationUpdateResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -7796,19 +13823,429 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_conversation.ErrorDoc"
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/skills": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回管理员内置和当前用户自定义的已启用技能摘要，用于会话按需选择 Skill 上下文",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "skills"
+                ],
+                "summary": "查询当前用户可用技能",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "按技能 ID 筛选，可重复传递",
+                        "name": "id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillSummaryPageResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/skills/mine": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "skills"
+                ],
+                "summary": "查询我的自定义技能",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否启用",
+                        "name": "enabled",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillPageResponseDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "skills"
+                ],
+                "summary": "创建我的自定义技能",
+                "parameters": [
+                    {
+                        "description": "技能配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/WriteSkillRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/skills/mine/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "skills"
+                ],
+                "summary": "删除我的自定义技能",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "技能ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillDeleteResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "skills"
+                ],
+                "summary": "更新我的自定义技能",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "技能ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新字段",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PatchSkillRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/skills/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按需返回单个可用 Skill 的完整 SKILL.md 内容，用于用户查看详情",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "skills"
+                ],
+                "summary": "查询当前用户可用技能详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "技能ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/SkillResponseDoc"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SkillErrorDoc"
+                        }
+                    }
+                }
+            }
+        },
+        "/temporary-chat/messages/stream": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "由浏览器提交完整纯文本上下文；服务端不创建会话、消息、运行或断线续传记录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/x-ndjson"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "流式发送临时对话消息",
+                "parameters": [
+                    {
+                        "description": "临时对话参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/TemporaryChatMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "NDJSON stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ConversationErrorDoc"
                         }
                     }
                 }
@@ -7833,13 +14270,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_usersettings.UserSettingsResponseDoc"
+                            "$ref": "#/definitions/UserSettingsResponseDoc"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -7868,7 +14305,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_usersettings.PatchSettingsRequest"
+                            "$ref": "#/definitions/UserSettingsPatchSettingsRequest"
                         }
                     }
                 ],
@@ -7876,19 +14313,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_usersettings.UserSettingsResponseDoc"
+                            "$ref": "#/definitions/UserSettingsResponseDoc"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope"
+                            "$ref": "#/definitions/Envelope"
                         }
                     }
                 }
@@ -7896,51 +14333,232 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.Envelope": {
+        "ActiveMessageGenerationEventResponse": {
             "type": "object",
+            "required": [
+                "type"
+            ],
             "properties": {
-                "data": {},
-                "details": {},
-                "errorCode": {
+                "conversationPublicID": {
                     "type": "string"
                 },
-                "errorMsg": {
+                "runID": {
                     "type": "string"
                 },
-                "requestId": {
+                "runs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ActiveMessageGenerationResponse"
+                    }
+                },
+                "type": {
                     "type": "string"
                 }
             }
         },
-        "github_com_DEEIX-AI_DEEIX-Chat_backend_internal_shared_response.SuccessDoc": {
+        "ActiveMessageGenerationResponse": {
             "type": "object",
+            "required": [
+                "conversationPublicID",
+                "runID"
+            ],
             "properties": {
-                "data": {},
-                "details": {},
-                "errorCode": {
-                    "type": "string",
-                    "example": ""
+                "conversationPublicID": {
+                    "type": "string"
                 },
-                "errorMsg": {
-                    "type": "string",
-                    "example": ""
-                },
-                "requestId": {
-                    "type": "string",
-                    "example": ""
+                "runID": {
+                    "type": "string"
                 }
             }
         },
-        "internal_transport_http_admin.AuditLogListResponseDoc": {
+        "ActiveSessionListResponse": {
             "type": "object",
+            "required": [
+                "results",
+                "total"
+            ],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ActiveSessionResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ActiveSessionListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ActiveSessionListResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ActiveSessionResponse": {
+            "type": "object",
+            "required": [
+                "browserName",
+                "cityName",
+                "clientIP",
+                "countryCode",
+                "createdAt",
+                "current",
+                "deviceLabel",
+                "deviceName",
+                "deviceType",
+                "expiresAt",
+                "geoAccuracy",
+                "geoSource",
+                "ipLatitude",
+                "ipLongitude",
+                "lastSeenAt",
+                "locationLabel",
+                "osName",
+                "preciseAccuracyMeters",
+                "preciseLatitude",
+                "preciseLocatedAt",
+                "preciseLongitude",
+                "regionName",
+                "sessionID",
+                "timezoneName",
+                "updatedAt"
+            ],
+            "properties": {
+                "browserName": {
+                    "type": "string"
+                },
+                "cityName": {
+                    "type": "string"
+                },
+                "clientIP": {
+                    "type": "string"
+                },
+                "countryCode": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "current": {
+                    "type": "boolean"
+                },
+                "deviceLabel": {
+                    "type": "string"
+                },
+                "deviceName": {
+                    "type": "string"
+                },
+                "deviceType": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "geoAccuracy": {
+                    "type": "string"
+                },
+                "geoSource": {
+                    "type": "string"
+                },
+                "ipLatitude": {
+                    "type": "number",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "ipLongitude": {
+                    "type": "number",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "lastSeenAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "locationLabel": {
+                    "type": "string"
+                },
+                "osName": {
+                    "type": "string"
+                },
+                "preciseAccuracyMeters": {
+                    "type": "number",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "preciseLatitude": {
+                    "type": "number",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "preciseLocatedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "preciseLongitude": {
+                    "type": "number",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "regionName": {
+                    "type": "string"
+                },
+                "sessionID": {
+                    "type": "string"
+                },
+                "timezoneName": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "AddKnowledgeBaseFilesRequest": {
+            "type": "object",
+            "required": [
+                "fileIDs"
+            ],
+            "properties": {
+                "fileIDs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "AdminAnnouncementListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
                     "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
                     "properties": {
                         "results": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_transport_http_admin.AuditLogResponse"
+                                "$ref": "#/definitions/AnnouncementResponse"
                             }
                         },
                         "total": {
@@ -7953,8 +14571,476 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_admin.AuditLogResponse": {
+        "AdminErrorDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {},
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMsg": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                }
+            }
+        },
+        "AdminUserIdentityProviderSummaryResponse": {
+            "type": "object",
+            "required": [
+                "id",
+                "logoURL",
+                "name",
+                "slug",
+                "type"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "logoURL": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "AdminUserResponse": {
+            "type": "object",
+            "required": [
+                "appearancePreferences",
+                "avatarURL",
+                "billingAccountCurrency",
+                "billingAccountStatus",
+                "billingBalanceNanousd",
+                "billingBalanceUSD",
+                "createdAt",
+                "displayName",
+                "email",
+                "emailVerifiedAt",
+                "id",
+                "identityProviders",
+                "lastActiveAt",
+                "lastLoginAt",
+                "locale",
+                "phone",
+                "phoneVerifiedAt",
+                "profilePreferences",
+                "publicID",
+                "role",
+                "status",
+                "subscriptionExpiresAt",
+                "subscriptionPlanID",
+                "subscriptionPlanName",
+                "subscriptionStatus",
+                "subscriptionTier",
+                "timezone",
+                "twoFactorAvailable",
+                "twoFactorEnabled",
+                "twoFactorRecoveryCount",
+                "twoFactorRequired",
+                "updatedAt",
+                "username"
+            ],
+            "properties": {
+                "appearancePreferences": {
+                    "type": "string"
+                },
+                "avatarURL": {
+                    "type": "string"
+                },
+                "billingAccountCurrency": {
+                    "type": "string"
+                },
+                "billingAccountStatus": {
+                    "type": "string"
+                },
+                "billingBalanceNanousd": {
+                    "type": "integer"
+                },
+                "billingBalanceUSD": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "emailVerifiedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "identityProviders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/AdminUserIdentityProviderSummaryResponse"
+                    }
+                },
+                "lastActiveAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "lastLoginAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "locale": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "phoneVerifiedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "profilePreferences": {
+                    "type": "string"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subscriptionExpiresAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "subscriptionPlanID": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "subscriptionPlanName": {
+                    "type": "string"
+                },
+                "subscriptionStatus": {
+                    "type": "string"
+                },
+                "subscriptionTier": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "twoFactorAvailable": {
+                    "type": "boolean"
+                },
+                "twoFactorEnabled": {
+                    "type": "boolean"
+                },
+                "twoFactorRecoveryCount": {
+                    "type": "integer"
+                },
+                "twoFactorRequired": {
+                    "type": "boolean"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "AnnouncementCloseDataResponse": {
+            "type": "object",
+            "required": [
+                "closed"
+            ],
+            "properties": {
+                "closed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "AnnouncementCloseResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/AnnouncementCloseDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "AnnouncementDataResponse": {
+            "type": "object",
+            "required": [
+                "announcement"
+            ],
+            "properties": {
+                "announcement": {
+                    "$ref": "#/definitions/AnnouncementResponse"
+                }
+            }
+        },
+        "AnnouncementDeleteDataResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "AnnouncementDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/AnnouncementDeleteDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "AnnouncementDismissDataResponse": {
+            "type": "object",
+            "required": [
+                "dismissed"
+            ],
+            "properties": {
+                "dismissed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "AnnouncementDismissResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/AnnouncementDismissDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "AnnouncementErrorDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {},
+                "errorCode": {
+                    "type": "string",
+                    "example": "invalid_request"
+                },
+                "errorMsg": {
+                    "type": "string",
+                    "example": "invalid request"
+                },
+                "requestId": {
+                    "type": "string",
+                    "example": ""
+                }
+            }
+        },
+        "AnnouncementListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/AnnouncementResponse"
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "AnnouncementResponse": {
+            "type": "object",
+            "required": [
+                "closedAt",
+                "contentMarkdown",
+                "createdAt",
+                "createdByUserID",
+                "expiresAt",
+                "id",
+                "pinned",
+                "priority",
+                "startsAt",
+                "status",
+                "title",
+                "type",
+                "updatedAt"
+            ],
+            "properties": {
+                "closedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "contentMarkdown": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdByUserID": {
+                    "type": "integer"
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "pinned": {
+                    "type": "boolean"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "startsAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "AnnouncementResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/AnnouncementDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "AnnouncementStateRequest": {
+            "type": "object",
+            "required": [
+                "updatedAt"
+            ],
+            "properties": {
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "AuditLogListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/AuditLogResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "AuditLogResponse": {
+            "type": "object",
+            "required": [
+                "action",
+                "actorDisplayName",
+                "actorLabel",
+                "actorUserID",
+                "actorUsername",
+                "createdAt",
+                "detailJSON",
+                "id",
+                "ip",
+                "requestID",
+                "resource",
+                "resourceID",
+                "updatedAt",
+                "userAgent"
+            ],
             "properties": {
                 "action": {
                     "type": "string"
@@ -8000,8 +15086,45 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_admin.AuthEventResponse": {
+        "AuthErrorDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {},
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMsg": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                }
+            }
+        },
+        "AuthEventResponse": {
+            "type": "object",
+            "required": [
+                "clientIP",
+                "createdAt",
+                "detailJSON",
+                "eventType",
+                "id",
+                "occurredAt",
+                "reason",
+                "requestID",
+                "result",
+                "updatedAt",
+                "userAgent",
+                "userDisplayName",
+                "userID",
+                "userLabel",
+                "username"
+            ],
             "properties": {
                 "clientIP": {
                     "type": "string"
@@ -8050,1136 +15173,18 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_admin.CreateUserRequest": {
+        "AuthUserIdentityProviderSummaryResponse": {
             "type": "object",
             "required": [
-                "password",
-                "username"
+                "id",
+                "logoURL",
+                "name",
+                "slug",
+                "type"
             ],
             "properties": {
-                "avatarURL": {
-                    "type": "string",
-                    "maxLength": 2048
-                },
-                "displayName": {
-                    "type": "string",
-                    "maxLength": 16,
-                    "minLength": 3
-                },
-                "email": {
-                    "type": "string",
-                    "maxLength": 128
-                },
-                "locale": {
-                    "type": "string",
-                    "maxLength": 16
-                },
-                "password": {
-                    "type": "string",
-                    "maxLength": 128,
-                    "minLength": 8
-                },
-                "phone": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "subscriptionExpiresAt": {
-                    "type": "string"
-                },
-                "subscriptionTier": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "timezone": {
-                    "type": "string",
-                    "maxLength": 64
-                },
-                "username": {
-                    "type": "string",
-                    "maxLength": 16,
-                    "minLength": 3
-                }
-            }
-        },
-        "internal_transport_http_admin.CreateUserResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_admin.UserDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.DeleteUserResponse": {
-            "type": "object",
-            "properties": {
-                "deleted": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_admin.DeleteUserResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_admin.DeleteUserResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.ErrorDoc": {
-            "type": "object",
-            "properties": {
-                "data": {},
-                "details": {},
-                "errorCode": {
-                    "type": "string"
-                },
-                "errorMsg": {
-                    "type": "string"
-                },
-                "requestId": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.PatchUserRequest": {
-            "type": "object",
-            "properties": {
-                "avatarURL": {
-                    "type": "string",
-                    "maxLength": 2048
-                },
-                "displayName": {
-                    "type": "string",
-                    "maxLength": 16,
-                    "minLength": 3
-                },
-                "email": {
-                    "type": "string",
-                    "maxLength": 128
-                },
-                "locale": {
-                    "type": "string",
-                    "maxLength": 16
-                },
-                "phone": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "profilePreferences": {
-                    "type": "string",
-                    "maxLength": 1024
-                },
-                "reason": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "role": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "status": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "subscriptionExpiresAt": {
-                    "type": "string"
-                },
-                "subscriptionTier": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "timezone": {
-                    "type": "string",
-                    "maxLength": 64
-                }
-            }
-        },
-        "internal_transport_http_admin.ResetUserPasswordRequest": {
-            "type": "object",
-            "required": [
-                "newPassword"
-            ],
-            "properties": {
-                "mustResetPassword": {
-                    "type": "boolean"
-                },
-                "newPassword": {
-                    "type": "string",
-                    "maxLength": 128,
-                    "minLength": 8
-                }
-            }
-        },
-        "internal_transport_http_admin.ResetUserPasswordResponse": {
-            "type": "object",
-            "properties": {
-                "reset": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_admin.ResetUserPasswordResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_admin.ResetUserPasswordResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.RevokeUserSessionsResponse": {
-            "type": "object",
-            "properties": {
-                "revoked": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_admin.RevokeUserSessionsResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_admin.RevokeUserSessionsResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.SystemEventListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_admin.SystemEventResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.SystemEventResponse": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "detailJSON": {
-                    "type": "string"
-                },
-                "event": {
-                    "type": "string"
-                },
                 "id": {
                     "type": "integer"
-                },
-                "level": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "requestID": {
-                    "type": "string"
-                },
-                "resource": {
-                    "type": "string"
-                },
-                "resourceID": {
-                    "type": "string"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "traceID": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.UpdateUserStatusRequest": {
-            "type": "object",
-            "required": [
-                "status"
-            ],
-            "properties": {
-                "reason": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "status": {
-                    "type": "string",
-                    "maxLength": 32
-                }
-            }
-        },
-        "internal_transport_http_admin.UpdateUserStatusResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_admin.UserDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.UsageLogListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_admin.UsageLogResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.UsageLogResponse": {
-            "type": "object",
-            "properties": {
-                "billedCurrency": {
-                    "type": "string"
-                },
-                "billedNanousd": {
-                    "type": "integer"
-                },
-                "billedUSD": {
-                    "type": "number"
-                },
-                "cacheReadTokens": {
-                    "type": "integer"
-                },
-                "cacheWrite1hTokens": {
-                    "type": "integer"
-                },
-                "cacheWrite5mTokens": {
-                    "type": "integer"
-                },
-                "cacheWriteTokens": {
-                    "type": "integer"
-                },
-                "callCount": {
-                    "type": "integer"
-                },
-                "conversationID": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "durationSeconds": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "inputTokens": {
-                    "type": "integer"
-                },
-                "isFreeModel": {
-                    "type": "boolean"
-                },
-                "latencyMS": {
-                    "type": "integer"
-                },
-                "outputTokens": {
-                    "type": "integer"
-                },
-                "platformModelName": {
-                    "type": "string"
-                },
-                "pricingSnapshotJSON": {
-                    "type": "string"
-                },
-                "providerProtocol": {
-                    "type": "string"
-                },
-                "reasoningTokens": {
-                    "type": "integer"
-                },
-                "routedBindingCode": {
-                    "type": "string"
-                },
-                "serviceTier": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "upstreamModelName": {
-                    "type": "string"
-                },
-                "upstreamName": {
-                    "type": "string"
-                },
-                "usageDate": {
-                    "type": "string"
-                },
-                "usageSpeed": {
-                    "type": "string"
-                },
-                "userDisplayName": {
-                    "type": "string"
-                },
-                "userID": {
-                    "type": "integer"
-                },
-                "userLabel": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.UserAuthEventListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_admin.AuthEventResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.UserDataResponse": {
-            "type": "object",
-            "properties": {
-                "user": {
-                    "$ref": "#/definitions/internal_transport_http_admin.UserResponse"
-                }
-            }
-        },
-        "internal_transport_http_admin.UserListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_admin.UserResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_admin.UserResponse": {
-            "type": "object",
-            "properties": {
-                "appearancePreferences": {
-                    "type": "string"
-                },
-                "avatarURL": {
-                    "type": "string"
-                },
-                "billingAccountCurrency": {
-                    "type": "string"
-                },
-                "billingAccountStatus": {
-                    "type": "string"
-                },
-                "billingBalanceNanousd": {
-                    "type": "integer"
-                },
-                "billingBalanceUSD": {
-                    "type": "number"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "displayName": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "emailVerifiedAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "lastLoginAt": {
-                    "type": "string"
-                },
-                "locale": {
-                    "type": "string"
-                },
-                "phone": {
-                    "type": "string"
-                },
-                "phoneVerifiedAt": {
-                    "type": "string"
-                },
-                "profilePreferences": {
-                    "type": "string"
-                },
-                "publicID": {
-                    "type": "string"
-                },
-                "role": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "subscriptionExpiresAt": {
-                    "type": "string"
-                },
-                "subscriptionPlanID": {
-                    "type": "integer"
-                },
-                "subscriptionPlanName": {
-                    "type": "string"
-                },
-                "subscriptionStatus": {
-                    "type": "string"
-                },
-                "subscriptionTier": {
-                    "type": "string"
-                },
-                "timezone": {
-                    "type": "string"
-                },
-                "twoFactorAvailable": {
-                    "type": "boolean"
-                },
-                "twoFactorEnabled": {
-                    "type": "boolean"
-                },
-                "twoFactorRecoveryCount": {
-                    "type": "integer"
-                },
-                "twoFactorRequired": {
-                    "type": "boolean"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AdminAnnouncementListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementCloseDataResponse": {
-            "type": "object",
-            "properties": {
-                "closed": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementCloseResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementCloseDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementDataResponse": {
-            "type": "object",
-            "properties": {
-                "announcement": {
-                    "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementResponse"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementDeleteDataResponse": {
-            "type": "object",
-            "properties": {
-                "deleted": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementDeleteResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementDeleteDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementDismissDataResponse": {
-            "type": "object",
-            "properties": {
-                "dismissed": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementDismissResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementDismissDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementResponse"
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementResponse": {
-            "type": "object",
-            "properties": {
-                "closedAt": {
-                    "type": "string"
-                },
-                "contentMarkdown": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "createdByUserID": {
-                    "type": "integer"
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "pinned": {
-                    "type": "boolean"
-                },
-                "priority": {
-                    "type": "integer"
-                },
-                "startsAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_announcement.AnnouncementDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.AnnouncementStateRequest": {
-            "type": "object",
-            "required": [
-                "updatedAt"
-            ],
-            "properties": {
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_announcement.CreateAnnouncementRequest": {
-            "type": "object",
-            "required": [
-                "contentMarkdown",
-                "title"
-            ],
-            "properties": {
-                "contentMarkdown": {
-                    "type": "string",
-                    "maxLength": 20000,
-                    "minLength": 1
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "pinned": {
-                    "type": "boolean"
-                },
-                "priority": {
-                    "type": "integer"
-                },
-                "startsAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "active",
-                        "inactive"
-                    ]
-                },
-                "title": {
-                    "type": "string",
-                    "maxLength": 120,
-                    "minLength": 1
-                },
-                "type": {
-                    "type": "string",
-                    "enum": [
-                        "critical",
-                        "warning",
-                        "info",
-                        "normal",
-                        "general"
-                    ]
-                }
-            }
-        },
-        "internal_transport_http_announcement.ErrorDoc": {
-            "type": "object",
-            "properties": {
-                "data": {},
-                "details": {},
-                "errorCode": {
-                    "type": "string",
-                    "example": "invalid_request"
-                },
-                "errorMsg": {
-                    "type": "string",
-                    "example": "invalid request"
-                },
-                "requestId": {
-                    "type": "string",
-                    "example": ""
-                }
-            }
-        },
-        "internal_transport_http_announcement.PatchAnnouncementRequestDoc": {
-            "type": "object",
-            "properties": {
-                "contentMarkdown": {
-                    "type": "string",
-                    "maxLength": 20000
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "pinned": {
-                    "type": "boolean"
-                },
-                "priority": {
-                    "type": "integer"
-                },
-                "startsAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "active",
-                        "inactive"
-                    ]
-                },
-                "title": {
-                    "type": "string",
-                    "maxLength": 120
-                },
-                "type": {
-                    "type": "string",
-                    "enum": [
-                        "critical",
-                        "warning",
-                        "info",
-                        "normal",
-                        "general"
-                    ]
-                }
-            }
-        },
-        "internal_transport_http_auth.ActiveSessionListResponse": {
-            "type": "object",
-            "properties": {
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_auth.ActiveSessionResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_auth.ActiveSessionListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.ActiveSessionListResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.ActiveSessionResponse": {
-            "type": "object",
-            "properties": {
-                "browserName": {
-                    "type": "string"
-                },
-                "cityName": {
-                    "type": "string"
-                },
-                "clientIP": {
-                    "type": "string"
-                },
-                "countryCode": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "current": {
-                    "type": "boolean"
-                },
-                "deviceLabel": {
-                    "type": "string"
-                },
-                "deviceName": {
-                    "type": "string"
-                },
-                "deviceType": {
-                    "type": "string"
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "geoAccuracy": {
-                    "type": "string"
-                },
-                "geoSource": {
-                    "type": "string"
-                },
-                "ipLatitude": {
-                    "type": "number"
-                },
-                "ipLongitude": {
-                    "type": "number"
-                },
-                "lastSeenAt": {
-                    "type": "string"
-                },
-                "locationLabel": {
-                    "type": "string"
-                },
-                "osName": {
-                    "type": "string"
-                },
-                "preciseAccuracyMeters": {
-                    "type": "number"
-                },
-                "preciseLatitude": {
-                    "type": "number"
-                },
-                "preciseLocatedAt": {
-                    "type": "string"
-                },
-                "preciseLongitude": {
-                    "type": "number"
-                },
-                "regionName": {
-                    "type": "string"
-                },
-                "sessionID": {
-                    "type": "string"
-                },
-                "timezoneName": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.DeleteAccountRequest": {
-            "type": "object",
-            "required": [
-                "code",
-                "verificationMethod"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "maxLength": 32,
-                    "minLength": 6
-                },
-                "verificationMethod": {
-                    "type": "string",
-                    "enum": [
-                        "two_factor",
-                        "email"
-                    ]
-                }
-            }
-        },
-        "internal_transport_http_auth.DeleteAccountResponse": {
-            "type": "object",
-            "properties": {
-                "deleted": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_auth.DeleteAccountResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.DeleteAccountResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.EmailRegistrationCompleteRequest": {
-            "type": "object",
-            "required": [
-                "email",
-                "password"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string",
-                    "maxLength": 128
-                },
-                "password": {
-                    "type": "string",
-                    "maxLength": 128,
-                    "minLength": 8
-                },
-                "turnstileToken": {
-                    "type": "string",
-                    "maxLength": 2048
-                }
-            }
-        },
-        "internal_transport_http_auth.EmailRegistrationStartRequest": {
-            "type": "object",
-            "required": [
-                "email"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string",
-                    "maxLength": 128
-                },
-                "turnstileToken": {
-                    "type": "string",
-                    "maxLength": 2048
-                }
-            }
-        },
-        "internal_transport_http_auth.EmailRegistrationStartResponse": {
-            "type": "object",
-            "properties": {
-                "expiresAt": {
-                    "type": "string"
-                },
-                "sent": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_auth.EmailRegistrationStartResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.EmailRegistrationStartResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.EmailVerificationStartResponse": {
-            "type": "object",
-            "properties": {
-                "availableMethods": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "sent": {
-                    "type": "boolean"
-                },
-                "verificationMethod": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.EmailVerificationStartResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.EmailVerificationStartResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.ErrorDoc": {
-            "type": "object",
-            "properties": {
-                "data": {},
-                "details": {},
-                "errorCode": {
-                    "type": "string"
-                },
-                "errorMsg": {
-                    "type": "string"
-                },
-                "requestId": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.IdentityProviderResponse": {
-            "type": "object",
-            "properties": {
-                "authURL": {
-                    "type": "string"
-                },
-                "avatarField": {
-                    "type": "string"
-                },
-                "clientID": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "defaultRole": {
-                    "type": "string"
-                },
-                "discoveryURL": {
-                    "type": "string"
-                },
-                "emailField": {
-                    "type": "string"
-                },
-                "emailVerifiedField": {
-                    "type": "string"
-                },
-                "issuerURL": {
-                    "type": "string"
-                },
-                "jwksURL": {
-                    "type": "string"
-                },
-                "loginEnabled": {
-                    "type": "boolean"
                 },
                 "logoURL": {
                     "type": "string"
@@ -9187,293 +15192,57 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "nameField": {
-                    "type": "string"
-                },
-                "publicID": {
-                    "type": "string"
-                },
-                "registrationEnabled": {
-                    "type": "boolean"
-                },
-                "scopes": {
-                    "type": "string"
-                },
                 "slug": {
-                    "type": "string"
-                },
-                "subjectField": {
-                    "type": "string"
-                },
-                "tokenURL": {
                     "type": "string"
                 },
                 "type": {
                     "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "userinfoURL": {
-                    "type": "string"
                 }
             }
         },
-        "internal_transport_http_auth.LoginOptionsResponse": {
-            "type": "object",
-            "properties": {
-                "emailEnabled": {
-                    "type": "boolean"
-                },
-                "emailRegistrationEnabled": {
-                    "type": "boolean"
-                },
-                "emailVerificationEnabled": {
-                    "type": "boolean"
-                },
-                "providers": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_auth.IdentityProviderResponse"
-                    }
-                },
-                "turnstileRegistrationEnabled": {
-                    "type": "boolean"
-                },
-                "turnstileSiteKey": {
-                    "type": "string"
-                },
-                "usernameEnabled": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_auth.LoginOptionsResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.LoginOptionsResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.LoginRequest": {
+        "AuthUserResponse": {
             "type": "object",
             "required": [
-                "password",
-                "username"
+                "appearancePreferences",
+                "avatarURL",
+                "createdAt",
+                "displayName",
+                "email",
+                "emailBootstrapUsedAt",
+                "emailSource",
+                "emailVerifiedAt",
+                "id",
+                "identityProviders",
+                "initialSecurityRequired",
+                "initialUsernameRequired",
+                "lastActiveAt",
+                "lastLoginAt",
+                "locale",
+                "mustResetPassword",
+                "onboardingCompletedAt",
+                "passwordEnabled",
+                "passwordOrigin",
+                "passwordSetAt",
+                "phone",
+                "phoneVerifiedAt",
+                "profilePreferences",
+                "publicID",
+                "role",
+                "status",
+                "subscriptionExpiresAt",
+                "subscriptionPlanID",
+                "subscriptionPlanName",
+                "subscriptionStatus",
+                "subscriptionTier",
+                "timezone",
+                "twoFactorAvailable",
+                "twoFactorEnabled",
+                "twoFactorRecoveryCount",
+                "twoFactorRequired",
+                "updatedAt",
+                "username",
+                "usernameChangedAt"
             ],
-            "properties": {
-                "password": {
-                    "type": "string",
-                    "maxLength": 128,
-                    "minLength": 6
-                },
-                "username": {
-                    "type": "string",
-                    "maxLength": 128,
-                    "minLength": 3
-                }
-            }
-        },
-        "internal_transport_http_auth.LoginResponse": {
-            "type": "object",
-            "properties": {
-                "accessToken": {
-                    "type": "string"
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "refreshExpiresAt": {
-                    "type": "string"
-                },
-                "sessionID": {
-                    "type": "string"
-                },
-                "twoFactorChallengeToken": {
-                    "type": "string"
-                },
-                "twoFactorRequired": {
-                    "type": "boolean"
-                },
-                "user": {
-                    "$ref": "#/definitions/internal_transport_http_auth.UserResponse"
-                },
-                "verificationMethods": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "internal_transport_http_auth.LoginResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.LoginResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.LogoutResponse": {
-            "type": "object",
-            "properties": {
-                "revoked": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_auth.LogoutResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.LogoutResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.MeResponse": {
-            "type": "object",
-            "properties": {
-                "user": {
-                    "$ref": "#/definitions/internal_transport_http_auth.UserResponse"
-                }
-            }
-        },
-        "internal_transport_http_auth.MeResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.MeResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.PatchMeRequest": {
-            "type": "object",
-            "properties": {
-                "appearancePreferences": {
-                    "type": "string",
-                    "maxLength": 2048
-                },
-                "avatarURL": {
-                    "type": "string",
-                    "maxLength": 2048
-                },
-                "displayName": {
-                    "type": "string",
-                    "maxLength": 16,
-                    "minLength": 3
-                },
-                "locale": {
-                    "type": "string",
-                    "maxLength": 16
-                },
-                "profilePreferences": {
-                    "type": "string",
-                    "maxLength": 1024
-                },
-                "timezone": {
-                    "type": "string",
-                    "maxLength": 64
-                }
-            }
-        },
-        "internal_transport_http_auth.PatchMeResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.MeResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.PatchUsernameRequest": {
-            "type": "object",
-            "required": [
-                "username"
-            ],
-            "properties": {
-                "username": {
-                    "type": "string",
-                    "maxLength": 16,
-                    "minLength": 3
-                }
-            }
-        },
-        "internal_transport_http_auth.RefreshTokenResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.LoginResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.SecurityVerificationStartRequest": {
-            "type": "object",
-            "properties": {
-                "verificationMethod": {
-                    "type": "string",
-                    "enum": [
-                        "none",
-                        "two_factor",
-                        "email"
-                    ]
-                }
-            }
-        },
-        "internal_transport_http_auth.UpdateCurrentSessionLocationRequest": {
-            "type": "object",
-            "required": [
-                "latitude",
-                "longitude"
-            ],
-            "properties": {
-                "accuracyMeters": {
-                    "type": "number",
-                    "maximum": 1000000,
-                    "minimum": 0
-                },
-                "latitude": {
-                    "type": "number"
-                },
-                "longitude": {
-                    "type": "number"
-                },
-                "timezone": {
-                    "type": "string",
-                    "maxLength": 64
-                }
-            }
-        },
-        "internal_transport_http_auth.UpdateCurrentSessionLocationResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_auth.ActiveSessionResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_auth.UserResponse": {
-            "type": "object",
             "properties": {
                 "appearancePreferences": {
                     "type": "string"
@@ -9491,16 +15260,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "emailBootstrapUsedAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "emailSource": {
                     "type": "string"
                 },
                 "emailVerifiedAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "id": {
                     "type": "integer"
+                },
+                "identityProviders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/AuthUserIdentityProviderSummaryResponse"
+                    }
                 },
                 "initialSecurityRequired": {
                     "type": "boolean"
@@ -9508,8 +15287,15 @@ const docTemplate = `{
                 "initialUsernameRequired": {
                     "type": "boolean"
                 },
+                "lastActiveAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
                 "lastLoginAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "locale": {
                     "type": "string"
@@ -9518,7 +15304,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "onboardingCompletedAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "passwordEnabled": {
                     "type": "boolean"
@@ -9527,13 +15315,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "passwordSetAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "phone": {
                     "type": "string"
                 },
                 "phoneVerifiedAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "profilePreferences": {
                     "type": "string"
@@ -9548,10 +15340,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "subscriptionExpiresAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "subscriptionPlanID": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "subscriptionPlanName": {
                     "type": "string"
@@ -9584,12 +15380,21 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "usernameChangedAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 }
             }
         },
-        "internal_transport_http_billing.BatchDeleteRedemptionCodeDataResponse": {
+        "BatchDeleteRedemptionCodeDataResponse": {
             "type": "object",
+            "required": [
+                "failedCount",
+                "notFoundCount",
+                "results",
+                "successCount",
+                "total"
+            ],
             "properties": {
                 "failedCount": {
                     "type": "integer"
@@ -9600,7 +15405,7 @@ const docTemplate = `{
                 "results": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.BatchDeleteRedemptionCodeResultResponse"
+                        "$ref": "#/definitions/BatchDeleteRedemptionCodeResultResponse"
                     }
                 },
                 "successCount": {
@@ -9611,7 +15416,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.BatchDeleteRedemptionCodeRequest": {
+        "BatchDeleteRedemptionCodeRequest": {
             "type": "object",
             "required": [
                 "ids"
@@ -9626,19 +15431,27 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.BatchDeleteRedemptionCodeResponseDoc": {
+        "BatchDeleteRedemptionCodeResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BatchDeleteRedemptionCodeDataResponse"
+                    "$ref": "#/definitions/BatchDeleteRedemptionCodeDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_billing.BatchDeleteRedemptionCodeResultResponse": {
+        "BatchDeleteRedemptionCodeResultResponse": {
             "type": "object",
+            "required": [
+                "id",
+                "status"
+            ],
             "properties": {
                 "error": {
                     "type": "string"
@@ -9651,16 +15464,150 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.BillingAccountDataResponse": {
+        "BatchDeleteRequest": {
             "type": "object",
+            "required": [
+                "ids"
+            ],
             "properties": {
-                "account": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingAccountResponse"
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
                 }
             }
         },
-        "internal_transport_http_billing.BillingAccountResponse": {
+        "BatchDeleteResponse": {
             "type": "object",
+            "required": [
+                "failedCount",
+                "notFoundCount",
+                "results",
+                "successCount",
+                "total"
+            ],
+            "properties": {
+                "failedCount": {
+                    "type": "integer"
+                },
+                "notFoundCount": {
+                    "type": "integer"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/BatchDeleteResultResponse"
+                    }
+                },
+                "successCount": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "BatchDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/BatchDeleteResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "BatchDeleteResultResponse": {
+            "type": "object",
+            "required": [
+                "id",
+                "status"
+            ],
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "BatchSetConversationProjectRequest": {
+            "type": "object",
+            "required": [
+                "conversationPublicIDs"
+            ],
+            "properties": {
+                "conversationPublicIDs": {
+                    "type": "array",
+                    "maxItems": 1000,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "projectID": {
+                    "type": "string",
+                    "maxLength": 32
+                }
+            }
+        },
+        "BatchSetConversationProjectResponse": {
+            "type": "object",
+            "required": [
+                "updated"
+            ],
+            "properties": {
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "BatchSetConversationProjectResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/BatchSetConversationProjectResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "BillingAccountDataResponse": {
+            "type": "object",
+            "required": [
+                "account"
+            ],
+            "properties": {
+                "account": {
+                    "$ref": "#/definitions/BillingAccountResponse"
+                }
+            }
+        },
+        "BillingAccountResponse": {
+            "type": "object",
+            "required": [
+                "balanceNanousd",
+                "balanceUSD",
+                "currency",
+                "status",
+                "updatedAt",
+                "userID"
+            ],
             "properties": {
                 "balanceNanousd": {
                     "type": "integer"
@@ -9682,31 +15629,45 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.BillingAccountResponseDoc": {
+        "BillingAccountResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingAccountDataResponse"
+                    "$ref": "#/definitions/BillingAccountDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_billing.BillingConfigDataResponse": {
+        "BillingConfigDataResponse": {
             "type": "object",
+            "required": [
+                "config"
+            ],
             "properties": {
                 "config": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingConfigResponse"
+                    "$ref": "#/definitions/BillingConfigResponse"
                 }
             }
         },
-        "internal_transport_http_billing.BillingConfigRequest": {
+        "BillingConfigRequest": {
             "type": "object",
             "required": [
                 "mode"
             ],
             "properties": {
+                "displayCurrency": {
+                    "type": "string",
+                    "enum": [
+                        "USD",
+                        "CNY"
+                    ]
+                },
                 "mode": {
                     "type": "string",
                     "enum": [
@@ -9721,22 +15682,39 @@ const docTemplate = `{
                 "nativeToolPricing": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.NativeToolPricingRequest"
+                        "$ref": "#/definitions/NativeToolPricingRequest"
                     }
                 },
                 "prepaidAmountUSD": {
                     "type": "number",
                     "minimum": 0
+                },
+                "usdToCNYRate": {
+                    "type": "number"
                 }
             }
         },
-        "internal_transport_http_billing.BillingConfigResponse": {
+        "BillingConfigResponse": {
             "type": "object",
+            "required": [
+                "displayCurrency",
+                "epayTypes",
+                "mode",
+                "nativeToolBillingEnabled",
+                "nativeToolPricing",
+                "paymentProviders",
+                "prepaidAmountNanousd",
+                "prepaidAmountUSD",
+                "usdToCNYRate"
+            ],
             "properties": {
+                "displayCurrency": {
+                    "type": "string"
+                },
                 "epayTypes": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.PaymentTypeResponse"
+                        "$ref": "#/definitions/PaymentTypeResponse"
                     }
                 },
                 "mode": {
@@ -9748,7 +15726,7 @@ const docTemplate = `{
                 "nativeToolPricing": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.NativeToolPricingResponse"
+                        "$ref": "#/definitions/NativeToolPricingResponse"
                     }
                 },
                 "paymentProviders": {
@@ -9768,30 +15746,77 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.BillingConfigResponseDoc": {
+        "BillingConfigResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingConfigDataResponse"
+                    "$ref": "#/definitions/BillingConfigDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_billing.BillingOverviewDataResponse": {
+        "BillingErrorDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
-                "overview": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingOverviewResponse"
+                "data": {},
+                "details": {},
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMsg": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
                 }
             }
         },
-        "internal_transport_http_billing.BillingOverviewResponse": {
+        "BillingOverviewDataResponse": {
             "type": "object",
+            "required": [
+                "overview"
+            ],
+            "properties": {
+                "overview": {
+                    "$ref": "#/definitions/BillingOverviewResponse"
+                }
+            }
+        },
+        "BillingOverviewResponse": {
+            "type": "object",
+            "required": [
+                "account",
+                "mode",
+                "periodCreditNanousd",
+                "periodCreditUSD",
+                "periodEndAt",
+                "periodRemainingNanousd",
+                "periodRemainingUSD",
+                "periodStartAt",
+                "periodUsedNanousd",
+                "periodUsedUSD",
+                "plan",
+                "subscriptionEntitlements"
+            ],
             "properties": {
                 "account": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingAccountResponse"
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/BillingAccountResponse"
+                        }
+                    ],
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "mode": {
                     "type": "string"
@@ -9803,7 +15828,9 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "periodEndAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "periodRemainingNanousd": {
                     "type": "integer"
@@ -9812,7 +15839,9 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "periodStartAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "periodUsedNanousd": {
                     "type": "integer"
@@ -9821,37 +15850,64 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "plan": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingPlanResponse"
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/BillingPlanResponse"
+                        }
+                    ],
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "subscriptionEntitlements": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.SubscriptionEntitlementResponse"
+                        "$ref": "#/definitions/SubscriptionEntitlementResponse"
                     }
                 }
             }
         },
-        "internal_transport_http_billing.BillingOverviewResponseDoc": {
+        "BillingOverviewResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingOverviewDataResponse"
+                    "$ref": "#/definitions/BillingOverviewDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_billing.BillingPlanDataResponse": {
+        "BillingPlanDataResponse": {
             "type": "object",
+            "required": [
+                "plan"
+            ],
             "properties": {
                 "plan": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingPlanResponse"
+                    "$ref": "#/definitions/BillingPlanResponse"
                 }
             }
         },
-        "internal_transport_http_billing.BillingPlanResponse": {
+        "BillingPlanResponse": {
             "type": "object",
+            "required": [
+                "code",
+                "description",
+                "discountPercent",
+                "featureJSON",
+                "id",
+                "isActive",
+                "name",
+                "periodCreditNanousd",
+                "periodCreditUSD",
+                "permissionGroupID",
+                "prices",
+                "sortOrder"
+            ],
             "properties": {
                 "code": {
                     "type": "string"
@@ -9880,10 +15936,15 @@ const docTemplate = `{
                 "periodCreditUSD": {
                     "type": "number"
                 },
+                "permissionGroupID": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
                 "prices": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.BillingPriceResponse"
+                        "$ref": "#/definitions/BillingPriceResponse"
                     }
                 },
                 "sortOrder": {
@@ -9891,19 +15952,32 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.BillingPlanResponseDoc": {
+        "BillingPlanResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingPlanDataResponse"
+                    "$ref": "#/definitions/BillingPlanDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_billing.BillingPriceResponse": {
+        "BillingPriceResponse": {
             "type": "object",
+            "required": [
+                "amountCents",
+                "billingInterval",
+                "code",
+                "currency",
+                "id",
+                "isDefault",
+                "planID"
+            ],
             "properties": {
                 "amountCents": {
                     "type": "integer"
@@ -9928,16 +16002,241 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.CheckoutDataResponse": {
+        "BindModelUpstreamSourceRequest": {
             "type": "object",
+            "required": [
+                "upstreamID",
+                "upstreamModelID"
+            ],
             "properties": {
-                "checkout": {
-                    "$ref": "#/definitions/internal_transport_http_billing.CheckoutResponse"
+                "cbDurationMin": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "cbFailureThreshold": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "cbWindowMin": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "protocol": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "inactive"
+                    ]
+                },
+                "upstreamID": {
+                    "type": "integer"
+                },
+                "upstreamModelID": {
+                    "type": "integer"
+                },
+                "weight": {
+                    "type": "integer"
                 }
             }
         },
-        "internal_transport_http_billing.CheckoutResponse": {
+        "BrandingManifestIcon": {
             "type": "object",
+            "required": [
+                "purpose",
+                "sizes",
+                "src",
+                "type"
+            ],
+            "properties": {
+                "purpose": {
+                    "type": "string"
+                },
+                "sizes": {
+                    "type": "string"
+                },
+                "src": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "BrandingManifestResponse": {
+            "type": "object",
+            "required": [
+                "background_color",
+                "categories",
+                "description",
+                "display",
+                "icons",
+                "id",
+                "lang",
+                "name",
+                "scope",
+                "short_name",
+                "start_url",
+                "theme_color"
+            ],
+            "properties": {
+                "background_color": {
+                    "type": "string"
+                },
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "display": {
+                    "type": "string"
+                },
+                "icons": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/BrandingManifestIcon"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lang": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                },
+                "start_url": {
+                    "type": "string"
+                },
+                "theme_color": {
+                    "type": "string"
+                }
+            }
+        },
+        "BrandingResponse": {
+            "type": "object",
+            "required": [
+                "appleTouchIcon180URL",
+                "description",
+                "faviconURL",
+                "logoURL",
+                "pwaIcon192URL",
+                "pwaIcon512URL",
+                "pwaMaskableIcon512URL",
+                "shortName",
+                "title"
+            ],
+            "properties": {
+                "appleTouchIcon180URL": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "faviconURL": {
+                    "type": "string"
+                },
+                "logoURL": {
+                    "type": "string"
+                },
+                "pwaIcon192URL": {
+                    "type": "string"
+                },
+                "pwaIcon512URL": {
+                    "type": "string"
+                },
+                "pwaMaskableIcon512URL": {
+                    "type": "string"
+                },
+                "shortName": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "BrandingResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/BrandingResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ChannelErrorDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {},
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMsg": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                }
+            }
+        },
+        "CheckoutDataResponse": {
+            "type": "object",
+            "required": [
+                "checkout"
+            ],
+            "properties": {
+                "checkout": {
+                    "$ref": "#/definitions/CheckoutResponse"
+                }
+            }
+        },
+        "CheckoutResponse": {
+            "type": "object",
+            "required": [
+                "baseAmountCents",
+                "baseCurrency",
+                "checkoutURL",
+                "creditNanousd",
+                "creditUSD",
+                "expiredAt",
+                "externalCheckoutID",
+                "fxRate",
+                "orderNo",
+                "orderType",
+                "payAmountCents",
+                "payCurrency",
+                "provider",
+                "status"
+            ],
             "properties": {
                 "baseAmountCents": {
                     "type": "integer"
@@ -9955,7 +16254,9 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "expiredAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "externalCheckoutID": {
                     "type": "string"
@@ -9983,22 +16284,1686 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.CheckoutResponseDoc": {
+        "CheckoutResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.CheckoutDataResponse"
+                    "$ref": "#/definitions/CheckoutDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_billing.CreateCheckoutRequest": {
+        "CircuitResetResponse": {
+            "type": "object",
+            "required": [
+                "reset"
+            ],
+            "properties": {
+                "reset": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "CleanupConversationRunsRequest": {
+            "type": "object",
+            "required": [
+                "runIDs"
+            ],
+            "properties": {
+                "runIDs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "CleanupConversationRunsResponse": {
+            "type": "object",
+            "required": [
+                "deletedCount",
+                "runCount"
+            ],
+            "properties": {
+                "deletedCount": {
+                    "type": "integer"
+                },
+                "runCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "CleanupConversationRunsResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/CleanupConversationRunsResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "CleanupLogsRequest": {
+            "type": "object",
+            "required": [
+                "before",
+                "type"
+            ],
+            "properties": {
+                "before": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "CleanupLogsResponse": {
+            "type": "object",
+            "required": [
+                "before",
+                "deletedCount",
+                "type"
+            ],
+            "properties": {
+                "before": {
+                    "type": "string"
+                },
+                "deletedCount": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "CleanupLogsResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/CleanupLogsResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationCategoryCatalogResponse": {
+            "type": "object",
+            "required": [
+                "image",
+                "text"
+            ],
+            "properties": {
+                "image": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "text": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "ContentModerationConfigDataResponse": {
+            "type": "object",
+            "required": [
+                "categories",
+                "config"
+            ],
+            "properties": {
+                "categories": {
+                    "$ref": "#/definitions/ContentModerationCategoryCatalogResponse"
+                },
+                "config": {
+                    "$ref": "#/definitions/ContentModerationServiceConfigResponse"
+                }
+            }
+        },
+        "ContentModerationConfigResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ContentModerationConfigDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationConfigUpdateDataResponse": {
+            "type": "object",
+            "required": [
+                "config"
+            ],
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/ContentModerationServiceConfigResponse"
+                }
+            }
+        },
+        "ContentModerationConfigUpdateResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ContentModerationConfigUpdateDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationDailyStatResponse": {
+            "type": "object",
+            "required": [
+                "category",
+                "checkCount",
+                "contentItems",
+                "direction",
+                "failureCount",
+                "hitCount",
+                "latencyCount",
+                "latencySumMS",
+                "modality",
+                "result",
+                "statDate"
+            ],
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "checkCount": {
+                    "type": "integer"
+                },
+                "contentItems": {
+                    "type": "integer"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "failureCount": {
+                    "type": "integer"
+                },
+                "hitCount": {
+                    "type": "integer"
+                },
+                "latencyCount": {
+                    "type": "integer"
+                },
+                "latencySumMS": {
+                    "type": "integer"
+                },
+                "modality": {
+                    "type": "string"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "statDate": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationEventDetailResponse": {
+            "type": "object",
+            "required": [
+                "categoryScores",
+                "event",
+                "images",
+                "imagesAvailable",
+                "textAvailable"
+            ],
+            "properties": {
+                "categoryScores": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "number",
+                        "format": "float64"
+                    }
+                },
+                "decryptedText": {
+                    "type": "string"
+                },
+                "event": {
+                    "$ref": "#/definitions/ContentModerationEventResponse"
+                },
+                "images": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ContentModerationIsolatedImageResponse"
+                    }
+                },
+                "imagesAvailable": {
+                    "type": "boolean"
+                },
+                "textAvailable": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "ContentModerationEventDetailResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ContentModerationEventDetailResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationEventListDataResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "page",
+                "pageSize",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ContentModerationEventResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ContentModerationEventListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ContentModerationEventListDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationEventResponse": {
+            "type": "object",
+            "required": [
+                "categories",
+                "contentSummary",
+                "conversationID",
+                "createdAt",
+                "direction",
+                "errorCode",
+                "errorMessage",
+                "latencyMS",
+                "messagePublicID",
+                "modality",
+                "model",
+                "policyVersion",
+                "publicID",
+                "result",
+                "runID",
+                "userID"
+            ],
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "contentSummary": {
+                    "type": "string"
+                },
+                "conversationID": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "latencyMS": {
+                    "type": "integer"
+                },
+                "messagePublicID": {
+                    "type": "string"
+                },
+                "modality": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "policyVersion": {
+                    "type": "integer"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "runID": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                },
+                "userLabel": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationIsolatedImageResponse": {
+            "type": "object",
+            "required": [
+                "index",
+                "mimeType",
+                "sha256",
+                "sizeBytes"
+            ],
+            "properties": {
+                "index": {
+                    "type": "integer"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "sizeBytes": {
+                    "type": "integer"
+                },
+                "sourceFileID": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationPolicyRequest": {
+            "type": "object",
+            "required": [
+                "inputImageCategories",
+                "inputTextCategories",
+                "outputImageCategories",
+                "outputTextCategories"
+            ],
+            "properties": {
+                "inputImageCategories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "inputTextCategories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outputImageCategories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outputTextCategories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "ContentModerationPolicyResponse": {
+            "type": "object",
+            "required": [
+                "inputImageCategories",
+                "inputTextCategories",
+                "outputImageCategories",
+                "outputTextCategories",
+                "version"
+            ],
+            "properties": {
+                "inputImageCategories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "inputTextCategories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outputImageCategories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outputTextCategories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ContentModerationProbeResponse": {
+            "type": "object",
+            "required": [
+                "image",
+                "text"
+            ],
+            "properties": {
+                "image": {
+                    "$ref": "#/definitions/ContentModerationProbeResultResponse"
+                },
+                "text": {
+                    "$ref": "#/definitions/ContentModerationProbeResultResponse"
+                }
+            }
+        },
+        "ContentModerationProbeResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ContentModerationProbeResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationProbeResultResponse": {
+            "type": "object",
+            "required": [
+                "latencyMS",
+                "valid"
+            ],
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "latencyMS": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "valid": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "ContentModerationServiceConfigResponse": {
+            "type": "object",
+            "required": [
+                "baseUrl",
+                "enabled",
+                "hasAPIKey",
+                "maxConcurrency",
+                "model",
+                "policy",
+                "queueCapacity",
+                "timeoutSeconds"
+            ],
+            "properties": {
+                "apiKeyMasked": {
+                    "type": "string"
+                },
+                "baseUrl": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "hasAPIKey": {
+                    "type": "boolean"
+                },
+                "maxConcurrency": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "policy": {
+                    "$ref": "#/definitions/ContentModerationPolicyResponse"
+                },
+                "queueCapacity": {
+                    "type": "integer"
+                },
+                "timeoutSeconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ContentModerationStatsDataResponse": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ContentModerationDailyStatResponse"
+                    }
+                }
+            }
+        },
+        "ContentModerationStatsResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ContentModerationStatsDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ContentModerationUpdateConfigRequest": {
             "type": "object",
             "properties": {
-                "amountUSD": {
-                    "type": "number",
+                "apiKey": {
+                    "type": "string"
+                },
+                "baseUrl": {
+                    "type": "string"
+                },
+                "clearAPIKey": {
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "maxConcurrency": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "policy": {
+                    "$ref": "#/definitions/ContentModerationPolicyRequest"
+                },
+                "queueCapacity": {
+                    "type": "integer"
+                },
+                "timeoutSeconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ContextArtifactResponse": {
+            "type": "object",
+            "required": [
+                "content",
+                "createdAt",
+                "id",
+                "kind",
+                "messageID",
+                "metadataJSON",
+                "runID",
+                "score",
+                "sourceID",
+                "sourceTitle",
+                "sourceType",
+                "tokenEstimate"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "messageID": {
+                    "type": "integer"
+                },
+                "metadataJSON": {
+                    "type": "string"
+                },
+                "runID": {
+                    "type": "string"
+                },
+                "score": {
+                    "type": "number"
+                },
+                "sourceID": {
+                    "type": "string"
+                },
+                "sourceTitle": {
+                    "type": "string"
+                },
+                "sourceType": {
+                    "type": "string"
+                },
+                "tokenEstimate": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ContextArtifactResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ContextArtifactResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationCreateResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationDefaultModelCandidateResponse": {
+            "type": "object",
+            "required": [
+                "platformModelName",
+                "source",
+                "usedAt"
+            ],
+            "properties": {
+                "platformModelName": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "usedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                }
+            }
+        },
+        "ConversationDefaultModelCandidateResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationDefaultModelCandidateResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationDeleteResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                },
+                "deletedFileCount": {
+                    "type": "integer"
+                },
+                "quota": {
+                    "$ref": "#/definitions/StorageQuotaResponse"
+                }
+            }
+        },
+        "ConversationDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationDeleteResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationErrorDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {},
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMsg": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationEventDetailResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationEventResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationEventListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ConversationEventResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationEventResponse": {
+            "type": "object",
+            "required": [
+                "contentMarkdown",
+                "conversationID",
+                "createdAt",
+                "endedAt",
+                "errorJSON",
+                "eventID",
+                "eventScope",
+                "eventType",
+                "id",
+                "inputJSON",
+                "latencyMS",
+                "messageID",
+                "outputJSON",
+                "parentEventID",
+                "payloadJSON",
+                "payloadOmitted",
+                "payloadSizeBytes",
+                "phase",
+                "platformModelName",
+                "providerProtocol",
+                "roundID",
+                "routedBindingCode",
+                "runID",
+                "seq",
+                "stage",
+                "startedAt",
+                "status",
+                "summary",
+                "title",
+                "toolCallID",
+                "toolName",
+                "updatedAt",
+                "upstreamModelName",
+                "upstreamName",
+                "userDisplayName",
+                "userID",
+                "userLabel",
+                "username"
+            ],
+            "properties": {
+                "contentMarkdown": {
+                    "type": "string"
+                },
+                "conversationID": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "endedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "errorJSON": {
+                    "type": "string"
+                },
+                "eventID": {
+                    "type": "string"
+                },
+                "eventScope": {
+                    "type": "string"
+                },
+                "eventType": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inputJSON": {
+                    "type": "string"
+                },
+                "latencyMS": {
+                    "type": "integer"
+                },
+                "messageID": {
+                    "type": "integer"
+                },
+                "outputJSON": {
+                    "type": "string"
+                },
+                "parentEventID": {
+                    "type": "string"
+                },
+                "payloadJSON": {
+                    "type": "string"
+                },
+                "payloadOmitted": {
+                    "type": "boolean"
+                },
+                "payloadSizeBytes": {
+                    "type": "integer"
+                },
+                "phase": {
+                    "type": "string"
+                },
+                "platformModelName": {
+                    "type": "string"
+                },
+                "providerProtocol": {
+                    "type": "string"
+                },
+                "roundID": {
+                    "type": "string"
+                },
+                "routedBindingCode": {
+                    "type": "string"
+                },
+                "runID": {
+                    "type": "string"
+                },
+                "seq": {
+                    "type": "integer"
+                },
+                "stage": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "toolCallID": {
+                    "type": "string"
+                },
+                "toolName": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "upstreamModelName": {
+                    "type": "string"
+                },
+                "upstreamName": {
+                    "type": "string"
+                },
+                "userDisplayName": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                },
+                "userLabel": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationExportCompatibilityResponse": {
+            "type": "object",
+            "required": [
+                "format",
+                "notes"
+            ],
+            "properties": {
+                "format": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationExportResponse": {
+            "type": "object",
+            "required": [
+                "compatibility",
+                "conversation",
+                "defaultMessagePublicIDs",
+                "exportScope",
+                "exportedAt",
+                "messages",
+                "runs",
+                "totalMessages",
+                "totalRuns",
+                "version"
+            ],
+            "properties": {
+                "compatibility": {
+                    "$ref": "#/definitions/ConversationExportCompatibilityResponse"
+                },
+                "conversation": {
+                    "$ref": "#/definitions/ConversationResponse"
+                },
+                "defaultMessagePublicIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "exportScope": {
+                    "type": "string"
+                },
+                "exportedAt": {
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MessageResponse"
+                    }
+                },
+                "runs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/RunResponse"
+                    }
+                },
+                "totalMessages": {
+                    "type": "integer"
+                },
+                "totalRuns": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ConversationExportResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationExportResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ConversationResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationPreviewMessageListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ConversationPreviewMessageResponse"
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationPreviewMessageResponse": {
+            "type": "object",
+            "required": [
+                "content",
+                "errorMessage",
+                "publicID",
+                "role"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "assistant"
+                    ]
+                }
+            }
+        },
+        "ConversationProjectListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ConversationProjectResponse"
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationProjectResponse": {
+            "type": "object",
+            "required": [
+                "color",
+                "createdAt",
+                "defaultKnowledgeBaseIDs",
+                "defaultMCPToolIDs",
+                "defaultSkillIDs",
+                "description",
+                "icon",
+                "mcpDefaultMode",
+                "name",
+                "publicID",
+                "sortOrder",
+                "status",
+                "systemPrompt",
+                "updatedAt"
+            ],
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "defaultKnowledgeBaseIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "defaultMCPToolIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "defaultSkillIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "mcpDefaultMode": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "systemPrompt": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationProjectResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationProjectResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationResponse": {
+            "type": "object",
+            "required": [
+                "contextPolicyJSON",
+                "createdAt",
+                "isStarred",
+                "labelsJSON",
+                "lastCompactedAt",
+                "lastResponseID",
+                "lastShareAccessedAt",
+                "messageCount",
+                "model",
+                "projectID",
+                "projectName",
+                "provider",
+                "publicID",
+                "sessionKey",
+                "shareID",
+                "shareStatus",
+                "sharedAt",
+                "starredAt",
+                "status",
+                "title",
+                "updatedAt",
+                "userID"
+            ],
+            "properties": {
+                "contextPolicyJSON": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "isStarred": {
+                    "type": "boolean"
+                },
+                "labelsJSON": {
+                    "type": "string"
+                },
+                "lastCompactedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "lastResponseID": {
+                    "type": "string"
+                },
+                "lastShareAccessedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "messageCount": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "projectID": {
+                    "type": "string"
+                },
+                "projectName": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "sessionKey": {
+                    "type": "string"
+                },
+                "shareID": {
+                    "type": "string"
+                },
+                "shareStatus": {
+                    "type": "string"
+                },
+                "sharedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "starredAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ConversationRunListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/RunResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationRunStatusResponse": {
+            "type": "object",
+            "required": [
+                "runID",
+                "status"
+            ],
+            "properties": {
+                "runID": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationSearchListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationSearchPageResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationSearchPageResponse": {
+            "type": "object",
+            "required": [
+                "hasMore",
+                "results"
+            ],
+            "properties": {
+                "hasMore": {
+                    "type": "boolean"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ConversationSearchResultResponse"
+                    }
+                }
+            }
+        },
+        "ConversationSearchResultResponse": {
+            "type": "object",
+            "required": [
+                "isStarred",
+                "labelsJSON",
+                "messageCount",
+                "projectID",
+                "projectName",
+                "publicID",
+                "status",
+                "title",
+                "updatedAt"
+            ],
+            "properties": {
+                "isStarred": {
+                    "type": "boolean"
+                },
+                "labelsJSON": {
+                    "type": "string"
+                },
+                "messageCount": {
+                    "type": "integer"
+                },
+                "projectID": {
+                    "type": "string"
+                },
+                "projectName": {
+                    "type": "string"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationShareResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "lastAccessedAt",
+                "messageCount",
+                "modelSnapshot",
+                "revokedAt",
+                "shareID",
+                "status",
+                "titleSnapshot",
+                "updatedAt"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "lastAccessedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "messageCount": {
+                    "type": "integer"
+                },
+                "modelSnapshot": {
+                    "type": "string"
+                },
+                "revokedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "shareID": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "titleSnapshot": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationShareResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationShareResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ConversationUpdateResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ConversationResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "CreateAnnouncementRequest": {
+            "type": "object",
+            "required": [
+                "contentMarkdown",
+                "title"
+            ],
+            "properties": {
+                "contentMarkdown": {
+                    "type": "string",
+                    "maxLength": 20000,
+                    "minLength": 1
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "pinned": {
+                    "type": "boolean"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "startsAt": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "inactive"
+                    ]
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "minLength": 1
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "critical",
+                        "warning",
+                        "info",
+                        "normal",
+                        "general"
+                    ]
+                }
+            }
+        },
+        "CreateCheckoutRequest": {
+            "type": "object",
+            "properties": {
+                "amountMinorUnits": {
+                    "type": "integer",
                     "minimum": 0
                 },
                 "cancelURL": {
@@ -10038,7 +18003,246 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.CreateRedemptionCodeRequest": {
+        "CreateConversationProjectRequest": {
+            "type": "object",
+            "required": [
+                "defaultKnowledgeBaseIDs",
+                "name"
+            ],
+            "properties": {
+                "color": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "defaultKnowledgeBaseIDs": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "defaultMCPToolIDs": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "defaultSkillIDs": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "icon": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "mcpDefaultMode": {
+                    "type": "string",
+                    "enum": [
+                        "inherit",
+                        "custom"
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "systemPrompt": {
+                    "type": "string",
+                    "maxLength": 12000
+                }
+            }
+        },
+        "CreateConversationRequest": {
+            "type": "object",
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "projectID": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
+        "CreateConversationShareRequest": {
+            "type": "object",
+            "properties": {
+                "defaultMessagePublicIDs": {
+                    "type": "array",
+                    "maxItems": 1000,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "CreateModelDisplayGroupRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "icon": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "modelIDs": {
+                    "type": "array",
+                    "maxItems": 10000,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "CreateModelRequest": {
+            "type": "object",
+            "required": [
+                "platformModelName"
+            ],
+            "properties": {
+                "accessScope": {
+                    "type": "string",
+                    "enum": [
+                        "public",
+                        "internal"
+                    ]
+                },
+                "capabilitiesJSON": {
+                    "type": "string",
+                    "maxLength": 10000
+                },
+                "cbDurationMin": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "cbFailureThreshold": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "cbPolicyMode": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "enforced"
+                    ]
+                },
+                "cbWindowMin": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 10000
+                },
+                "displayGroupID": {
+                    "type": "integer"
+                },
+                "icon": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "kindsJSON": {
+                    "type": "string",
+                    "maxLength": 1000
+                },
+                "platformModelName": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 2
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "inactive"
+                    ]
+                },
+                "systemPrompt": {
+                    "type": "string",
+                    "maxLength": 20000
+                },
+                "vendor": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "CreateModelResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ModelDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "CreateModelVendorRequest": {
+            "type": "object",
+            "required": [
+                "key",
+                "name"
+            ],
+            "properties": {
+                "icon": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "key": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "CreatePermissionGroupRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "rateMultiplierPercent": {
+                    "type": "integer",
+                    "maximum": 10000,
+                    "minimum": 0
+                }
+            }
+        },
+        "CreateRedemptionCodeRequest": {
             "type": "object",
             "required": [
                 "mode"
@@ -10063,7 +18267,8 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "expiresAt": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "maxRedemptions": {
                     "type": "integer",
@@ -10092,1123 +18297,31 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_billing.ErrorDoc": {
-            "type": "object",
-            "properties": {
-                "data": {},
-                "details": {},
-                "errorCode": {
-                    "type": "string"
-                },
-                "errorMsg": {
-                    "type": "string"
-                },
-                "requestId": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.ModelPricingDataResponse": {
-            "type": "object",
-            "properties": {
-                "modelPricing": {
-                    "$ref": "#/definitions/internal_transport_http_billing.ModelPricingResponse"
-                }
-            }
-        },
-        "internal_transport_http_billing.ModelPricingListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_billing.ModelPricingResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.ModelPricingResponse": {
-            "type": "object",
-            "properties": {
-                "cacheReadNanousdPerMTokens": {
-                    "type": "integer"
-                },
-                "cacheReadUSDPerMTokens": {
-                    "type": "number"
-                },
-                "cacheWriteNanousdPerMTokens": {
-                    "type": "integer"
-                },
-                "cacheWriteUSDPerMTokens": {
-                    "type": "number"
-                },
-                "callNanousdPerCall": {
-                    "type": "integer"
-                },
-                "callUSDPerCall": {
-                    "type": "number"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "currency": {
-                    "type": "string"
-                },
-                "durationNanousdPerSecond": {
-                    "type": "integer"
-                },
-                "durationUSDPerSecond": {
-                    "type": "number"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "inputNanousdPerMTokens": {
-                    "type": "integer"
-                },
-                "inputUSDPerMTokens": {
-                    "type": "number"
-                },
-                "isFree": {
-                    "type": "boolean"
-                },
-                "modelIcon": {
-                    "type": "string"
-                },
-                "modelVendor": {
-                    "type": "string"
-                },
-                "outputNanousdPerMTokens": {
-                    "type": "integer"
-                },
-                "outputUSDPerMTokens": {
-                    "type": "number"
-                },
-                "platformModelName": {
-                    "type": "string"
-                },
-                "pricingMode": {
-                    "type": "string"
-                },
-                "tieredPricingJSON": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.NativeToolPricingRequest": {
-            "type": "object",
-            "properties": {
-                "billable": {
-                    "type": "boolean"
-                },
-                "priceLabel": {
-                    "type": "string"
-                },
-                "priceNanousd": {
-                    "type": "integer"
-                },
-                "toolKey": {
-                    "type": "string"
-                },
-                "unit": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.NativeToolPricingResponse": {
-            "type": "object",
-            "properties": {
-                "billable": {
-                    "type": "boolean"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "label": {
-                    "type": "string"
-                },
-                "priceLabel": {
-                    "type": "string"
-                },
-                "priceNanousd": {
-                    "type": "integer"
-                },
-                "provider": {
-                    "type": "string"
-                },
-                "toolKey": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "unit": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.PatchRedemptionCodeRequestDoc": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "maxRedemptions": {
-                    "type": "integer"
-                },
-                "perUserLimit": {
-                    "type": "integer",
-                    "maximum": 100,
-                    "minimum": 1
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "active",
-                        "inactive"
-                    ]
-                }
-            }
-        },
-        "internal_transport_http_billing.PaymentTypeResponse": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.PlanListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.BillingPlanResponse"
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedeemCodeRequest": {
+        "CreateServerRequest": {
             "type": "object",
             "required": [
-                "code"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "maxLength": 64,
-                    "minLength": 3
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionApplyDataResponse": {
-            "type": "object",
-            "properties": {
-                "account": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingAccountResponse"
-                },
-                "overview": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingOverviewResponse"
-                },
-                "redemption": {
-                    "$ref": "#/definitions/internal_transport_http_billing.RedemptionResponse"
-                },
-                "subscription": {
-                    "$ref": "#/definitions/internal_transport_http_billing.SubscriptionResponse"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionApplyResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.RedemptionApplyDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeCreateDataResponse": {
-            "type": "object",
-            "properties": {
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeResponse"
-                    }
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeCreateResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeCreateDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeDataResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeResponse"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeDeleteDataResponse": {
-            "type": "object",
-            "properties": {
-                "deleted": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeDeleteResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeDeleteDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeListDataResponse": {
-            "type": "object",
-            "properties": {
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeListDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "codeHint": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "createdByUserID": {
-                    "type": "integer"
-                },
-                "creditNanousd": {
-                    "type": "integer"
-                },
-                "creditUSD": {
-                    "type": "number"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "durationDays": {
-                    "type": "integer"
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "maxRedemptions": {
-                    "type": "integer"
-                },
-                "mode": {
-                    "type": "string"
-                },
-                "perUserLimit": {
-                    "type": "integer"
-                },
-                "planID": {
-                    "type": "integer"
-                },
-                "redeemedCount": {
-                    "type": "integer"
-                },
-                "remainingRedemptions": {
-                    "type": "integer"
-                },
-                "rewardType": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionCodeResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.RedemptionCodeDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.RedemptionResponse": {
-            "type": "object",
-            "properties": {
-                "balanceTransactionID": {
-                    "type": "integer"
-                },
-                "codeID": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "creditNanousd": {
-                    "type": "integer"
-                },
-                "creditUSD": {
-                    "type": "number"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "mode": {
-                    "type": "string"
-                },
-                "planID": {
-                    "type": "integer"
-                },
-                "rewardType": {
-                    "type": "string"
-                },
-                "subscriptionID": {
-                    "type": "integer"
-                },
-                "userID": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_billing.SubscribeRequest": {
-            "type": "object",
-            "required": [
-                "priceID"
-            ],
-            "properties": {
-                "cycles": {
-                    "type": "integer",
-                    "maximum": 120,
-                    "minimum": 1
-                },
-                "priceID": {
-                    "type": "integer",
-                    "minimum": 1
-                }
-            }
-        },
-        "internal_transport_http_billing.SubscribeResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_billing.SubscriptionDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.SubscriptionDataResponse": {
-            "type": "object",
-            "properties": {
-                "subscription": {
-                    "$ref": "#/definitions/internal_transport_http_billing.SubscriptionResponse"
-                }
-            }
-        },
-        "internal_transport_http_billing.SubscriptionEntitlementResponse": {
-            "type": "object",
-            "properties": {
-                "autoRenew": {
-                    "type": "boolean"
-                },
-                "cancelAtPeriodEnd": {
-                    "type": "boolean"
-                },
-                "currentPeriodEndAt": {
-                    "type": "string"
-                },
-                "currentPeriodStartAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "isCurrent": {
-                    "type": "boolean"
-                },
-                "plan": {
-                    "$ref": "#/definitions/internal_transport_http_billing.BillingPlanResponse"
-                },
-                "planID": {
-                    "type": "integer"
-                },
-                "priceID": {
-                    "type": "integer"
-                },
-                "startAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "userID": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_billing.SubscriptionResponse": {
-            "type": "object",
-            "properties": {
-                "autoRenew": {
-                    "type": "boolean"
-                },
-                "cancelAtPeriodEnd": {
-                    "type": "boolean"
-                },
-                "currentPeriodEndAt": {
-                    "type": "string"
-                },
-                "currentPeriodStartAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "planID": {
-                    "type": "integer"
-                },
-                "priceID": {
-                    "type": "integer"
-                },
-                "startAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "userID": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_billing.UpdateBillingAccountBalanceRequest": {
-            "type": "object",
-            "properties": {
-                "balanceUSD": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "description": {
-                    "type": "string",
-                    "maxLength": 255
-                }
-            }
-        },
-        "internal_transport_http_billing.UpdateBillingPlanRequest": {
-            "type": "object",
-            "required": [
-                "billingInterval",
+                "baseURL",
                 "name"
             ],
             "properties": {
-                "amountUSD": {
-                    "type": "number",
-                    "minimum": 0
+                "authToken": {
+                    "type": "string"
                 },
-                "billingInterval": {
-                    "type": "string",
-                    "enum": [
-                        "month",
-                        "year",
-                        "lifetime"
-                    ]
+                "baseURL": {
+                    "type": "string"
                 },
-                "currency": {
-                    "type": "string",
-                    "maxLength": 16
-                },
-                "description": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "discountPercent": {
-                    "type": "integer",
-                    "maximum": 100,
-                    "minimum": 0
+                "headersJSON": {
+                    "type": "string"
                 },
                 "name": {
-                    "type": "string",
-                    "maxLength": 64,
-                    "minLength": 1
-                },
-                "periodCreditUSD": {
-                    "type": "number",
-                    "minimum": 0
-                }
-            }
-        },
-        "internal_transport_http_billing.UpsertModelPricingRequest": {
-            "type": "object",
-            "required": [
-                "platformModelName"
-            ],
-            "properties": {
-                "cacheReadUSDPerMTokens": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "cacheWriteUSDPerMTokens": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "callUSDPerCall": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "currency": {
-                    "type": "string",
-                    "maxLength": 16
-                },
-                "durationUSDPerSecond": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "inputUSDPerMTokens": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "isFree": {
-                    "type": "boolean"
-                },
-                "outputUSDPerMTokens": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "platformModelName": {
-                    "type": "string",
-                    "maxLength": 128
-                },
-                "pricingMode": {
-                    "type": "string",
-                    "enum": [
-                        "token",
-                        "call",
-                        "duration",
-                        "tiered"
-                    ]
-                },
-                "tieredPricingJSON": {
-                    "type": "string",
-                    "maxLength": 20000
-                }
-            }
-        },
-        "internal_transport_http_billing.UsageDailyListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.UsageDailyResponse"
-                    }
-                },
-                "errorMsg": {
                     "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.UsageDailyModelResponse": {
-            "type": "object",
-            "properties": {
-                "avgLatencyMS": {
-                    "type": "integer"
-                },
-                "billedNanousd": {
-                    "type": "integer"
-                },
-                "billedUSD": {
-                    "type": "number"
-                },
-                "cacheReadTokens": {
-                    "type": "integer"
-                },
-                "cacheWriteTokens": {
-                    "type": "integer"
-                },
-                "callCount": {
-                    "type": "integer"
-                },
-                "durationSeconds": {
-                    "type": "integer"
-                },
-                "inputTokens": {
-                    "type": "integer"
-                },
-                "outputTokens": {
-                    "type": "integer"
-                },
-                "platformModelName": {
-                    "type": "string"
-                },
-                "reasoningTokens": {
-                    "type": "integer"
-                },
-                "recordCount": {
-                    "type": "integer"
-                },
-                "totalTokens": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_billing.UsageDailyResponse": {
-            "type": "object",
-            "properties": {
-                "avgLatencyMS": {
-                    "type": "integer"
-                },
-                "billedNanousd": {
-                    "type": "integer"
-                },
-                "billedUSD": {
-                    "type": "number"
-                },
-                "cacheReadTokens": {
-                    "type": "integer"
-                },
-                "cacheWriteTokens": {
-                    "type": "integer"
-                },
-                "callCount": {
-                    "type": "integer"
-                },
-                "durationSeconds": {
-                    "type": "integer"
-                },
-                "inputTokens": {
-                    "type": "integer"
-                },
-                "models": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.UsageDailyModelResponse"
-                    }
-                },
-                "outputTokens": {
-                    "type": "integer"
-                },
-                "reasoningTokens": {
-                    "type": "integer"
-                },
-                "recordCount": {
-                    "type": "integer"
-                },
-                "totalTokens": {
-                    "type": "integer"
-                },
-                "usageDate": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.UsageLedgerListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_billing.UsageLedgerResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.UsageLedgerResponse": {
-            "type": "object",
-            "properties": {
-                "billedCurrency": {
-                    "type": "string"
-                },
-                "billedNanousd": {
-                    "type": "integer"
-                },
-                "billedUSD": {
-                    "type": "number"
-                },
-                "cacheReadTokens": {
-                    "type": "integer"
-                },
-                "cacheWrite1hTokens": {
-                    "type": "integer"
-                },
-                "cacheWrite5mTokens": {
-                    "type": "integer"
-                },
-                "cacheWriteTokens": {
-                    "type": "integer"
-                },
-                "callCount": {
-                    "type": "integer"
-                },
-                "conversationID": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "durationSeconds": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "inputTokens": {
-                    "type": "integer"
-                },
-                "isFreeModel": {
-                    "type": "boolean"
-                },
-                "latencyMS": {
-                    "type": "integer"
-                },
-                "modelIcon": {
-                    "type": "string"
-                },
-                "modelVendor": {
-                    "type": "string"
-                },
-                "outputTokens": {
-                    "type": "integer"
-                },
-                "platformModelName": {
-                    "type": "string"
-                },
-                "pricingSnapshotJSON": {
-                    "type": "string"
-                },
-                "providerProtocol": {
-                    "type": "string"
-                },
-                "reasoningTokens": {
-                    "type": "integer"
-                },
-                "routedBindingCode": {
-                    "type": "string"
-                },
-                "serviceTier": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "upstreamModelName": {
-                    "type": "string"
-                },
-                "usageDate": {
-                    "type": "string"
-                },
-                "usageSpeed": {
-                    "type": "string"
-                },
-                "userID": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_billing.UsageMonthlyListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_billing.UsageMonthlyResponse"
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_billing.UsageMonthlyResponse": {
-            "type": "object",
-            "properties": {
-                "avgLatencyMS": {
-                    "type": "integer"
-                },
-                "billedNanousd": {
-                    "type": "integer"
-                },
-                "billedUSD": {
-                    "type": "number"
-                },
-                "cacheReadTokens": {
-                    "type": "integer"
-                },
-                "cacheWriteTokens": {
-                    "type": "integer"
-                },
-                "callCount": {
-                    "type": "integer"
-                },
-                "durationSeconds": {
-                    "type": "integer"
-                },
-                "inputTokens": {
-                    "type": "integer"
-                },
-                "monthStartAt": {
-                    "type": "string"
-                },
-                "outputTokens": {
-                    "type": "integer"
-                },
-                "reasoningTokens": {
-                    "type": "integer"
-                },
-                "recordCount": {
-                    "type": "integer"
-                },
-                "totalTokens": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_channel.BatchDeleteRequest": {
-            "type": "object",
-            "required": [
-                "ids"
-            ],
-            "properties": {
-                "ids": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "integer"
-                    }
-                }
-            }
-        },
-        "internal_transport_http_channel.BatchDeleteResponse": {
-            "type": "object",
-            "properties": {
-                "failedCount": {
-                    "type": "integer"
-                },
-                "notFoundCount": {
-                    "type": "integer"
-                },
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.BatchDeleteResultResponse"
-                    }
-                },
-                "successCount": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_channel.BatchDeleteResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.BatchDeleteResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_channel.BatchDeleteResultResponse": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
                 },
                 "status": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.BindModelUpstreamSourceRequest": {
-            "type": "object",
-            "required": [
-                "upstreamID",
-                "upstreamModelID"
-            ],
-            "properties": {
-                "priority": {
-                    "type": "integer"
-                },
-                "protocol": {
-                    "type": "string",
-                    "maxLength": 64
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "active",
-                        "inactive"
-                    ]
-                },
-                "upstreamID": {
-                    "type": "integer"
-                },
-                "upstreamModelID": {
-                    "type": "integer"
-                },
-                "weight": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_channel.CircuitResetResponse": {
-            "type": "object",
-            "properties": {
-                "reset": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_channel.CreateModelRequest": {
-            "type": "object",
-            "required": [
-                "platformModelName"
-            ],
-            "properties": {
-                "accessScope": {
-                    "type": "string",
-                    "enum": [
-                        "public",
-                        "internal"
-                    ]
-                },
-                "capabilitiesJSON": {
-                    "type": "string",
-                    "maxLength": 10000
-                },
-                "description": {
-                    "type": "string",
-                    "maxLength": 10000
-                },
-                "icon": {
-                    "type": "string",
-                    "maxLength": 128
-                },
-                "kindsJSON": {
-                    "type": "string",
-                    "maxLength": 1000
-                },
-                "platformModelName": {
-                    "type": "string",
-                    "maxLength": 128,
-                    "minLength": 2
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "active",
-                        "inactive"
-                    ]
-                },
-                "systemPrompt": {
-                    "type": "string",
-                    "maxLength": 20000
-                },
-                "vendor": {
-                    "type": "string",
-                    "maxLength": 64
-                }
-            }
-        },
-        "internal_transport_http_channel.CreateModelResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelDataResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_channel.CreateUpstreamRequest": {
+        "CreateUpstreamRequest": {
             "type": "object",
             "required": [
                 "apiKeys",
@@ -11286,19 +18399,368 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.CreateUpstreamResponseDoc": {
+        "CreateUpstreamResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.UpstreamDataResponse"
+                    "$ref": "#/definitions/UpstreamDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.ErrorDoc": {
+        "CreateUserRequest": {
             "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "avatarURL": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "displayName": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "minLength": 3
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "locale": {
+                    "type": "string",
+                    "maxLength": 16
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 8
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "subscriptionExpiresAt": {
+                    "type": "string"
+                },
+                "subscriptionTier": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "minLength": 3
+                }
+            }
+        },
+        "CreateUserResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/UserDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "DeleteAccountRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "verificationMethod"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 6
+                },
+                "verificationMethod": {
+                    "type": "string",
+                    "enum": [
+                        "two_factor",
+                        "email"
+                    ]
+                }
+            }
+        },
+        "DeleteAccountResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "DeleteAccountResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/DeleteAccountResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "DeleteFileResponse": {
+            "type": "object",
+            "required": [
+                "deleted",
+                "fileID",
+                "quota"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                },
+                "fileID": {
+                    "type": "string"
+                },
+                "quota": {
+                    "$ref": "#/definitions/StorageQuotaResponse"
+                }
+            }
+        },
+        "DeleteFileResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/DeleteFileResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "DeletePermissionGroupResponse": {
+            "type": "object",
+            "required": [
+                "deleted",
+                "summary"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                },
+                "summary": {
+                    "$ref": "#/definitions/PermissionGroupDeleteSummaryResponse"
+                }
+            }
+        },
+        "DeletePermissionGroupResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/DeletePermissionGroupResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "DeleteServerResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "DeleteServerResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/DeleteServerResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "DeleteUserResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "DeleteUserResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/DeleteUserResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "EmailRegistrationCompleteRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 8
+                },
+                "turnstileToken": {
+                    "type": "string",
+                    "maxLength": 2048
+                }
+            }
+        },
+        "EmailRegistrationStartRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "turnstileToken": {
+                    "type": "string",
+                    "maxLength": 2048
+                }
+            }
+        },
+        "EmailRegistrationStartResponse": {
+            "type": "object",
+            "required": [
+                "expiresAt",
+                "sent"
+            ],
+            "properties": {
+                "expiresAt": {
+                    "type": "string"
+                },
+                "sent": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "EmailRegistrationStartResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/EmailRegistrationStartResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "EmailVerificationStartResponse": {
+            "type": "object",
+            "required": [
+                "availableMethods",
+                "expiresAt",
+                "sent",
+                "verificationMethod"
+            ],
+            "properties": {
+                "availableMethods": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "sent": {
+                    "type": "boolean"
+                },
+                "verificationMethod": {
+                    "type": "string"
+                }
+            }
+        },
+        "EmailVerificationStartResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/EmailVerificationStartResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "Envelope": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {},
                 "details": {},
@@ -11313,7 +18775,674 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ImportUpstreamModelItemRequest": {
+        "FileListResponse": {
+            "type": "object",
+            "required": [
+                "quota",
+                "results",
+                "total"
+            ],
+            "properties": {
+                "quota": {
+                    "$ref": "#/definitions/StorageQuotaResponse"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/FileObjectResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "FileListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/FileListResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "FileObjectResponse": {
+            "type": "object",
+            "required": [
+                "chunkCount",
+                "createdAt",
+                "detectedMIME",
+                "embedError",
+                "embedStatus",
+                "expiresAt",
+                "extractStatus",
+                "fileCategory",
+                "fileID",
+                "fileName",
+                "lastAccessedAt",
+                "mimeType",
+                "processingErrorCode",
+                "processingErrorMessage",
+                "processingReady",
+                "processingStatus",
+                "purpose",
+                "ragOptOut",
+                "sha256",
+                "sizeBytes",
+                "status",
+                "updatedAt"
+            ],
+            "properties": {
+                "chunkCount": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "detectedMIME": {
+                    "type": "string"
+                },
+                "embedError": {
+                    "type": "string"
+                },
+                "embedStatus": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "extractStatus": {
+                    "type": "string"
+                },
+                "fileCategory": {
+                    "type": "string"
+                },
+                "fileID": {
+                    "type": "string"
+                },
+                "fileName": {
+                    "type": "string"
+                },
+                "lastAccessedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "processingErrorCode": {
+                    "type": "string"
+                },
+                "processingErrorMessage": {
+                    "type": "string"
+                },
+                "processingReady": {
+                    "type": "boolean"
+                },
+                "processingStatus": {
+                    "type": "string"
+                },
+                "purpose": {
+                    "type": "string"
+                },
+                "ragOptOut": {
+                    "type": "boolean"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "sizeBytes": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "FileProcessingStatusResponse": {
+            "type": "object",
+            "required": [
+                "chunkCount",
+                "completedAt",
+                "detectedMIME",
+                "embedError",
+                "embedStatus",
+                "errorCode",
+                "errorMessage",
+                "extractChars",
+                "extractPages",
+                "extractStatus",
+                "fileCategory",
+                "fileID",
+                "ocrUsed",
+                "previewText",
+                "processingReady",
+                "processingStatus",
+                "ragReady",
+                "ragReason",
+                "startedAt",
+                "updatedAt"
+            ],
+            "properties": {
+                "chunkCount": {
+                    "type": "integer"
+                },
+                "completedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "detectedMIME": {
+                    "type": "string"
+                },
+                "embedError": {
+                    "type": "string"
+                },
+                "embedStatus": {
+                    "type": "string"
+                },
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "extractChars": {
+                    "type": "integer"
+                },
+                "extractPages": {
+                    "type": "integer"
+                },
+                "extractStatus": {
+                    "type": "string"
+                },
+                "fileCategory": {
+                    "type": "string"
+                },
+                "fileID": {
+                    "type": "string"
+                },
+                "ocrUsed": {
+                    "type": "boolean"
+                },
+                "previewText": {
+                    "type": "string"
+                },
+                "processingReady": {
+                    "type": "boolean"
+                },
+                "processingStatus": {
+                    "type": "string"
+                },
+                "ragReady": {
+                    "type": "boolean"
+                },
+                "ragReason": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "FileUpdateResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/FileObjectResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "FileUploadResponse": {
+            "type": "object",
+            "required": [
+                "file",
+                "quota",
+                "reused"
+            ],
+            "properties": {
+                "file": {
+                    "$ref": "#/definitions/FileObjectResponse"
+                },
+                "quota": {
+                    "$ref": "#/definitions/StorageQuotaResponse"
+                },
+                "reused": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "GetConversationRunStatusesRequest": {
+            "type": "object",
+            "required": [
+                "runIDs"
+            ],
+            "properties": {
+                "runIDs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "GetFileProcessingStatusesRequest": {
+            "type": "object",
+            "required": [
+                "fileIDs"
+            ],
+            "properties": {
+                "fileIDs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "GetKnowledgeBaseFileProcessingSnapshotRequest": {
+            "type": "object",
+            "required": [
+                "fileIDs"
+            ],
+            "properties": {
+                "fileIDs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "GetKnowledgeBaseFileProcessingStatusesRequest": {
+            "type": "object",
+            "required": [
+                "fileIDs"
+            ],
+            "properties": {
+                "fileIDs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "GroupModelsResponse": {
+            "type": "object",
+            "required": [
+                "modelIDs",
+                "rules"
+            ],
+            "properties": {
+                "modelIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PermissionGroupModelRuleResponse"
+                    }
+                }
+            }
+        },
+        "GroupModelsResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/GroupModelsResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "GroupUsersResponse": {
+            "type": "object",
+            "required": [
+                "userIDs"
+            ],
+            "properties": {
+                "userIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "GroupUsersResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/GroupUsersResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "IdentityProviderDeleteResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "IdentityProviderDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/IdentityProviderDeleteResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "IdentityProviderListResponse": {
+            "type": "object",
+            "required": [
+                "results",
+                "total"
+            ],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/IdentityProviderResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "IdentityProviderListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/IdentityProviderListResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "IdentityProviderReorderResponse": {
+            "type": "object",
+            "required": [
+                "updated"
+            ],
+            "properties": {
+                "updated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "IdentityProviderReorderResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/IdentityProviderReorderResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "IdentityProviderResponse": {
+            "type": "object",
+            "required": [
+                "avatarField",
+                "createdAt",
+                "defaultRole",
+                "emailField",
+                "emailVerifiedField",
+                "loginEnabled",
+                "logoURL",
+                "name",
+                "nameField",
+                "publicID",
+                "registrationEnabled",
+                "scopes",
+                "slug",
+                "subjectField",
+                "type",
+                "updatedAt"
+            ],
+            "properties": {
+                "authURL": {
+                    "type": "string"
+                },
+                "avatarField": {
+                    "type": "string"
+                },
+                "clientID": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "defaultRole": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin",
+                        "superadmin"
+                    ]
+                },
+                "discoveryURL": {
+                    "type": "string"
+                },
+                "emailField": {
+                    "type": "string"
+                },
+                "emailVerifiedField": {
+                    "type": "string"
+                },
+                "issuerURL": {
+                    "type": "string"
+                },
+                "jwksURL": {
+                    "type": "string"
+                },
+                "loginEnabled": {
+                    "type": "boolean"
+                },
+                "logoURL": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nameField": {
+                    "type": "string"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "registrationEnabled": {
+                    "type": "boolean"
+                },
+                "scopes": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "subjectField": {
+                    "type": "string"
+                },
+                "tokenURL": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "oidc",
+                        "oauth2"
+                    ]
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "userinfoURL": {
+                    "type": "string"
+                }
+            }
+        },
+        "IdentityProviderResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/IdentityProviderResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ImportOpenWebUIUsersRequest": {
+            "type": "object",
+            "required": [
+                "creditMultiplier",
+                "dsn"
+            ],
+            "properties": {
+                "creditMultiplier": {
+                    "type": "number"
+                },
+                "dryRun": {
+                    "type": "boolean"
+                },
+                "dsn": {
+                    "type": "string",
+                    "maxLength": 2048
+                }
+            }
+        },
+        "ImportOpenWebUIUsersResponse": {
+            "type": "object",
+            "required": [
+                "dedupeField",
+                "dedupeRule",
+                "imported",
+                "scanned",
+                "skippedDuplicateSourceEmail",
+                "skippedExistingEmail",
+                "skippedInvalidEmail",
+                "skippedInvalidRow",
+                "source"
+            ],
+            "properties": {
+                "dedupeField": {
+                    "type": "string"
+                },
+                "dedupeRule": {
+                    "type": "string"
+                },
+                "imported": {
+                    "type": "integer"
+                },
+                "scanned": {
+                    "type": "integer"
+                },
+                "skippedDuplicateSourceEmail": {
+                    "type": "integer"
+                },
+                "skippedExistingEmail": {
+                    "type": "integer"
+                },
+                "skippedInvalidEmail": {
+                    "type": "integer"
+                },
+                "skippedInvalidRow": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                }
+            }
+        },
+        "ImportOpenWebUIUsersResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ImportOpenWebUIUsersResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ImportUpstreamModelItemRequest": {
             "type": "object",
             "required": [
                 "platformModelName",
@@ -11356,8 +19485,19 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ImportUpstreamModelResultResponse": {
+        "ImportUpstreamModelResultResponse": {
             "type": "object",
+            "required": [
+                "bindingCode",
+                "createdPlatform",
+                "createdRoute",
+                "createdRoutes",
+                "existingRoutes",
+                "platformModelName",
+                "protocols",
+                "status",
+                "upstreamModelName"
+            ],
             "properties": {
                 "bindingCode": {
                     "type": "string"
@@ -11394,7 +19534,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ImportUpstreamModelsRequest": {
+        "ImportUpstreamModelsRequest": {
             "type": "object",
             "required": [
                 "items"
@@ -11404,13 +19544,28 @@ const docTemplate = `{
                     "type": "array",
                     "minItems": 1,
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.ImportUpstreamModelItemRequest"
+                        "$ref": "#/definitions/ImportUpstreamModelItemRequest"
+                    }
+                },
+                "permissionGroupIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
                     }
                 }
             }
         },
-        "internal_transport_http_channel.ImportUpstreamModelsResponse": {
+        "ImportUpstreamModelsResponse": {
             "type": "object",
+            "required": [
+                "createdPlatform",
+                "createdRoutes",
+                "existingRoutes",
+                "failedCount",
+                "importedCount",
+                "results",
+                "total"
+            ],
             "properties": {
                 "createdPlatform": {
                     "type": "integer"
@@ -11430,7 +19585,7 @@ const docTemplate = `{
                 "results": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.ImportUpstreamModelResultResponse"
+                        "$ref": "#/definitions/ImportUpstreamModelResultResponse"
                     }
                 },
                 "total": {
@@ -11438,35 +19593,116 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ImportUpstreamModelsResponseDoc": {
+        "ImportUpstreamModelsResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ImportUpstreamModelsResponse"
+                    "$ref": "#/definitions/ImportUpstreamModelsResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.ModelDataResponse": {
+        "KnowledgeBaseDataResponse": {
             "type": "object",
+            "required": [
+                "knowledgeBase"
+            ],
             "properties": {
-                "model": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelResponse"
+                "knowledgeBase": {
+                    "$ref": "#/definitions/KnowledgeBaseResponse"
                 }
             }
         },
-        "internal_transport_http_channel.ModelListResponseDoc": {
+        "KnowledgeBaseDeleteDataResponse": {
             "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                },
+                "deletedFileCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "KnowledgeBaseDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/KnowledgeBaseDeleteDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "KnowledgeBaseFileDataResponse": {
+            "type": "object",
+            "required": [
+                "file"
+            ],
+            "properties": {
+                "file": {
+                    "$ref": "#/definitions/KnowledgeBaseFileResponse"
+                }
+            }
+        },
+        "KnowledgeBaseFileMutationDataResponse": {
+            "type": "object",
+            "required": [
+                "updated"
+            ],
+            "properties": {
+                "updated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "KnowledgeBaseFileMutationResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/KnowledgeBaseFileMutationDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "KnowledgeBaseFilePageResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
                     "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
                     "properties": {
                         "results": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_transport_http_channel.ModelResponse"
+                                "$ref": "#/definitions/KnowledgeBaseFileResponse"
                             }
                         },
                         "total": {
@@ -11479,8 +19715,1583 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ModelProbeBatchResponse": {
+        "KnowledgeBaseFileProcessingSnapshotResponse": {
             "type": "object",
+            "required": [
+                "knowledgeBase",
+                "statuses"
+            ],
+            "properties": {
+                "knowledgeBase": {
+                    "$ref": "#/definitions/KnowledgeBaseResponse"
+                },
+                "statuses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/KnowledgeBaseFileProcessingStatusResponse"
+                    }
+                }
+            }
+        },
+        "KnowledgeBaseFileProcessingStatusResponse": {
+            "type": "object",
+            "required": [
+                "chunkCount",
+                "detectedMIME",
+                "embedStatus",
+                "fileCategory",
+                "fileID",
+                "processing",
+                "processingReady",
+                "processingStatus",
+                "ragOptOut",
+                "updatedAt"
+            ],
+            "properties": {
+                "chunkCount": {
+                    "type": "integer"
+                },
+                "detectedMIME": {
+                    "type": "string"
+                },
+                "embedStatus": {
+                    "type": "string"
+                },
+                "fileCategory": {
+                    "type": "string"
+                },
+                "fileID": {
+                    "type": "string"
+                },
+                "processing": {
+                    "type": "boolean"
+                },
+                "processingReady": {
+                    "type": "boolean"
+                },
+                "processingStatus": {
+                    "type": "string"
+                },
+                "ragOptOut": {
+                    "type": "boolean"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "KnowledgeBaseFileResponse": {
+            "type": "object",
+            "required": [
+                "chunkCount",
+                "createdAt",
+                "detectedMIME",
+                "embedStatus",
+                "fileCategory",
+                "fileID",
+                "fileName",
+                "mimeType",
+                "processing",
+                "processingReady",
+                "processingStatus",
+                "ragOptOut",
+                "sizeBytes",
+                "updatedAt"
+            ],
+            "properties": {
+                "chunkCount": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "detectedMIME": {
+                    "type": "string"
+                },
+                "embedStatus": {
+                    "type": "string"
+                },
+                "fileCategory": {
+                    "type": "string"
+                },
+                "fileID": {
+                    "type": "string"
+                },
+                "fileName": {
+                    "type": "string"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "processing": {
+                    "type": "boolean"
+                },
+                "processingReady": {
+                    "type": "boolean"
+                },
+                "processingStatus": {
+                    "type": "string"
+                },
+                "ragOptOut": {
+                    "type": "boolean"
+                },
+                "sizeBytes": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "KnowledgeBaseFileResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/KnowledgeBaseFileDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "KnowledgeBasePageResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/KnowledgeBaseResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "KnowledgeBaseResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "description",
+                "enabled",
+                "fileCount",
+                "name",
+                "processingFileCount",
+                "publicID",
+                "readyFileCount",
+                "revision",
+                "scope",
+                "sortOrder",
+                "updatedAt"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fileCount": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "processingFileCount": {
+                    "type": "integer"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "readyFileCount": {
+                    "type": "integer"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": [
+                        "builtin",
+                        "user"
+                    ]
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "KnowledgeBaseResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/KnowledgeBaseDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "KnowledgebaseErrorDoc": {
+            "type": "object",
+            "required": [
+                "errorMsg"
+            ],
+            "properties": {
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "LoginOptionsResponse": {
+            "type": "object",
+            "required": [
+                "emailEnabled",
+                "emailRegistrationEnabled",
+                "emailVerificationEnabled",
+                "passwordResetEnabled",
+                "providerAuthBridge",
+                "providers",
+                "turnstileRegistrationEnabled",
+                "turnstileSiteKey",
+                "usernameEnabled"
+            ],
+            "properties": {
+                "emailEnabled": {
+                    "type": "boolean"
+                },
+                "emailRegistrationEnabled": {
+                    "type": "boolean"
+                },
+                "emailVerificationEnabled": {
+                    "type": "boolean"
+                },
+                "passwordResetEnabled": {
+                    "type": "boolean"
+                },
+                "providerAuthBridge": {
+                    "$ref": "#/definitions/ProviderAuthBridgeResponse"
+                },
+                "providers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/IdentityProviderResponse"
+                    }
+                },
+                "turnstileRegistrationEnabled": {
+                    "type": "boolean"
+                },
+                "turnstileSiteKey": {
+                    "type": "string"
+                },
+                "usernameEnabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "LoginOptionsResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/LoginOptionsResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "LoginRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 6
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 3
+                }
+            }
+        },
+        "LoginResponse": {
+            "type": "object",
+            "required": [
+                "accessToken",
+                "expiresAt",
+                "refreshExpiresAt",
+                "sessionID",
+                "twoFactorRequired",
+                "user"
+            ],
+            "properties": {
+                "accessToken": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "refreshExpiresAt": {
+                    "type": "string"
+                },
+                "sessionID": {
+                    "type": "string"
+                },
+                "twoFactorChallengeToken": {
+                    "type": "string"
+                },
+                "twoFactorRequired": {
+                    "type": "boolean"
+                },
+                "user": {
+                    "$ref": "#/definitions/AuthUserResponse"
+                },
+                "verificationMethods": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "LoginResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/LoginResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "LogoutResponse": {
+            "type": "object",
+            "required": [
+                "revoked"
+            ],
+            "properties": {
+                "revoked": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "LogoutResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/LogoutResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "McpErrorDoc": {
+            "type": "object",
+            "required": [
+                "errorMsg"
+            ],
+            "properties": {
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "MeResponse": {
+            "type": "object",
+            "required": [
+                "user"
+            ],
+            "properties": {
+                "user": {
+                    "$ref": "#/definitions/AuthUserResponse"
+                }
+            }
+        },
+        "MeResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/MeResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "MediaVideoExtensionRequest": {
+            "type": "object",
+            "required": [
+                "prompt",
+                "sourceVideoFileID"
+            ],
+            "properties": {
+                "branchReason": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "retry",
+                        "edit"
+                    ]
+                },
+                "clientRunID": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "model": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "options": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "parentMessagePublicID": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "sourceMessagePublicID": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "sourceVideoFileID": {
+                    "type": "string",
+                    "maxLength": 128
+                }
+            }
+        },
+        "MemoryErrorDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {},
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMsg": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                }
+            }
+        },
+        "MessageBillingCostResponse": {
+            "type": "object",
+            "required": [
+                "billedCurrency",
+                "billedNanousd",
+                "billedUSD",
+                "billingMode",
+                "pricingSnapshotJSON"
+            ],
+            "properties": {
+                "billedCurrency": {
+                    "type": "string"
+                },
+                "billedNanousd": {
+                    "type": "integer"
+                },
+                "billedUSD": {
+                    "type": "number"
+                },
+                "billingMode": {
+                    "type": "string"
+                },
+                "pricingSnapshotJSON": {
+                    "type": "string"
+                }
+            }
+        },
+        "MessageFeedbackResponse": {
+            "type": "object",
+            "required": [
+                "messageID",
+                "messagePublicID",
+                "myFeedback",
+                "thumbsDownCount",
+                "thumbsUpCount"
+            ],
+            "properties": {
+                "messageID": {
+                    "type": "integer"
+                },
+                "messagePublicID": {
+                    "type": "string"
+                },
+                "myFeedback": {
+                    "type": "string"
+                },
+                "thumbsDownCount": {
+                    "type": "integer"
+                },
+                "thumbsUpCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "MessageFeedbackResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/MessageFeedbackResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "MessageKnowledgeSourceResponse": {
+            "type": "object",
+            "required": [
+                "chunkIndex",
+                "fileID",
+                "fileName",
+                "preview",
+                "score"
+            ],
+            "properties": {
+                "chunkIndex": {
+                    "type": "integer"
+                },
+                "fileID": {
+                    "type": "string"
+                },
+                "fileName": {
+                    "type": "string"
+                },
+                "preview": {
+                    "type": "string"
+                },
+                "score": {
+                    "type": "number"
+                }
+            }
+        },
+        "MessageListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/MessageResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "MessageModerationResponse": {
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "eventID": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "MessageProcessTraceResponse": {
+            "type": "object",
+            "required": [
+                "enabled",
+                "status"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MessageTraceEventResponse"
+                    }
+                },
+                "process": {
+                    "$ref": "#/definitions/MessageTraceBlockResponse"
+                },
+                "promptTrace": {
+                    "$ref": "#/definitions/MessagePromptTraceResponse"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tools": {
+                    "$ref": "#/definitions/MessageTraceBlockResponse"
+                },
+                "upstreamThink": {
+                    "$ref": "#/definitions/MessageTraceBlockResponse"
+                }
+            }
+        },
+        "MessagePromptTraceBlockResponse": {
+            "type": "object",
+            "required": [
+                "cacheable",
+                "kind",
+                "sourceCount",
+                "title",
+                "tokenEstimate"
+            ],
+            "properties": {
+                "cacheable": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "sourceCount": {
+                    "type": "integer"
+                },
+                "sourceRefs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MessagePromptTraceSourceResponse"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "tokenEstimate": {
+                    "type": "integer"
+                }
+            }
+        },
+        "MessagePromptTraceResponse": {
+            "type": "object",
+            "required": [
+                "blocks",
+                "fullMessageCount",
+                "mode",
+                "promptFingerprint",
+                "sentMessageCount",
+                "sentTokenEstimate",
+                "statefulDisabledReason",
+                "statefulSavedMessages",
+                "statefulSavedTokens",
+                "statefulUsed",
+                "totalTokenEstimate"
+            ],
+            "properties": {
+                "blocks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MessagePromptTraceBlockResponse"
+                    }
+                },
+                "fullMessageCount": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "promptFingerprint": {
+                    "type": "string"
+                },
+                "sentMessageCount": {
+                    "type": "integer"
+                },
+                "sentTokenEstimate": {
+                    "type": "integer"
+                },
+                "statefulDisabledReason": {
+                    "type": "string"
+                },
+                "statefulSavedMessages": {
+                    "type": "integer"
+                },
+                "statefulSavedTokens": {
+                    "type": "integer"
+                },
+                "statefulUsed": {
+                    "type": "boolean"
+                },
+                "totalTokenEstimate": {
+                    "type": "integer"
+                }
+            }
+        },
+        "MessagePromptTraceSourceResponse": {
+            "type": "object",
+            "required": [
+                "sourceID",
+                "sourceType",
+                "title"
+            ],
+            "properties": {
+                "artifactID": {
+                    "type": "integer"
+                },
+                "sourceID": {
+                    "type": "string"
+                },
+                "sourceType": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "MessageResponse": {
+            "type": "object",
+            "required": [
+                "attachments",
+                "branchReason",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "content",
+                "contentType",
+                "conversationID",
+                "createdAt",
+                "editedAt",
+                "errorCode",
+                "errorMessage",
+                "id",
+                "inputTokens",
+                "latencyMS",
+                "modelIcon",
+                "modelVendor",
+                "myFeedback",
+                "outputTokens",
+                "parentMessageID",
+                "parentPublicID",
+                "platformModelName",
+                "publicID",
+                "reasoningTokens",
+                "role",
+                "runID",
+                "sourceMessageID",
+                "sourcePublicID",
+                "status",
+                "thumbsDownCount",
+                "thumbsUpCount",
+                "tokenUsage",
+                "updatedAt",
+                "upstreamModelName",
+                "userID"
+            ],
+            "properties": {
+                "attachments": {
+                    "type": "string"
+                },
+                "billingCost": {
+                    "$ref": "#/definitions/MessageBillingCostResponse"
+                },
+                "branchReason": {
+                    "type": "string"
+                },
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "contentType": {
+                    "type": "string"
+                },
+                "conversationID": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "editedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "knowledgeSources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MessageKnowledgeSourceResponse"
+                    }
+                },
+                "latencyMS": {
+                    "type": "integer"
+                },
+                "modelIcon": {
+                    "type": "string"
+                },
+                "modelVendor": {
+                    "type": "string"
+                },
+                "moderation": {
+                    "$ref": "#/definitions/MessageModerationResponse"
+                },
+                "myFeedback": {
+                    "type": "string"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "parentMessageID": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "parentPublicID": {
+                    "type": "string"
+                },
+                "platformModelName": {
+                    "type": "string"
+                },
+                "processTrace": {
+                    "$ref": "#/definitions/MessageProcessTraceResponse"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "reasoningTokens": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "runID": {
+                    "type": "string"
+                },
+                "sourceMessageID": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "sourcePublicID": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "thumbsDownCount": {
+                    "type": "integer"
+                },
+                "thumbsUpCount": {
+                    "type": "integer"
+                },
+                "tokenUsage": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "upstreamModelName": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "MessageResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/MessageResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "MessageTraceBlockResponse": {
+            "type": "object",
+            "required": [
+                "contentMarkdown",
+                "status",
+                "summary",
+                "title",
+                "updatedAt"
+            ],
+            "properties": {
+                "contentMarkdown": {
+                    "type": "string"
+                },
+                "parentEventID": {
+                    "type": "string"
+                },
+                "payloadJSON": {
+                    "type": "string"
+                },
+                "roundID": {
+                    "type": "string"
+                },
+                "stage": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "MessageTraceEventResponse": {
+            "type": "object",
+            "required": [
+                "contentMarkdown",
+                "eventID",
+                "eventType",
+                "phase",
+                "seq",
+                "startedAt",
+                "status",
+                "summary",
+                "title",
+                "updatedAt"
+            ],
+            "properties": {
+                "contentMarkdown": {
+                    "type": "string"
+                },
+                "endedAt": {
+                    "type": "string"
+                },
+                "eventID": {
+                    "type": "string"
+                },
+                "eventType": {
+                    "type": "string"
+                },
+                "parentEventID": {
+                    "type": "string"
+                },
+                "payloadJSON": {
+                    "type": "string"
+                },
+                "phase": {
+                    "type": "string"
+                },
+                "roundID": {
+                    "type": "string"
+                },
+                "seq": {
+                    "type": "integer"
+                },
+                "stage": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelDataResponse": {
+            "type": "object",
+            "required": [
+                "model"
+            ],
+            "properties": {
+                "model": {
+                    "$ref": "#/definitions/ModelResponse"
+                }
+            }
+        },
+        "ModelDisplayGroupDataResponse": {
+            "type": "object",
+            "required": [
+                "group"
+            ],
+            "properties": {
+                "group": {
+                    "$ref": "#/definitions/ModelDisplayGroupResponse"
+                }
+            }
+        },
+        "ModelDisplayGroupDataResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ModelDisplayGroupDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelDisplayGroupListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ModelDisplayGroupResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelDisplayGroupResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "icon",
+                "id",
+                "name",
+                "sortOrder",
+                "updatedAt"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelIconAssetDeleteConflictDetails": {
+            "type": "object",
+            "required": [
+                "conversationRuns",
+                "displayGroups",
+                "models",
+                "referenceCount",
+                "vendors"
+            ],
+            "properties": {
+                "conversationRuns": {
+                    "type": "integer"
+                },
+                "displayGroups": {
+                    "type": "integer"
+                },
+                "models": {
+                    "type": "integer"
+                },
+                "referenceCount": {
+                    "type": "integer"
+                },
+                "vendors": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ModelIconAssetDeleteConflictDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "details",
+                "errorCode",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {
+                    "$ref": "#/definitions/ModelIconAssetDeleteConflictDetails"
+                },
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMsg": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelIconAssetListItemResponse": {
+            "type": "object",
+            "required": [
+                "contentType",
+                "createdAt",
+                "height",
+                "publicID",
+                "ref",
+                "sizeBytes",
+                "width"
+            ],
+            "properties": {
+                "contentType": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "ref": {
+                    "type": "string"
+                },
+                "sizeBytes": {
+                    "type": "integer"
+                },
+                "width": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ModelIconAssetListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ModelIconAssetListItemResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelIconAssetResponse": {
+            "type": "object",
+            "required": [
+                "contentType",
+                "height",
+                "publicID",
+                "ref",
+                "reused",
+                "sizeBytes",
+                "width"
+            ],
+            "properties": {
+                "contentType": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "ref": {
+                    "type": "string"
+                },
+                "reused": {
+                    "type": "boolean"
+                },
+                "sizeBytes": {
+                    "type": "integer"
+                },
+                "width": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ModelIconAssetResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ModelIconAssetResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ModelResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelPermissionGroupsResponse": {
+            "type": "object",
+            "required": [
+                "effectiveGroupIDs",
+                "manualGroupIDs",
+                "matchedGroupIDs",
+                "unassigned"
+            ],
+            "properties": {
+                "effectiveGroupIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "manualGroupIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "matchedGroupIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "unassigned": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "ModelPermissionGroupsResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ModelPermissionGroupsResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelPricingDataResponse": {
+            "type": "object",
+            "required": [
+                "modelPricing"
+            ],
+            "properties": {
+                "modelPricing": {
+                    "$ref": "#/definitions/ModelPricingResponse"
+                }
+            }
+        },
+        "ModelPricingListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ModelPricingResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelPricingResponse": {
+            "type": "object",
+            "required": [
+                "cacheReadNanousdPerMTokens",
+                "cacheReadUSDPerMTokens",
+                "cacheWriteNanousdPerMTokens",
+                "cacheWriteUSDPerMTokens",
+                "callNanousdPerCall",
+                "callUSDPerCall",
+                "createdAt",
+                "currency",
+                "durationNanousdPerSecond",
+                "durationUSDPerSecond",
+                "id",
+                "inputNanousdPerMTokens",
+                "inputUSDPerMTokens",
+                "isFree",
+                "modelIcon",
+                "modelVendor",
+                "outputNanousdPerMTokens",
+                "outputUSDPerMTokens",
+                "platformModelName",
+                "pricingMode",
+                "tieredPricingJSON",
+                "updatedAt"
+            ],
+            "properties": {
+                "cacheReadNanousdPerMTokens": {
+                    "type": "integer"
+                },
+                "cacheReadUSDPerMTokens": {
+                    "type": "number"
+                },
+                "cacheWriteNanousdPerMTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteUSDPerMTokens": {
+                    "type": "number"
+                },
+                "callNanousdPerCall": {
+                    "type": "integer"
+                },
+                "callUSDPerCall": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "durationNanousdPerSecond": {
+                    "type": "integer"
+                },
+                "durationUSDPerSecond": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inputNanousdPerMTokens": {
+                    "type": "integer"
+                },
+                "inputUSDPerMTokens": {
+                    "type": "number"
+                },
+                "isFree": {
+                    "type": "boolean"
+                },
+                "modelIcon": {
+                    "type": "string"
+                },
+                "modelVendor": {
+                    "type": "string"
+                },
+                "outputNanousdPerMTokens": {
+                    "type": "integer"
+                },
+                "outputUSDPerMTokens": {
+                    "type": "number"
+                },
+                "platformModelName": {
+                    "type": "string"
+                },
+                "pricingMode": {
+                    "type": "string"
+                },
+                "tieredPricingJSON": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelProbeBatchResponse": {
+            "type": "object",
+            "required": [
+                "failedCount",
+                "results",
+                "successCount",
+                "totalCount",
+                "unsupportedCount"
+            ],
             "properties": {
                 "failedCount": {
                     "type": "integer"
@@ -11488,7 +21299,7 @@ const docTemplate = `{
                 "results": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.ModelProbeResponse"
+                        "$ref": "#/definitions/ModelProbeResponse"
                     }
                 },
                 "successCount": {
@@ -11502,19 +21313,28 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ModelProbeBatchResponseDoc": {
+        "ModelProbeBatchResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelProbeBatchResponse"
+                    "$ref": "#/definitions/ModelProbeBatchResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.ModelProbeDebugRequestResponse": {
+        "ModelProbeDebugRequestResponse": {
             "type": "object",
+            "required": [
+                "body",
+                "method",
+                "path"
+            ],
             "properties": {
                 "body": {
                     "type": "string"
@@ -11533,19 +21353,27 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ModelProbeDebugResponse": {
+        "ModelProbeDebugResponse": {
             "type": "object",
+            "required": [
+                "request",
+                "response"
+            ],
             "properties": {
                 "request": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelProbeDebugRequestResponse"
+                    "$ref": "#/definitions/ModelProbeDebugRequestResponse"
                 },
                 "response": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelProbeDebugResponseResponse"
+                    "$ref": "#/definitions/ModelProbeDebugResponseResponse"
                 }
             }
         },
-        "internal_transport_http_channel.ModelProbeDebugResponseResponse": {
+        "ModelProbeDebugResponseResponse": {
             "type": "object",
+            "required": [
+                "body",
+                "statusCode"
+            ],
             "properties": {
                 "body": {
                     "type": "string"
@@ -11561,7 +21389,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ModelProbeRequest": {
+        "ModelProbeRequest": {
             "type": "object",
             "properties": {
                 "taskType": {
@@ -11569,19 +21397,36 @@ const docTemplate = `{
                     "enum": [
                         "chat",
                         "image_generation",
-                        "image_edit"
+                        "image_edit",
+                        "video_generation",
+                        "video_extension"
                     ]
                 }
             }
         },
-        "internal_transport_http_channel.ModelProbeResponse": {
+        "ModelProbeResponse": {
             "type": "object",
+            "required": [
+                "bindingCode",
+                "endpoint",
+                "latencyMS",
+                "platformModelID",
+                "platformModelName",
+                "protocol",
+                "routeID",
+                "status",
+                "success",
+                "upstreamID",
+                "upstreamModelID",
+                "upstreamModelName",
+                "upstreamName"
+            ],
             "properties": {
                 "bindingCode": {
                     "type": "string"
                 },
                 "debug": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelProbeDebugResponse"
+                    "$ref": "#/definitions/ModelProbeDebugResponse"
                 },
                 "endpoint": {
                     "type": "string"
@@ -11630,19 +21475,52 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ModelProbeResponseDoc": {
+        "ModelProbeResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelProbeResponse"
+                    "$ref": "#/definitions/ModelProbeResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.ModelResponse": {
+        "ModelResponse": {
             "type": "object",
+            "required": [
+                "accessScope",
+                "activeSourceCount",
+                "capabilitiesJSON",
+                "cbDurationMin",
+                "cbFailureThreshold",
+                "cbPolicyMode",
+                "cbWindowMin",
+                "contextWindow",
+                "createdAt",
+                "description",
+                "displayGroupID",
+                "displayGroupIcon",
+                "displayGroupName",
+                "icon",
+                "id",
+                "kindsJSON",
+                "platformModelName",
+                "protocolsJSON",
+                "sortOrder",
+                "sourceCount",
+                "status",
+                "systemPrompt",
+                "updatedAt",
+                "upstreamNamesJSON",
+                "vendor",
+                "vendorIcon",
+                "vendorName"
+            ],
             "properties": {
                 "accessScope": {
                     "type": "string"
@@ -11653,10 +21531,36 @@ const docTemplate = `{
                 "capabilitiesJSON": {
                     "type": "string"
                 },
+                "cbDurationMin": {
+                    "type": "integer"
+                },
+                "cbFailureThreshold": {
+                    "type": "integer"
+                },
+                "cbPolicyMode": {
+                    "type": "string"
+                },
+                "cbWindowMin": {
+                    "type": "integer"
+                },
+                "contextWindow": {
+                    "type": "integer"
+                },
                 "createdAt": {
                     "type": "string"
                 },
                 "description": {
+                    "type": "string"
+                },
+                "displayGroupID": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "displayGroupIcon": {
+                    "type": "string"
+                },
+                "displayGroupName": {
                     "type": "string"
                 },
                 "icon": {
@@ -11689,29 +21593,49 @@ const docTemplate = `{
                 "updatedAt": {
                     "type": "string"
                 },
+                "upstreamNamesJSON": {
+                    "type": "string"
+                },
                 "vendor": {
+                    "type": "string"
+                },
+                "vendorIcon": {
+                    "type": "string"
+                },
+                "vendorName": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.ModelUpstreamSourceDataResponse": {
+        "ModelUpstreamSourceDataResponse": {
             "type": "object",
+            "required": [
+                "source"
+            ],
             "properties": {
                 "source": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelUpstreamSourceResponse"
+                    "$ref": "#/definitions/ModelUpstreamSourceResponse"
                 }
             }
         },
-        "internal_transport_http_channel.ModelUpstreamSourceListResponseDoc": {
+        "ModelUpstreamSourceListResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
                     "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
                     "properties": {
                         "results": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_transport_http_channel.ModelUpstreamSourceResponse"
+                                "$ref": "#/definitions/ModelUpstreamSourceResponse"
                             }
                         },
                         "total": {
@@ -11724,8 +21648,36 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ModelUpstreamSourceResponse": {
+        "ModelUpstreamSourceResponse": {
             "type": "object",
+            "required": [
+                "baseURL",
+                "bindingCode",
+                "cbDurationMin",
+                "cbFailureThreshold",
+                "cbWindowMin",
+                "circuitOpen",
+                "circuitScope",
+                "circuitUntil",
+                "createdAt",
+                "headersJSON",
+                "id",
+                "priority",
+                "protocol",
+                "source",
+                "status",
+                "suggestedProtocol",
+                "updatedAt",
+                "upstreamID",
+                "upstreamModelIcon",
+                "upstreamModelKindsJSON",
+                "upstreamModelName",
+                "upstreamModelStatus",
+                "upstreamModelVendor",
+                "upstreamName",
+                "upstreamStatus",
+                "weight"
+            ],
             "properties": {
                 "baseURL": {
                     "type": "string"
@@ -11733,8 +21685,20 @@ const docTemplate = `{
                 "bindingCode": {
                     "type": "string"
                 },
+                "cbDurationMin": {
+                    "type": "integer"
+                },
+                "cbFailureThreshold": {
+                    "type": "integer"
+                },
+                "cbWindowMin": {
+                    "type": "integer"
+                },
                 "circuitOpen": {
                     "type": "boolean"
+                },
+                "circuitScope": {
+                    "type": "string"
                 },
                 "circuitUntil": {
                     "type": "string"
@@ -11787,18 +21751,113 @@ const docTemplate = `{
                 "upstreamName": {
                     "type": "string"
                 },
+                "upstreamStatus": {
+                    "type": "string"
+                },
                 "weight": {
                     "type": "integer"
                 }
             }
         },
-        "internal_transport_http_channel.PublicModelListResponseDoc": {
+        "ModelVendorDataResponse": {
             "type": "object",
+            "required": [
+                "vendor"
+            ],
+            "properties": {
+                "vendor": {
+                    "$ref": "#/definitions/ModelVendorResponse"
+                }
+            }
+        },
+        "ModelVendorDataResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
+                    "$ref": "#/definitions/ModelVendorDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelVendorDeleteConflictDetails": {
+            "type": "object",
+            "required": [
+                "models",
+                "reason",
+                "referenceCount"
+            ],
+            "properties": {
+                "models": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.PublicModelResponse"
+                        "$ref": "#/definitions/ModelVendorReferenceResponse"
+                    }
+                },
+                "reason": {
+                    "type": "string",
+                    "enum": [
+                        "built_in",
+                        "referenced_models"
+                    ]
+                },
+                "referenceCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ModelVendorDeleteConflictDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "details",
+                "errorCode",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {
+                    "$ref": "#/definitions/ModelVendorDeleteConflictDetails"
+                },
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMsg": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelVendorListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ModelVendorResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
                     }
                 },
                 "errorMsg": {
@@ -11806,8 +21865,1268 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.PublicModelPricingResponse": {
+        "ModelVendorReferenceResponse": {
             "type": "object",
+            "required": [
+                "id",
+                "platformModelName"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "platformModelName": {
+                    "type": "string"
+                }
+            }
+        },
+        "ModelVendorResponse": {
+            "type": "object",
+            "required": [
+                "builtIn",
+                "createdAt",
+                "icon",
+                "id",
+                "key",
+                "name",
+                "sortOrder",
+                "updatedAt"
+            ],
+            "properties": {
+                "builtIn": {
+                    "type": "boolean"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "NativeToolPricingRequest": {
+            "type": "object",
+            "properties": {
+                "billable": {
+                    "type": "boolean"
+                },
+                "priceLabel": {
+                    "type": "string"
+                },
+                "priceNanousd": {
+                    "type": "integer"
+                },
+                "toolKey": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                }
+            }
+        },
+        "NativeToolPricingResponse": {
+            "type": "object",
+            "required": [
+                "billable",
+                "description",
+                "label",
+                "priceLabel",
+                "priceNanousd",
+                "provider",
+                "toolKey",
+                "type",
+                "unit"
+            ],
+            "properties": {
+                "billable": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "priceLabel": {
+                    "type": "string"
+                },
+                "priceNanousd": {
+                    "type": "integer"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "toolKey": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                }
+            }
+        },
+        "OpenRouterOfficialPricingDataResponse": {
+            "type": "object",
+            "required": [
+                "cached",
+                "fetchedAt",
+                "items",
+                "stale"
+            ],
+            "properties": {
+                "cached": {
+                    "type": "boolean"
+                },
+                "fetchedAt": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/OpenRouterOfficialPricingItemResponse"
+                    }
+                },
+                "stale": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "OpenRouterOfficialPricingItemResponse": {
+            "type": "object",
+            "required": [
+                "canonicalSlug",
+                "contextLength",
+                "id",
+                "maxCompletionTokens",
+                "name",
+                "pricing"
+            ],
+            "properties": {
+                "canonicalSlug": {
+                    "type": "string"
+                },
+                "contextLength": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "maxCompletionTokens": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pricing": {
+                    "$ref": "#/definitions/OpenRouterOfficialPricingUnitPricingResponse"
+                }
+            }
+        },
+        "OpenRouterOfficialPricingResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/OpenRouterOfficialPricingDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "OpenRouterOfficialPricingUnitPricingResponse": {
+            "type": "object",
+            "required": [
+                "completion",
+                "inputCacheRead",
+                "inputCacheWrite",
+                "prompt"
+            ],
+            "properties": {
+                "completion": {
+                    "type": "string"
+                },
+                "inputCacheRead": {
+                    "type": "string"
+                },
+                "inputCacheWrite": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                }
+            }
+        },
+        "PasswordResetCompleteRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "email",
+                "newPassword"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "newPassword": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 8
+                }
+            }
+        },
+        "PasswordResetCompleteResponse": {
+            "type": "object",
+            "required": [
+                "changed"
+            ],
+            "properties": {
+                "changed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "PasswordResetCompleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/PasswordResetCompleteResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PasswordResetStartRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 128
+                }
+            }
+        },
+        "PasswordResetStartResponse": {
+            "type": "object",
+            "required": [
+                "expiresAt",
+                "sent"
+            ],
+            "properties": {
+                "expiresAt": {
+                    "type": "string"
+                },
+                "sent": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "PasswordResetStartResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/PasswordResetStartResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PatchAnnouncementRequestDoc": {
+            "type": "object",
+            "properties": {
+                "contentMarkdown": {
+                    "type": "string",
+                    "maxLength": 20000
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "pinned": {
+                    "type": "boolean"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "startsAt": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "inactive"
+                    ]
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 120
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "critical",
+                        "warning",
+                        "info",
+                        "normal",
+                        "general"
+                    ]
+                }
+            }
+        },
+        "PatchItem": {
+            "type": "object",
+            "required": [
+                "key",
+                "namespace"
+            ],
+            "properties": {
+                "clear": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "PatchKnowledgeBaseRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "sortOrder": {
+                    "type": "integer"
+                }
+            }
+        },
+        "PatchMeRequest": {
+            "type": "object",
+            "properties": {
+                "appearancePreferences": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "avatarURL": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "displayName": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "minLength": 3
+                },
+                "locale": {
+                    "type": "string",
+                    "maxLength": 16
+                },
+                "profilePreferences": {
+                    "type": "string",
+                    "maxLength": 1024
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "PatchMeResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/MeResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PatchMyKnowledgeBaseRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 80
+                }
+            }
+        },
+        "PatchPromptPresetRequest": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "maxLength": 10000
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 256
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "trigger": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "PatchRedemptionCodeRequestDoc": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "maxRedemptions": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "perUserLimit": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 1
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "inactive"
+                    ]
+                }
+            }
+        },
+        "PatchSkillRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 256
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "markdown": {
+                    "type": "string",
+                    "maxLength": 10000
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "trigger": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "PatchUserRequest": {
+            "type": "object",
+            "properties": {
+                "avatarURL": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "displayName": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "minLength": 3
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "locale": {
+                    "type": "string",
+                    "maxLength": 16
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "profilePreferences": {
+                    "type": "string",
+                    "maxLength": 1024
+                },
+                "reason": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "role": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "status": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "subscriptionExpiresAt": {
+                    "type": "string"
+                },
+                "subscriptionTier": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "PatchUsernameRequest": {
+            "type": "object",
+            "required": [
+                "username"
+            ],
+            "properties": {
+                "username": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "minLength": 3
+                }
+            }
+        },
+        "PaymentOrderListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/PaymentOrderResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PaymentOrderResponse": {
+            "type": "object",
+            "required": [
+                "baseAmountCents",
+                "baseCurrency",
+                "billingInterval",
+                "createdAt",
+                "creditNanousd",
+                "creditUSD",
+                "cycles",
+                "expiredAt",
+                "externalCheckoutID",
+                "externalPaymentID",
+                "fxRate",
+                "id",
+                "orderNo",
+                "orderType",
+                "paidAt",
+                "payAmountCents",
+                "payCurrency",
+                "planID",
+                "priceID",
+                "provider",
+                "snapshotJSON",
+                "status",
+                "updatedAt",
+                "userDisplayName",
+                "userID",
+                "userLabel",
+                "username"
+            ],
+            "properties": {
+                "baseAmountCents": {
+                    "type": "integer"
+                },
+                "baseCurrency": {
+                    "type": "string"
+                },
+                "billingInterval": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "creditNanousd": {
+                    "type": "integer"
+                },
+                "creditUSD": {
+                    "type": "number"
+                },
+                "cycles": {
+                    "type": "integer"
+                },
+                "expiredAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "externalCheckoutID": {
+                    "type": "string"
+                },
+                "externalPaymentID": {
+                    "type": "string"
+                },
+                "fxRate": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "orderNo": {
+                    "type": "string"
+                },
+                "orderType": {
+                    "type": "string"
+                },
+                "paidAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "payAmountCents": {
+                    "type": "integer"
+                },
+                "payCurrency": {
+                    "type": "string"
+                },
+                "planID": {
+                    "type": "integer"
+                },
+                "priceID": {
+                    "type": "integer"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "snapshotJSON": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "userDisplayName": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                },
+                "userLabel": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "PaymentTypeResponse": {
+            "type": "object",
+            "required": [
+                "name",
+                "type"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "PermissionGroupDataResponse": {
+            "type": "object",
+            "required": [
+                "group"
+            ],
+            "properties": {
+                "group": {
+                    "$ref": "#/definitions/PermissionGroupResponse"
+                }
+            }
+        },
+        "PermissionGroupDataResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/PermissionGroupDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PermissionGroupDeleteSummaryResponse": {
+            "type": "object",
+            "required": [
+                "manualModelCount",
+                "manualUserCount",
+                "planCount",
+                "ruleCount"
+            ],
+            "properties": {
+                "manualModelCount": {
+                    "type": "integer"
+                },
+                "manualUserCount": {
+                    "type": "integer"
+                },
+                "planCount": {
+                    "type": "integer"
+                },
+                "ruleCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "PermissionGroupListResponse": {
+            "type": "object",
+            "required": [
+                "results"
+            ],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PermissionGroupResponse"
+                    }
+                }
+            }
+        },
+        "PermissionGroupListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/PermissionGroupListResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PermissionGroupModelRuleRequest": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 128
+                }
+            }
+        },
+        "PermissionGroupModelRuleResponse": {
+            "type": "object",
+            "required": [
+                "type",
+                "value"
+            ],
+            "properties": {
+                "type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "PermissionGroupResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "description",
+                "id",
+                "isDefault",
+                "manualModelCount",
+                "manualUserCount",
+                "modelCount",
+                "name",
+                "rateMultiplierPercent",
+                "ruleModelCount",
+                "subscriptionUserCount",
+                "updatedAt",
+                "userCount"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "isDefault": {
+                    "type": "boolean"
+                },
+                "manualModelCount": {
+                    "type": "integer"
+                },
+                "manualUserCount": {
+                    "type": "integer"
+                },
+                "modelCount": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rateMultiplierPercent": {
+                    "type": "integer"
+                },
+                "ruleModelCount": {
+                    "type": "integer"
+                },
+                "subscriptionUserCount": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "userCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "PlanListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/BillingPlanResponse"
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PlatformFileDeleteDataResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "PlatformFileDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/PlatformFileDeleteDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PromptPresetDataResponse": {
+            "type": "object",
+            "required": [
+                "promptPreset"
+            ],
+            "properties": {
+                "promptPreset": {
+                    "$ref": "#/definitions/PromptPresetResponse"
+                }
+            }
+        },
+        "PromptPresetDeleteDataResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "PromptPresetDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/PromptPresetDeleteDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PromptPresetErrorDoc": {
+            "type": "object",
+            "required": [
+                "errorMsg"
+            ],
+            "properties": {
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PromptPresetPageResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/PromptPresetResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PromptPresetResponse": {
+            "type": "object",
+            "required": [
+                "content",
+                "createdAt",
+                "createdByUserID",
+                "description",
+                "enabled",
+                "id",
+                "scope",
+                "sortOrder",
+                "title",
+                "trigger",
+                "updatedAt",
+                "updatedByUserID"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdByUserID": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "trigger": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "updatedByUserID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "PromptPresetResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/PromptPresetDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ProviderAuthBridgeExchangeRequest": {
+            "type": "object",
+            "required": [
+                "clientID",
+                "codeVerifier",
+                "grant"
+            ],
+            "properties": {
+                "clientID": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "codeVerifier": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 43
+                },
+                "grant": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 43
+                }
+            }
+        },
+        "ProviderAuthBridgeResponse": {
+            "type": "object",
+            "required": [
+                "callbackBaseURL",
+                "enabled",
+                "protocolVersion"
+            ],
+            "properties": {
+                "callbackBaseURL": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "protocolVersion": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ProviderAuthBridgeStartRequest": {
+            "type": "object",
+            "required": [
+                "clientID",
+                "clientState",
+                "codeChallenge",
+                "redirectURI"
+            ],
+            "properties": {
+                "clientID": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "clientState": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 43
+                },
+                "codeChallenge": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 43
+                },
+                "intent": {
+                    "type": "string",
+                    "enum": [
+                        "login",
+                        "register"
+                    ]
+                },
+                "next": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "redirectURI": {
+                    "type": "string",
+                    "maxLength": 2048
+                }
+            }
+        },
+        "ProviderAuthBridgeStartResponse": {
+            "type": "object",
+            "required": [
+                "authorizationURL",
+                "expiresAt"
+            ],
+            "properties": {
+                "authorizationURL": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ProviderAuthBridgeStartResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ProviderAuthBridgeStartResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PublicModelListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PublicModelResponse"
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PublicModelPricingResponse": {
+            "type": "object",
+            "required": [
+                "cacheReadUSDPerMTokens",
+                "cacheWriteUSDPerMTokens",
+                "callUSDPerCall",
+                "currency",
+                "durationUSDPerSecond",
+                "inputUSDPerMTokens",
+                "isFree",
+                "mode",
+                "outputUSDPerMTokens",
+                "tiers"
+            ],
             "properties": {
                 "cacheReadUSDPerMTokens": {
                     "type": "number"
@@ -11839,13 +23158,21 @@ const docTemplate = `{
                 "tiers": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.PublicModelPricingTierResponse"
+                        "$ref": "#/definitions/PublicModelPricingTierResponse"
                     }
                 }
             }
         },
-        "internal_transport_http_channel.PublicModelPricingTierResponse": {
+        "PublicModelPricingTierResponse": {
             "type": "object",
+            "required": [
+                "cacheReadUSDPerMTokens",
+                "cacheWriteUSDPerMTokens",
+                "fromTokens",
+                "inputUSDPerMTokens",
+                "outputUSDPerMTokens",
+                "upToTokens"
+            ],
             "properties": {
                 "cacheReadUSDPerMTokens": {
                     "type": "number"
@@ -11863,17 +23190,46 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "upToTokens": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 }
             }
         },
-        "internal_transport_http_channel.PublicModelResponse": {
+        "PublicModelResponse": {
             "type": "object",
+            "required": [
+                "capabilitiesJSON",
+                "description",
+                "displayGroupID",
+                "displayGroupIcon",
+                "displayGroupName",
+                "icon",
+                "kindsJSON",
+                "platformModelName",
+                "pricing",
+                "protocolsJSON",
+                "sortOrder",
+                "vendor",
+                "vendorIcon",
+                "vendorName"
+            ],
             "properties": {
                 "capabilitiesJSON": {
                     "type": "string"
                 },
                 "description": {
+                    "type": "string"
+                },
+                "displayGroupID": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "displayGroupIcon": {
+                    "type": "string"
+                },
+                "displayGroupName": {
                     "type": "string"
                 },
                 "icon": {
@@ -11886,7 +23242,13 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "pricing": {
-                    "$ref": "#/definitions/internal_transport_http_channel.PublicModelPricingResponse"
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PublicModelPricingResponse"
+                        }
+                    ],
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
                 "protocolsJSON": {
                     "type": "string"
@@ -11896,10 +23258,678 @@ const docTemplate = `{
                 },
                 "vendor": {
                     "type": "string"
+                },
+                "vendorIcon": {
+                    "type": "string"
+                },
+                "vendorName": {
+                    "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.ReorderModelsRequest": {
+        "PublicSharedConversationResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "defaultMessagePublicIDs",
+                "lastAccessedAt",
+                "messages",
+                "model",
+                "shareID",
+                "title"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "defaultMessagePublicIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "lastAccessedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PublicSharedMessageResponse"
+                    }
+                },
+                "model": {
+                    "type": "string"
+                },
+                "shareID": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "PublicSharedConversationResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/PublicSharedConversationResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "PublicSharedMessageResponse": {
+            "type": "object",
+            "required": [
+                "attachments",
+                "branchReason",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "content",
+                "contentType",
+                "createdAt",
+                "editedAt",
+                "errorCode",
+                "errorMessage",
+                "inputTokens",
+                "latencyMS",
+                "modelIcon",
+                "modelVendor",
+                "outputTokens",
+                "parentPublicID",
+                "platformModelName",
+                "publicID",
+                "reasoningTokens",
+                "role",
+                "runID",
+                "sourcePublicID",
+                "status",
+                "tokenUsage",
+                "updatedAt",
+                "upstreamModelName"
+            ],
+            "properties": {
+                "attachments": {
+                    "type": "string"
+                },
+                "branchReason": {
+                    "type": "string"
+                },
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "contentType": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "editedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "latencyMS": {
+                    "type": "integer"
+                },
+                "modelIcon": {
+                    "type": "string"
+                },
+                "modelVendor": {
+                    "type": "string"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "parentPublicID": {
+                    "type": "string"
+                },
+                "platformModelName": {
+                    "type": "string"
+                },
+                "processTrace": {
+                    "$ref": "#/definitions/MessageProcessTraceResponse"
+                },
+                "publicID": {
+                    "type": "string"
+                },
+                "reasoningTokens": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "runID": {
+                    "type": "string"
+                },
+                "sourcePublicID": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tokenUsage": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "upstreamModelName": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedeemCodeRequest": {
+            "type": "object",
+            "required": [
+                "code"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 3
+                }
+            }
+        },
+        "RedemptionApplyDataResponse": {
+            "type": "object",
+            "required": [
+                "overview",
+                "redemption"
+            ],
+            "properties": {
+                "account": {
+                    "$ref": "#/definitions/BillingAccountResponse"
+                },
+                "overview": {
+                    "$ref": "#/definitions/BillingOverviewResponse"
+                },
+                "redemption": {
+                    "$ref": "#/definitions/RedemptionResponse"
+                },
+                "subscription": {
+                    "$ref": "#/definitions/SubscriptionResponse"
+                }
+            }
+        },
+        "RedemptionApplyResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/RedemptionApplyDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedemptionCodeCreateDataResponse": {
+            "type": "object",
+            "required": [
+                "results"
+            ],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/RedemptionCodeResponse"
+                    }
+                }
+            }
+        },
+        "RedemptionCodeCreateResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/RedemptionCodeCreateDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedemptionCodeDataResponse": {
+            "type": "object",
+            "required": [
+                "code"
+            ],
+            "properties": {
+                "code": {
+                    "$ref": "#/definitions/RedemptionCodeResponse"
+                }
+            }
+        },
+        "RedemptionCodeDeleteDataResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "RedemptionCodeDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/RedemptionCodeDeleteDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedemptionCodeListDataResponse": {
+            "type": "object",
+            "required": [
+                "results",
+                "total"
+            ],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/RedemptionCodeResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "RedemptionCodeListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/RedemptionCodeListDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedemptionCodeResponse": {
+            "type": "object",
+            "required": [
+                "codeHint",
+                "createdAt",
+                "createdByUserID",
+                "creditNanousd",
+                "creditUSD",
+                "description",
+                "durationDays",
+                "expiresAt",
+                "id",
+                "maxRedemptions",
+                "mode",
+                "perUserLimit",
+                "planID",
+                "redeemedCount",
+                "remainingRedemptions",
+                "rewardType",
+                "status",
+                "updatedAt"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "codeHint": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdByUserID": {
+                    "type": "integer"
+                },
+                "creditNanousd": {
+                    "type": "integer"
+                },
+                "creditUSD": {
+                    "type": "number"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "durationDays": {
+                    "type": "integer"
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "maxRedemptions": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "perUserLimit": {
+                    "type": "integer"
+                },
+                "planID": {
+                    "type": "integer"
+                },
+                "redeemedCount": {
+                    "type": "integer"
+                },
+                "remainingRedemptions": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "rewardType": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedemptionCodeResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/RedemptionCodeDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedemptionRecordListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/RedemptionRecordResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedemptionRecordResponse": {
+            "type": "object",
+            "required": [
+                "balanceAfterNanousd",
+                "balanceBeforeNanousd",
+                "codeDescription",
+                "codeHint",
+                "codeID",
+                "codeStatus",
+                "createdAt",
+                "creditNanousd",
+                "creditUSD",
+                "durationDays",
+                "id",
+                "mode",
+                "planID",
+                "planName",
+                "refNo",
+                "rewardType",
+                "snapshotJSON",
+                "subscriptionID",
+                "userDisplayName",
+                "userID",
+                "userLabel",
+                "username"
+            ],
+            "properties": {
+                "balanceAfterNanousd": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "balanceBeforeNanousd": {
+                    "description": "BalanceBeforeNanousd / BalanceAfterNanousd 来自余额流水；订阅类兑换无流水时为 null。",
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "codeDescription": {
+                    "type": "string"
+                },
+                "codeHint": {
+                    "type": "string"
+                },
+                "codeID": {
+                    "type": "integer"
+                },
+                "codeStatus": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "creditNanousd": {
+                    "type": "integer"
+                },
+                "creditUSD": {
+                    "type": "number"
+                },
+                "durationDays": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "planID": {
+                    "type": "integer"
+                },
+                "planName": {
+                    "type": "string"
+                },
+                "refNo": {
+                    "type": "string"
+                },
+                "rewardType": {
+                    "type": "string"
+                },
+                "snapshotJSON": {
+                    "type": "string"
+                },
+                "subscriptionID": {
+                    "type": "integer"
+                },
+                "userDisplayName": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                },
+                "userLabel": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "RedemptionResponse": {
+            "type": "object",
+            "required": [
+                "balanceTransactionID",
+                "codeID",
+                "createdAt",
+                "creditNanousd",
+                "creditUSD",
+                "id",
+                "mode",
+                "planID",
+                "rewardType",
+                "subscriptionID",
+                "userID"
+            ],
+            "properties": {
+                "balanceTransactionID": {
+                    "type": "integer"
+                },
+                "codeID": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "creditNanousd": {
+                    "type": "integer"
+                },
+                "creditUSD": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "planID": {
+                    "type": "integer"
+                },
+                "rewardType": {
+                    "type": "string"
+                },
+                "subscriptionID": {
+                    "type": "integer"
+                },
+                "userID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "RefreshTokenResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/LoginResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RenameConversationRequest": {
+            "type": "object",
+            "required": [
+                "title"
+            ],
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
+        "ReorderConversationProjectsRequest": {
+            "type": "object",
+            "required": [
+                "projectIDs"
+            ],
+            "properties": {
+                "projectIDs": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "ReorderIdentityProvidersRequest": {
+            "type": "object",
+            "required": [
+                "providerIDs"
+            ],
+            "properties": {
+                "providerIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "ReorderModelsRequest": {
             "type": "object",
             "required": [
                 "modelIDs"
@@ -11914,19 +23944,1180 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.ResetUpstreamCircuitResponseDoc": {
+        "ReorderServerOrderItem": {
             "type": "object",
+            "required": [
+                "serverID",
+                "toolIDs"
+            ],
+            "properties": {
+                "serverID": {
+                    "type": "integer"
+                },
+                "toolIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "ReorderServersRequest": {
+            "type": "object",
+            "required": [
+                "servers"
+            ],
+            "properties": {
+                "servers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ReorderServerOrderItem"
+                    }
+                }
+            }
+        },
+        "ResetUpstreamCircuitResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.CircuitResetResponse"
+                    "$ref": "#/definitions/CircuitResetResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.SyncUpstreamModelsResponse": {
+        "ResetUserPasswordRequest": {
             "type": "object",
+            "required": [
+                "newPassword"
+            ],
+            "properties": {
+                "mustResetPassword": {
+                    "type": "boolean"
+                },
+                "newPassword": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 8
+                }
+            }
+        },
+        "ResetUserPasswordResponse": {
+            "type": "object",
+            "required": [
+                "reset"
+            ],
+            "properties": {
+                "reset": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "ResetUserPasswordResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ResetUserPasswordResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RevokeConversationSharesRequest": {
+            "type": "object",
+            "properties": {
+                "conversationPublicIDs": {
+                    "type": "array",
+                    "maxItems": 1000,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "RevokeConversationSharesResponse": {
+            "type": "object",
+            "required": [
+                "revoked"
+            ],
+            "properties": {
+                "revoked": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "RevokeConversationSharesResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/RevokeConversationSharesResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RevokeUserSessionsResponse": {
+            "type": "object",
+            "required": [
+                "revoked"
+            ],
+            "properties": {
+                "revoked": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "RevokeUserSessionsResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/RevokeUserSessionsResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "RunResponse": {
+            "type": "object",
+            "required": [
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "conversationID",
+                "createdAt",
+                "endedAt",
+                "endpoint",
+                "errorCode",
+                "errorMessage",
+                "firstTokenLatencyMS",
+                "id",
+                "inputTokens",
+                "modelIcon",
+                "modelVendor",
+                "outputTokens",
+                "platformModelName",
+                "provider",
+                "providerProtocol",
+                "reasoningTokens",
+                "requestID",
+                "requestedModelName",
+                "routedBindingCode",
+                "runID",
+                "startedAt",
+                "status",
+                "taskType",
+                "toolCallsCount",
+                "totalLatencyMS",
+                "updatedAt",
+                "upstreamID",
+                "upstreamModelID",
+                "upstreamModelName",
+                "userID"
+            ],
+            "properties": {
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "conversationID": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "endedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "errorCode": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "firstTokenLatencyMS": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "modelIcon": {
+                    "type": "string"
+                },
+                "modelVendor": {
+                    "type": "string"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "platformModelName": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "providerProtocol": {
+                    "type": "string"
+                },
+                "reasoningTokens": {
+                    "type": "integer"
+                },
+                "requestID": {
+                    "type": "string"
+                },
+                "requestedModelName": {
+                    "type": "string"
+                },
+                "routedBindingCode": {
+                    "type": "string"
+                },
+                "runID": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "taskType": {
+                    "type": "string"
+                },
+                "toolCallsCount": {
+                    "type": "integer"
+                },
+                "totalLatencyMS": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "upstreamID": {
+                    "type": "integer"
+                },
+                "upstreamModelID": {
+                    "type": "integer"
+                },
+                "upstreamModelName": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "SecurityVerificationStartRequest": {
+            "type": "object",
+            "properties": {
+                "verificationMethod": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "two_factor",
+                        "email"
+                    ]
+                }
+            }
+        },
+        "SendMessageRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "contentType",
+                "knowledgeBaseIDs"
+            ],
+            "properties": {
+                "branchReason": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "retry",
+                        "edit"
+                    ]
+                },
+                "clientRunID": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "content": {
+                    "type": "string"
+                },
+                "contentType": {
+                    "type": "string",
+                    "enum": [
+                        "text",
+                        "markdown",
+                        "image",
+                        "file",
+                        "mixed"
+                    ]
+                },
+                "fileIDs": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "htmlVisualPrompt": {
+                    "type": "boolean"
+                },
+                "knowledgeBaseIDs": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "model": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "options": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "parentMessagePublicID": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "selectedToolIDs": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "skillIDs": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "sourceMessagePublicID": {
+                    "type": "string",
+                    "maxLength": 32
+                }
+            }
+        },
+        "SendMessageResponse": {
+            "type": "object",
+            "required": [
+                "assistantMessage",
+                "userMessage"
+            ],
+            "properties": {
+                "assistantMessage": {
+                    "$ref": "#/definitions/MessageResponse"
+                },
+                "metadataRefreshHint": {
+                    "type": "string"
+                },
+                "userMessage": {
+                    "$ref": "#/definitions/MessageResponse"
+                }
+            }
+        },
+        "SendMessageResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/SendMessageResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ServerDataResponse": {
+            "type": "object",
+            "required": [
+                "server"
+            ],
+            "properties": {
+                "server": {
+                    "$ref": "#/definitions/ServerResponse"
+                }
+            }
+        },
+        "ServerDataResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ServerDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ServerListResponse": {
+            "type": "object",
+            "required": [
+                "results"
+            ],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ServerResponse"
+                    }
+                }
+            }
+        },
+        "ServerListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ServerListResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ServerResponse": {
+            "type": "object",
+            "required": [
+                "activeToolCount",
+                "baseURL",
+                "createdAt",
+                "headersJSON",
+                "id",
+                "lastError",
+                "lastSyncedAt",
+                "name",
+                "requiresToolMetadataSyncConfirmation",
+                "sortOrder",
+                "status",
+                "toolCount",
+                "updatedAt"
+            ],
+            "properties": {
+                "activeToolCount": {
+                    "type": "integer"
+                },
+                "baseURL": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "headersJSON": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "lastSyncedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "name": {
+                    "type": "string"
+                },
+                "requiresToolMetadataSyncConfirmation": {
+                    "type": "boolean"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "toolCount": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ServerToolOrderListResponse": {
+            "type": "object",
+            "required": [
+                "results"
+            ],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ServerToolOrderResponse"
+                    }
+                }
+            }
+        },
+        "ServerToolOrderListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ServerToolOrderListResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ServerToolOrderResponse": {
+            "type": "object",
+            "required": [
+                "server",
+                "tools"
+            ],
+            "properties": {
+                "server": {
+                    "$ref": "#/definitions/ServerResponse"
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ToolResponse"
+                    }
+                }
+            }
+        },
+        "SetConversationArchiveRequest": {
+            "type": "object",
+            "required": [
+                "archived"
+            ],
+            "properties": {
+                "archived": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "SetConversationProjectRequest": {
+            "type": "object",
+            "properties": {
+                "projectID": {
+                    "type": "string",
+                    "maxLength": 32
+                }
+            }
+        },
+        "SetConversationStarRequest": {
+            "type": "object",
+            "required": [
+                "starred"
+            ],
+            "properties": {
+                "starred": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "SetGroupModelsRequest": {
+            "type": "object",
+            "properties": {
+                "modelIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PermissionGroupModelRuleRequest"
+                    }
+                }
+            }
+        },
+        "SetGroupUsersRequest": {
+            "type": "object",
+            "properties": {
+                "userIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "SetMessageFeedbackRequest": {
+            "type": "object",
+            "properties": {
+                "feedback": {
+                    "type": "string",
+                    "enum": [
+                        "up",
+                        "down"
+                    ]
+                }
+            }
+        },
+        "SetModelPermissionGroupsRequest": {
+            "type": "object",
+            "properties": {
+                "groupIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "SetModelProtocolsRequest": {
+            "type": "object",
+            "required": [
+                "kindsJSON",
+                "protocols"
+            ],
+            "properties": {
+                "kindsJSON": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "minLength": 2
+                },
+                "protocols": {
+                    "type": "array",
+                    "maxItems": 2,
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "SetModelProtocolsResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ModelDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "SetModelsDisplayGroupRequest": {
+            "type": "object",
+            "required": [
+                "displayGroupID",
+                "modelIDs"
+            ],
+            "properties": {
+                "displayGroupID": {
+                    "type": "integer"
+                },
+                "modelIDs": {
+                    "type": "array",
+                    "maxItems": 1000,
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "SettingsPatchSettingsRequest": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/PatchItem"
+                    }
+                }
+            }
+        },
+        "SkillDataResponse": {
+            "type": "object",
+            "required": [
+                "skill"
+            ],
+            "properties": {
+                "skill": {
+                    "$ref": "#/definitions/SkillResponse"
+                }
+            }
+        },
+        "SkillDeleteDataResponse": {
+            "type": "object",
+            "required": [
+                "deleted"
+            ],
+            "properties": {
+                "deleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "SkillDeleteResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/SkillDeleteDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "SkillErrorDoc": {
+            "type": "object",
+            "required": [
+                "errorMsg"
+            ],
+            "properties": {
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "SkillPageResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/SkillResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "SkillResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "createdByUserID",
+                "description",
+                "enabled",
+                "id",
+                "markdown",
+                "scope",
+                "sortOrder",
+                "title",
+                "trigger",
+                "updatedAt",
+                "updatedByUserID"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdByUserID": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "markdown": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "trigger": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "updatedByUserID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "SkillResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/SkillDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "SkillSummaryPageResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/SkillSummaryResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "SkillSummaryResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "description",
+                "enabled",
+                "id",
+                "scope",
+                "sortOrder",
+                "title",
+                "trigger",
+                "updatedAt"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "trigger": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "StorageQuotaResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "id",
+                "quotaBytes",
+                "reservedBytes",
+                "updatedAt",
+                "usedBytes",
+                "userID"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "quotaBytes": {
+                    "type": "integer"
+                },
+                "reservedBytes": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "usedBytes": {
+                    "type": "integer"
+                },
+                "userID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "SubscribeRequest": {
+            "type": "object",
+            "required": [
+                "priceID"
+            ],
+            "properties": {
+                "cycles": {
+                    "type": "integer",
+                    "maximum": 120,
+                    "minimum": 1
+                },
+                "priceID": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
+        "SubscribeResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/SubscriptionDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "SubscriptionDataResponse": {
+            "type": "object",
+            "required": [
+                "subscription"
+            ],
+            "properties": {
+                "subscription": {
+                    "$ref": "#/definitions/SubscriptionResponse"
+                }
+            }
+        },
+        "SubscriptionEntitlementResponse": {
+            "type": "object",
+            "required": [
+                "autoRenew",
+                "cancelAtPeriodEnd",
+                "currentPeriodEndAt",
+                "currentPeriodStartAt",
+                "id",
+                "isCurrent",
+                "plan",
+                "planID",
+                "priceID",
+                "startAt",
+                "status",
+                "userID"
+            ],
+            "properties": {
+                "autoRenew": {
+                    "type": "boolean"
+                },
+                "cancelAtPeriodEnd": {
+                    "type": "boolean"
+                },
+                "currentPeriodEndAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "currentPeriodStartAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "isCurrent": {
+                    "type": "boolean"
+                },
+                "plan": {
+                    "$ref": "#/definitions/BillingPlanResponse"
+                },
+                "planID": {
+                    "type": "integer"
+                },
+                "priceID": {
+                    "type": "integer"
+                },
+                "startAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "SubscriptionResponse": {
+            "type": "object",
+            "required": [
+                "autoRenew",
+                "cancelAtPeriodEnd",
+                "currentPeriodEndAt",
+                "currentPeriodStartAt",
+                "id",
+                "planID",
+                "priceID",
+                "startAt",
+                "status",
+                "userID"
+            ],
+            "properties": {
+                "autoRenew": {
+                    "type": "boolean"
+                },
+                "cancelAtPeriodEnd": {
+                    "type": "boolean"
+                },
+                "currentPeriodEndAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "currentPeriodStartAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "planID": {
+                    "type": "integer"
+                },
+                "priceID": {
+                    "type": "integer"
+                },
+                "startAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
+                }
+            }
+        },
+        "SuccessDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {},
+                "details": {},
+                "errorCode": {
+                    "type": "string",
+                    "example": ""
+                },
+                "errorMsg": {
+                    "type": "string",
+                    "example": ""
+                },
+                "requestId": {
+                    "type": "string",
+                    "example": ""
+                }
+            }
+        },
+        "SyncUpstreamModelsResponse": {
+            "type": "object",
+            "required": [
+                "createdUpstreamModels",
+                "existingUpstreamModels",
+                "inactivatedModels",
+                "skippedUpstreamModels",
+                "syncedModels",
+                "totalUpstream"
+            ],
             "properties": {
                 "createdUpstreamModels": {
                     "type": "integer"
@@ -11943,7 +25134,7 @@ const docTemplate = `{
                 "syncedModels": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.UpstreamSyncModelResponse"
+                        "$ref": "#/definitions/UpstreamSyncModelResponse"
                     }
                 },
                 "totalUpstream": {
@@ -11951,18 +25142,537 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.SyncUpstreamModelsResponseDoc": {
+        "SyncUpstreamModelsResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.SyncUpstreamModelsResponse"
+                    "$ref": "#/definitions/SyncUpstreamModelsResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.UpdateModelRequest": {
+        "SystemEventListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/SystemEventResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "SystemEventResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "detailJSON",
+                "event",
+                "id",
+                "level",
+                "message",
+                "requestID",
+                "resource",
+                "resourceID",
+                "source",
+                "traceID",
+                "updatedAt"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "detailJSON": {
+                    "type": "string"
+                },
+                "event": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "requestID": {
+                    "type": "string"
+                },
+                "resource": {
+                    "type": "string"
+                },
+                "resourceID": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "traceID": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "TemporaryChatHistoryMessage": {
+            "type": "object",
+            "required": [
+                "content",
+                "role"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "maxLength": 200000
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "assistant"
+                    ]
+                }
+            }
+        },
+        "TemporaryChatMessageRequest": {
+            "type": "object",
+            "required": [
+                "clientRunID",
+                "messages",
+                "model",
+                "sessionID"
+            ],
+            "properties": {
+                "clientRunID": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "htmlVisualPrompt": {
+                    "type": "boolean"
+                },
+                "knowledgeBaseIDs": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "messages": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/TemporaryChatHistoryMessage"
+                    }
+                },
+                "model": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "options": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "selectedToolIDs": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "sessionID": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "skillIDs": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "ToolListResponse": {
+            "type": "object",
+            "required": [
+                "results"
+            ],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ToolResponse"
+                    }
+                }
+            }
+        },
+        "ToolListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ToolListResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "ToolResponse": {
+            "type": "object",
+            "required": [
+                "attachmentArgument",
+                "attachmentEncoding",
+                "attachmentInputMode",
+                "attachmentPromptArgument",
+                "createdAt",
+                "description",
+                "displayName",
+                "id",
+                "inputSchemaJSON",
+                "name",
+                "priceNanousd",
+                "serverID",
+                "serverName",
+                "sortOrder",
+                "status",
+                "updatedAt"
+            ],
+            "properties": {
+                "attachmentArgument": {
+                    "type": "string"
+                },
+                "attachmentEncoding": {
+                    "type": "string",
+                    "enum": [
+                        "",
+                        "base64",
+                        "data_url"
+                    ]
+                },
+                "attachmentInputMode": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "image"
+                    ]
+                },
+                "attachmentPromptArgument": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inputSchemaJSON": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "priceNanousd": {
+                    "type": "integer"
+                },
+                "serverID": {
+                    "type": "integer"
+                },
+                "serverName": {
+                    "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "ToolResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ToolResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "UpdateBillingAccountBalanceRequest": {
+            "type": "object",
+            "required": [
+                "balanceUSD"
+            ],
+            "properties": {
+                "balanceUSD": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
+        "UpdateBillingPlanRequest": {
+            "type": "object",
+            "required": [
+                "amountUSD",
+                "billingInterval",
+                "description",
+                "discountPercent",
+                "name",
+                "periodCreditUSD"
+            ],
+            "properties": {
+                "amountUSD": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "billingInterval": {
+                    "type": "string",
+                    "enum": [
+                        "month",
+                        "year",
+                        "lifetime"
+                    ]
+                },
+                "currency": {
+                    "type": "string",
+                    "maxLength": 16
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "discountPercent": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1
+                },
+                "periodCreditUSD": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "permissionGroupID": {
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            }
+        },
+        "UpdateConversationLabelsRequest": {
+            "type": "object",
+            "required": [
+                "labels"
+            ],
+            "properties": {
+                "labels": {
+                    "type": "array",
+                    "maxItems": 6,
+                    "items": {
+                        "type": "string",
+                        "maxLength": 24
+                    }
+                }
+            }
+        },
+        "UpdateConversationProjectRequest": {
+            "type": "object",
+            "required": [
+                "defaultKnowledgeBaseIDs"
+            ],
+            "properties": {
+                "color": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "defaultKnowledgeBaseIDs": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "defaultMCPToolIDs": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "defaultSkillIDs": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "icon": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "mcpDefaultMode": {
+                    "type": "string",
+                    "enum": [
+                        "inherit",
+                        "custom"
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "archived"
+                    ]
+                },
+                "systemPrompt": {
+                    "type": "string",
+                    "maxLength": 12000
+                }
+            }
+        },
+        "UpdateCurrentSessionLocationRequest": {
+            "type": "object",
+            "required": [
+                "latitude",
+                "longitude"
+            ],
+            "properties": {
+                "accuracyMeters": {
+                    "type": "number",
+                    "maximum": 1000000,
+                    "minimum": 0
+                },
+                "latitude": {
+                    "type": "number"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "UpdateCurrentSessionLocationResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ActiveSessionResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "UpdateFileRequest": {
+            "type": "object",
+            "properties": {
+                "fileName": {
+                    "type": "string"
+                },
+                "ragOptOut": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "UpdateMessageRequest": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                }
+            }
+        },
+        "UpdateModelDisplayGroupRequest": {
+            "type": "object",
+            "properties": {
+                "icon": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "modelIDs": {
+                    "type": "array",
+                    "maxItems": 10000,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "UpdateModelRequest": {
             "type": "object",
             "properties": {
                 "accessScope": {
@@ -11976,13 +25686,35 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 10000
                 },
+                "cbDurationMin": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "cbFailureThreshold": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "cbPolicyMode": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "enforced"
+                    ]
+                },
+                "cbWindowMin": {
+                    "type": "integer",
+                    "minimum": 0
+                },
                 "description": {
                     "type": "string",
                     "maxLength": 10000
                 },
+                "displayGroupID": {
+                    "type": "integer"
+                },
                 "icon": {
                     "type": "string",
-                    "maxLength": 128
+                    "maxLength": 2048
                 },
                 "kindsJSON": {
                     "type": "string",
@@ -12010,20 +25742,36 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpdateModelResponseDoc": {
+        "UpdateModelResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelDataResponse"
+                    "$ref": "#/definitions/ModelDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.UpdateModelUpstreamSourceRequest": {
+        "UpdateModelUpstreamSourceRequest": {
             "type": "object",
             "properties": {
+                "cbDurationMin": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "cbFailureThreshold": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "cbWindowMin": {
+                    "type": "integer",
+                    "minimum": 0
+                },
                 "priority": {
                     "type": "integer"
                 },
@@ -12043,18 +25791,113 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpdateModelUpstreamSourceResponseDoc": {
+        "UpdateModelUpstreamSourceResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.ModelUpstreamSourceDataResponse"
+                    "$ref": "#/definitions/ModelUpstreamSourceDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.UpdateUpstreamRequest": {
+        "UpdateModelVendorRequest": {
+            "type": "object",
+            "properties": {
+                "icon": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "UpdatePermissionGroupRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "rateMultiplierPercent": {
+                    "type": "integer",
+                    "maximum": 10000,
+                    "minimum": 0
+                }
+            }
+        },
+        "UpdateServerToolsStatusRequest": {
+            "type": "object",
+            "required": [
+                "status",
+                "toolIDs"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "toolIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "UpdateToolRequest": {
+            "type": "object",
+            "properties": {
+                "attachmentArgument": {
+                    "type": "string"
+                },
+                "attachmentEncoding": {
+                    "type": "string",
+                    "enum": [
+                        "base64",
+                        "data_url"
+                    ]
+                },
+                "attachmentInputMode": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "image"
+                    ]
+                },
+                "attachmentPromptArgument": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "priceNanousd": {
+                    "description": "PriceNanousd 单次调用价格（nano USD），0 表示不单独计费。",
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "UpdateUpstreamRequest": {
             "type": "object",
             "properties": {
                 "addAPIKeys": {
@@ -12138,32 +25981,260 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpdateUpstreamResponseDoc": {
+        "UpdateUpstreamResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.UpstreamDataResponse"
+                    "$ref": "#/definitions/UpstreamDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.UpsertUpstreamModelRequest": {
+        "UpdateUserStatusRequest": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "status": {
+                    "type": "string",
+                    "maxLength": 32
+                }
+            }
+        },
+        "UpdateUserStatusResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/UserDataResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "UploadFileResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/FileUploadResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "UpsertIdentityProviderRequest": {
+            "type": "object",
+            "required": [
+                "clientID",
+                "name",
+                "type"
+            ],
+            "properties": {
+                "authURL": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "avatarField": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "clientID": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "clientSecret": {
+                    "type": "string",
+                    "maxLength": 4096
+                },
+                "defaultRole": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin",
+                        "superadmin"
+                    ]
+                },
+                "discoveryURL": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "emailField": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "emailVerifiedField": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "issuerURL": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "jwksURL": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "loginEnabled": {
+                    "type": "boolean"
+                },
+                "logoURL": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "nameField": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "registrationEnabled": {
+                    "type": "boolean"
+                },
+                "scopes": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "slug": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "subjectField": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "tokenURL": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "oidc",
+                        "oauth2"
+                    ]
+                },
+                "userinfoURL": {
+                    "type": "string",
+                    "maxLength": 512
+                }
+            }
+        },
+        "UpsertMemoryResponse": {
+            "type": "object",
+            "required": [
+                "saved"
+            ],
+            "properties": {
+                "saved": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "UpsertModelPricingRequest": {
+            "type": "object",
+            "required": [
+                "cacheReadUSDPerMTokens",
+                "cacheWriteUSDPerMTokens",
+                "callUSDPerCall",
+                "durationUSDPerSecond",
+                "inputUSDPerMTokens",
+                "isFree",
+                "outputUSDPerMTokens",
+                "platformModelName",
+                "pricingMode"
+            ],
+            "properties": {
+                "cacheReadUSDPerMTokens": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "cacheWriteUSDPerMTokens": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "callUSDPerCall": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "currency": {
+                    "type": "string",
+                    "maxLength": 16
+                },
+                "durationUSDPerSecond": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "inputUSDPerMTokens": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "isFree": {
+                    "type": "boolean"
+                },
+                "outputUSDPerMTokens": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "platformModelName": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "pricingMode": {
+                    "type": "string",
+                    "enum": [
+                        "token",
+                        "call",
+                        "duration",
+                        "tiered"
+                    ]
+                },
+                "tieredPricingJSON": {
+                    "type": "string",
+                    "maxLength": 20000
+                }
+            }
+        },
+        "UpsertUpstreamModelRequest": {
             "type": "object",
             "required": [
                 "platformModelName",
+                "protocols",
                 "upstreamModelName"
             ],
             "properties": {
                 "cbDurationMin": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 0
                 },
                 "cbFailureThreshold": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 0
                 },
                 "cbWindowMin": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 0
                 },
                 "headersJSON": {
                     "type": "string",
@@ -12181,18 +26252,29 @@ const docTemplate = `{
                 "priority": {
                     "type": "integer"
                 },
-                "protocol": {
-                    "type": "string",
-                    "maxLength": 64
+                "protocols": {
+                    "description": "Protocols 为空数组时根据模型能力和上游默认配置自动推断完整协议集合。",
+                    "type": "array",
+                    "maxItems": 2,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string"
+                    }
                 },
-                "routeID": {
-                    "type": "integer"
+                "routeIDs": {
+                    "type": "array",
+                    "maxItems": 2,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "source": {
                     "type": "string",
                     "maxLength": 64
                 },
                 "status": {
+                    "description": "路由配置字段省略时保留已有协议各自的配置；新增协议使用服务端默认值或现有绑定模板。",
                     "type": "string",
                     "enum": [
                         "active",
@@ -12209,19 +26291,71 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpsertUpstreamModelResponseDoc": {
+        "UpsertUpstreamModelResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.UpstreamModelDataResponse"
+                    "$ref": "#/definitions/UpstreamModelDataResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamAPIKeyResponse": {
+        "UpsertUserMemoryRequest": {
             "type": "object",
+            "required": [
+                "memoryKey",
+                "scope",
+                "value"
+            ],
+            "properties": {
+                "memoryKey": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": [
+                        "profile",
+                        "preference",
+                        "custom"
+                    ]
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 10000
+                }
+            }
+        },
+        "UpsertUserMemoryResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/UpsertMemoryResponse"
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "UpstreamAPIKeyResponse": {
+            "type": "object",
+            "required": [
+                "id",
+                "index",
+                "keyMasked",
+                "note",
+                "status"
+            ],
             "properties": {
                 "id": {
                     "type": "string"
@@ -12240,24 +26374,35 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamDataResponse": {
+        "UpstreamDataResponse": {
             "type": "object",
+            "required": [
+                "upstream"
+            ],
             "properties": {
                 "upstream": {
-                    "$ref": "#/definitions/internal_transport_http_channel.UpstreamResponse"
+                    "$ref": "#/definitions/UpstreamResponse"
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamListResponseDoc": {
+        "UpstreamListResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
                     "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
                     "properties": {
                         "results": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_transport_http_channel.UpstreamResponse"
+                                "$ref": "#/definitions/UpstreamResponse"
                             }
                         },
                         "total": {
@@ -12270,24 +26415,35 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamModelDataResponse": {
+        "UpstreamModelDataResponse": {
             "type": "object",
+            "required": [
+                "binding"
+            ],
             "properties": {
                 "binding": {
-                    "$ref": "#/definitions/internal_transport_http_channel.UpstreamModelResponse"
+                    "$ref": "#/definitions/UpstreamModelResponse"
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamModelListResponseDoc": {
+        "UpstreamModelListResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
                     "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
                     "properties": {
                         "results": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_transport_http_channel.UpstreamModelResponse"
+                                "$ref": "#/definitions/UpstreamModelResponse"
                             }
                         },
                         "total": {
@@ -12300,8 +26456,38 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamModelResponse": {
+        "UpstreamModelResponse": {
             "type": "object",
+            "required": [
+                "bindingCode",
+                "cbDurationMin",
+                "cbFailureThreshold",
+                "cbWindowMin",
+                "circuitOpen",
+                "circuitUntil",
+                "createdAt",
+                "headersJSON",
+                "id",
+                "modelIcon",
+                "modelKindsJSON",
+                "modelVendor",
+                "platformModelID",
+                "platformModelName",
+                "priority",
+                "protocol",
+                "routeID",
+                "routeStatus",
+                "source",
+                "suggestedProtocol",
+                "updatedAt",
+                "upstreamID",
+                "upstreamModelIcon",
+                "upstreamModelKindsJSON",
+                "upstreamModelName",
+                "upstreamModelStatus",
+                "upstreamModelVendor",
+                "weight"
+            ],
             "properties": {
                 "bindingCode": {
                     "type": "string"
@@ -12389,8 +26575,20 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamRemoteModelResponse": {
+        "UpstreamRemoteModelResponse": {
             "type": "object",
+            "required": [
+                "alreadyBound",
+                "alreadySynced",
+                "bindingCode",
+                "boundPlatformModels",
+                "suggestedKindsJSON",
+                "suggestedPlatformModelName",
+                "suggestedProtocol",
+                "suggestedProtocols",
+                "upstreamModelName",
+                "upstreamModelStatus"
+            ],
             "properties": {
                 "alreadyBound": {
                     "type": "boolean"
@@ -12430,13 +26628,17 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamRemoteModelsResponse": {
+        "UpstreamRemoteModelsResponse": {
             "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
             "properties": {
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.UpstreamRemoteModelResponse"
+                        "$ref": "#/definitions/UpstreamRemoteModelResponse"
                     }
                 },
                 "total": {
@@ -12444,19 +26646,48 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamRemoteModelsResponseDoc": {
+        "UpstreamRemoteModelsResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_channel.UpstreamRemoteModelsResponse"
+                    "$ref": "#/definitions/UpstreamRemoteModelsResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamResponse": {
+        "UpstreamResponse": {
             "type": "object",
+            "required": [
+                "activeModelsCount",
+                "apiKeyItems",
+                "apiKeysMasked",
+                "baseURL",
+                "cbDurationMin",
+                "cbFailureThreshold",
+                "cbModelThreshold",
+                "cbThresholdLogic",
+                "cbWindowMin",
+                "circuitOpen",
+                "circuitUntil",
+                "compatible",
+                "connectTimeoutMS",
+                "createdAt",
+                "headersJSON",
+                "id",
+                "modelsCount",
+                "name",
+                "protocolDefaultsJSON",
+                "readTimeoutMS",
+                "status",
+                "streamIdleTimeoutMS",
+                "updatedAt"
+            ],
             "properties": {
                 "activeModelsCount": {
                     "type": "integer"
@@ -12464,7 +26695,7 @@ const docTemplate = `{
                 "apiKeyItems": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_channel.UpstreamAPIKeyResponse"
+                        "$ref": "#/definitions/UpstreamAPIKeyResponse"
                     }
                 },
                 "apiKeysMasked": {
@@ -12532,8 +26763,16 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_channel.UpstreamSyncModelResponse": {
+        "UpstreamSyncModelResponse": {
             "type": "object",
+            "required": [
+                "bindingCode",
+                "created",
+                "kindsJSON",
+                "status",
+                "suggestedProtocol",
+                "upstreamModelName"
+            ],
             "properties": {
                 "bindingCode": {
                     "type": "string"
@@ -12555,655 +26794,226 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_conversation.BatchSetConversationProjectRequest": {
+        "UsageDailyListResponseDoc": {
             "type": "object",
             "required": [
-                "conversationPublicIDs"
+                "data",
+                "errorMsg"
             ],
             "properties": {
-                "conversationPublicIDs": {
-                    "type": "array",
-                    "maxItems": 1000,
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "projectID": {
-                    "type": "string",
-                    "maxLength": 32
-                }
-            }
-        },
-        "internal_transport_http_conversation.BatchSetConversationProjectResponse": {
-            "type": "object",
-            "properties": {
-                "updated": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_conversation.BatchSetConversationProjectResponseDoc": {
-            "type": "object",
-            "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.BatchSetConversationProjectResponse"
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/UsageDailyResponse"
+                    }
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_conversation.ContextArtifactResponse": {
+        "UsageDailyModelResponse": {
             "type": "object",
+            "required": [
+                "avgLatencyMS",
+                "billedNanousd",
+                "billedUSD",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "durationSeconds",
+                "inputTokens",
+                "outputTokens",
+                "platformModelName",
+                "reasoningTokens",
+                "recordCount",
+                "totalTokens"
+            ],
             "properties": {
-                "content": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "id": {
+                "avgLatencyMS": {
                     "type": "integer"
                 },
-                "kind": {
-                    "type": "string"
-                },
-                "messageID": {
+                "billedNanousd": {
                     "type": "integer"
                 },
-                "metadataJSON": {
-                    "type": "string"
-                },
-                "runID": {
-                    "type": "string"
-                },
-                "score": {
+                "billedUSD": {
                     "type": "number"
                 },
-                "sourceID": {
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "callCount": {
+                    "type": "integer"
+                },
+                "durationSeconds": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "platformModelName": {
                     "type": "string"
                 },
-                "sourceTitle": {
-                    "type": "string"
+                "reasoningTokens": {
+                    "type": "integer"
                 },
-                "sourceType": {
-                    "type": "string"
+                "recordCount": {
+                    "type": "integer"
                 },
-                "tokenEstimate": {
+                "totalTokens": {
                     "type": "integer"
                 }
             }
         },
-        "internal_transport_http_conversation.ContextArtifactResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ContextArtifactResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationCreateResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ConversationResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationDeleteResponse": {
-            "type": "object",
-            "properties": {
-                "deleted": {
-                    "type": "boolean"
-                },
-                "deletedFileCount": {
-                    "type": "integer"
-                },
-                "quota": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.StorageQuotaResponse"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationDeleteResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ConversationDeleteResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationExportCompatibilityResponse": {
-            "type": "object",
-            "properties": {
-                "format": {
-                    "type": "string"
-                },
-                "notes": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationExportResponse": {
-            "type": "object",
-            "properties": {
-                "compatibility": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ConversationExportCompatibilityResponse"
-                },
-                "conversation": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ConversationResponse"
-                },
-                "defaultMessagePublicIDs": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "exportScope": {
-                    "type": "string"
-                },
-                "exportedAt": {
-                    "type": "string"
-                },
-                "messages": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_conversation.MessageResponse"
-                    }
-                },
-                "runs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_conversation.RunResponse"
-                    }
-                },
-                "totalMessages": {
-                    "type": "integer"
-                },
-                "totalRuns": {
-                    "type": "integer"
-                },
-                "version": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationExportResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ConversationExportResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_conversation.ConversationResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationProjectListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_conversation.ConversationProjectResponse"
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationProjectResponse": {
-            "type": "object",
-            "properties": {
-                "color": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "icon": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "publicID": {
-                    "type": "string"
-                },
-                "sortOrder": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "systemPrompt": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationProjectResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ConversationProjectResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationResponse": {
-            "type": "object",
-            "properties": {
-                "contextPolicyJSON": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "isStarred": {
-                    "type": "boolean"
-                },
-                "labelsJSON": {
-                    "type": "string"
-                },
-                "lastCompactedAt": {
-                    "type": "string"
-                },
-                "lastResponseID": {
-                    "type": "string"
-                },
-                "lastShareAccessedAt": {
-                    "type": "string"
-                },
-                "messageCount": {
-                    "type": "integer"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "projectID": {
-                    "type": "string"
-                },
-                "projectName": {
-                    "type": "string"
-                },
-                "provider": {
-                    "type": "string"
-                },
-                "publicID": {
-                    "type": "string"
-                },
-                "sessionKey": {
-                    "type": "string"
-                },
-                "shareID": {
-                    "type": "string"
-                },
-                "shareStatus": {
-                    "type": "string"
-                },
-                "sharedAt": {
-                    "type": "string"
-                },
-                "starredAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "userID": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationRunListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "results": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_transport_http_conversation.RunResponse"
-                            }
-                        },
-                        "total": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationShareResponse": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "lastAccessedAt": {
-                    "type": "string"
-                },
-                "messageCount": {
-                    "type": "integer"
-                },
-                "modelSnapshot": {
-                    "type": "string"
-                },
-                "revokedAt": {
-                    "type": "string"
-                },
-                "shareID": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "titleSnapshot": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationShareResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ConversationShareResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ConversationUpdateResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.ConversationResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.CreateConversationProjectRequest": {
+        "UsageDailyResponse": {
             "type": "object",
             "required": [
-                "name"
+                "avgLatencyMS",
+                "billedNanousd",
+                "billedUSD",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "durationSeconds",
+                "inputTokens",
+                "models",
+                "outputTokens",
+                "reasoningTokens",
+                "recordCount",
+                "totalTokens",
+                "usageDate"
             ],
             "properties": {
-                "color": {
-                    "type": "string",
-                    "maxLength": 32
+                "avgLatencyMS": {
+                    "type": "integer"
                 },
-                "description": {
-                    "type": "string",
-                    "maxLength": 255
+                "billedNanousd": {
+                    "type": "integer"
                 },
-                "icon": {
-                    "type": "string",
-                    "maxLength": 32
+                "billedUSD": {
+                    "type": "number"
                 },
-                "name": {
-                    "type": "string",
-                    "maxLength": 80
+                "cacheReadTokens": {
+                    "type": "integer"
                 },
-                "systemPrompt": {
-                    "type": "string",
-                    "maxLength": 12000
-                }
-            }
-        },
-        "internal_transport_http_conversation.CreateConversationRequest": {
-            "type": "object",
-            "properties": {
-                "model": {
-                    "type": "string",
-                    "maxLength": 128
+                "cacheWriteTokens": {
+                    "type": "integer"
                 },
-                "projectID": {
-                    "type": "string",
-                    "maxLength": 32
+                "callCount": {
+                    "type": "integer"
                 },
-                "title": {
-                    "type": "string",
-                    "maxLength": 255
-                }
-            }
-        },
-        "internal_transport_http_conversation.CreateConversationShareRequest": {
-            "type": "object",
-            "properties": {
-                "defaultMessagePublicIDs": {
-                    "type": "array",
-                    "maxItems": 1000,
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "internal_transport_http_conversation.DeleteFileResponse": {
-            "type": "object",
-            "properties": {
-                "deleted": {
-                    "type": "boolean"
+                "durationSeconds": {
+                    "type": "integer"
                 },
-                "fileID": {
-                    "type": "string"
+                "inputTokens": {
+                    "type": "integer"
                 },
-                "quota": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.StorageQuotaResponse"
-                }
-            }
-        },
-        "internal_transport_http_conversation.DeleteFileResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.DeleteFileResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.ErrorDoc": {
-            "type": "object",
-            "properties": {
-                "data": {},
-                "details": {},
-                "errorCode": {
-                    "type": "string"
-                },
-                "errorMsg": {
-                    "type": "string"
-                },
-                "requestId": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.FileListResponse": {
-            "type": "object",
-            "properties": {
-                "quota": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.StorageQuotaResponse"
-                },
-                "results": {
+                "models": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_transport_http_conversation.FileObjectResponse"
+                        "$ref": "#/definitions/UsageDailyModelResponse"
                     }
                 },
-                "total": {
+                "outputTokens": {
                     "type": "integer"
+                },
+                "reasoningTokens": {
+                    "type": "integer"
+                },
+                "recordCount": {
+                    "type": "integer"
+                },
+                "totalTokens": {
+                    "type": "integer"
+                },
+                "usageDate": {
+                    "type": "string"
                 }
             }
         },
-        "internal_transport_http_conversation.FileListResponseDoc": {
+        "UsageLedgerListResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.FileListResponse"
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/UsageLedgerResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_conversation.FileObjectResponse": {
+        "UsageLedgerResponse": {
             "type": "object",
+            "required": [
+                "balanceAfterNanousd",
+                "balanceAfterUSD",
+                "billedCurrency",
+                "billedNanousd",
+                "billedUSD",
+                "billingAt",
+                "cacheReadTokens",
+                "cacheWrite1hTokens",
+                "cacheWrite5mTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "conversationID",
+                "createdAt",
+                "durationSeconds",
+                "id",
+                "inputTokens",
+                "isFreeModel",
+                "latencyMS",
+                "modelIcon",
+                "modelVendor",
+                "outputTokens",
+                "platformModelName",
+                "pricingSnapshotJSON",
+                "providerProtocol",
+                "reasoningTokens",
+                "routedBindingCode",
+                "serviceTier",
+                "updatedAt",
+                "upstreamModelName",
+                "usageDate",
+                "usageSpeed",
+                "userID"
+            ],
             "properties": {
-                "chunkCount": {
-                    "type": "integer"
+                "balanceAfterNanousd": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
-                "createdAt": {
-                    "type": "string"
+                "balanceAfterUSD": {
+                    "type": "number",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
-                "detectedMIME": {
-                    "type": "string"
-                },
-                "embedError": {
-                    "type": "string"
-                },
-                "embedStatus": {
-                    "type": "string"
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "extractStatus": {
-                    "type": "string"
-                },
-                "fileCategory": {
-                    "type": "string"
-                },
-                "fileID": {
-                    "type": "string"
-                },
-                "fileName": {
-                    "type": "string"
-                },
-                "lastAccessedAt": {
-                    "type": "string"
-                },
-                "mimeType": {
-                    "type": "string"
-                },
-                "processingErrorCode": {
-                    "type": "string"
-                },
-                "processingErrorMessage": {
-                    "type": "string"
-                },
-                "processingReady": {
-                    "type": "boolean"
-                },
-                "processingStatus": {
-                    "type": "string"
-                },
-                "purpose": {
-                    "type": "string"
-                },
-                "ragOptOut": {
-                    "type": "boolean"
-                },
-                "sha256": {
-                    "type": "string"
-                },
-                "sizeBytes": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.FileUpdateResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.FileObjectResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.FileUploadResponse": {
-            "type": "object",
-            "properties": {
-                "file": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.FileObjectResponse"
-                },
-                "quota": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.StorageQuotaResponse"
-                },
-                "reused": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessageBillingCostResponse": {
-            "type": "object",
-            "properties": {
                 "billedCurrency": {
                     "type": "string"
                 },
@@ -13213,55 +27023,107 @@ const docTemplate = `{
                 "billedUSD": {
                     "type": "number"
                 },
-                "billingMode": {
+                "billingAt": {
+                    "type": "string"
+                },
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWrite1hTokens": {
+                    "type": "integer"
+                },
+                "cacheWrite5mTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "callCount": {
+                    "type": "integer"
+                },
+                "conversationID": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "durationSeconds": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "isFreeModel": {
+                    "type": "boolean"
+                },
+                "latencyMS": {
+                    "type": "integer"
+                },
+                "modelIcon": {
+                    "type": "string"
+                },
+                "modelVendor": {
+                    "type": "string"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "platformModelName": {
                     "type": "string"
                 },
                 "pricingSnapshotJSON": {
                     "type": "string"
+                },
+                "providerProtocol": {
+                    "type": "string"
+                },
+                "reasoningTokens": {
+                    "type": "integer"
+                },
+                "routedBindingCode": {
+                    "type": "string"
+                },
+                "serviceTier": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "upstreamModelName": {
+                    "type": "string"
+                },
+                "usageDate": {
+                    "type": "string"
+                },
+                "usageSpeed": {
+                    "type": "string"
+                },
+                "userID": {
+                    "type": "integer"
                 }
             }
         },
-        "internal_transport_http_conversation.MessageFeedbackResponse": {
+        "UsageLogListResponseDoc": {
             "type": "object",
-            "properties": {
-                "messageID": {
-                    "type": "integer"
-                },
-                "messagePublicID": {
-                    "type": "string"
-                },
-                "myFeedback": {
-                    "type": "string"
-                },
-                "thumbsDownCount": {
-                    "type": "integer"
-                },
-                "thumbsUpCount": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessageFeedbackResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageFeedbackResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessageListResponseDoc": {
-            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
                     "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
                     "properties": {
                         "results": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_transport_http_conversation.MessageResponse"
+                                "$ref": "#/definitions/UsageLogResponse"
                             }
                         },
                         "total": {
@@ -13274,519 +27136,80 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_conversation.MessageProcessTraceResponse": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean"
-                },
-                "events": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_conversation.MessageTraceEventResponse"
-                    }
-                },
-                "process": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageTraceBlockResponse"
-                },
-                "promptTrace": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessagePromptTraceResponse"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "tools": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageTraceBlockResponse"
-                },
-                "upstreamThink": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageTraceBlockResponse"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessagePromptTraceBlockResponse": {
-            "type": "object",
-            "properties": {
-                "cacheable": {
-                    "type": "boolean"
-                },
-                "kind": {
-                    "type": "string"
-                },
-                "sourceCount": {
-                    "type": "integer"
-                },
-                "sourceRefs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_conversation.MessagePromptTraceSourceResponse"
-                    }
-                },
-                "title": {
-                    "type": "string"
-                },
-                "tokenEstimate": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessagePromptTraceResponse": {
-            "type": "object",
-            "properties": {
-                "blocks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_conversation.MessagePromptTraceBlockResponse"
-                    }
-                },
-                "fullMessageCount": {
-                    "type": "integer"
-                },
-                "mode": {
-                    "type": "string"
-                },
-                "promptFingerprint": {
-                    "type": "string"
-                },
-                "sentMessageCount": {
-                    "type": "integer"
-                },
-                "sentTokenEstimate": {
-                    "type": "integer"
-                },
-                "statefulDisabledReason": {
-                    "type": "string"
-                },
-                "statefulSavedMessages": {
-                    "type": "integer"
-                },
-                "statefulSavedTokens": {
-                    "type": "integer"
-                },
-                "statefulUsed": {
-                    "type": "boolean"
-                },
-                "totalTokenEstimate": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessagePromptTraceSourceResponse": {
-            "type": "object",
-            "properties": {
-                "artifactID": {
-                    "type": "integer"
-                },
-                "sourceID": {
-                    "type": "string"
-                },
-                "sourceType": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessageResponse": {
-            "type": "object",
-            "properties": {
-                "attachments": {
-                    "type": "string"
-                },
-                "billingCost": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageBillingCostResponse"
-                },
-                "branchReason": {
-                    "type": "string"
-                },
-                "cacheReadTokens": {
-                    "type": "integer"
-                },
-                "cacheWriteTokens": {
-                    "type": "integer"
-                },
-                "content": {
-                    "type": "string"
-                },
-                "contentType": {
-                    "type": "string"
-                },
-                "conversationID": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "editedAt": {
-                    "type": "string"
-                },
-                "errorCode": {
-                    "type": "string"
-                },
-                "errorMessage": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "inputTokens": {
-                    "type": "integer"
-                },
-                "latencyMS": {
-                    "type": "integer"
-                },
-                "modelIcon": {
-                    "type": "string"
-                },
-                "modelVendor": {
-                    "type": "string"
-                },
-                "myFeedback": {
-                    "type": "string"
-                },
-                "outputTokens": {
-                    "type": "integer"
-                },
-                "parentMessageID": {
-                    "type": "integer"
-                },
-                "parentPublicID": {
-                    "type": "string"
-                },
-                "platformModelName": {
-                    "type": "string"
-                },
-                "processTrace": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageProcessTraceResponse"
-                },
-                "publicID": {
-                    "type": "string"
-                },
-                "reasoningTokens": {
-                    "type": "integer"
-                },
-                "role": {
-                    "type": "string"
-                },
-                "runID": {
-                    "type": "string"
-                },
-                "sourceMessageID": {
-                    "type": "integer"
-                },
-                "sourcePublicID": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "thumbsDownCount": {
-                    "type": "integer"
-                },
-                "thumbsUpCount": {
-                    "type": "integer"
-                },
-                "tokenUsage": {
-                    "type": "integer"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "upstreamModelName": {
-                    "type": "string"
-                },
-                "userID": {
-                    "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessageResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessageTraceBlockResponse": {
-            "type": "object",
-            "properties": {
-                "contentMarkdown": {
-                    "type": "string"
-                },
-                "parentEventID": {
-                    "type": "string"
-                },
-                "payloadJSON": {
-                    "type": "string"
-                },
-                "roundID": {
-                    "type": "string"
-                },
-                "stage": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "summary": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.MessageTraceEventResponse": {
-            "type": "object",
-            "properties": {
-                "contentMarkdown": {
-                    "type": "string"
-                },
-                "endedAt": {
-                    "type": "string"
-                },
-                "eventID": {
-                    "type": "string"
-                },
-                "eventType": {
-                    "type": "string"
-                },
-                "parentEventID": {
-                    "type": "string"
-                },
-                "payloadJSON": {
-                    "type": "string"
-                },
-                "phase": {
-                    "type": "string"
-                },
-                "roundID": {
-                    "type": "string"
-                },
-                "seq": {
-                    "type": "integer"
-                },
-                "stage": {
-                    "type": "string"
-                },
-                "startedAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "summary": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.PublicSharedConversationResponse": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "defaultMessagePublicIDs": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "lastAccessedAt": {
-                    "type": "string"
-                },
-                "messages": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_conversation.PublicSharedMessageResponse"
-                    }
-                },
-                "model": {
-                    "type": "string"
-                },
-                "shareID": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.PublicSharedConversationResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.PublicSharedConversationResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.PublicSharedMessageResponse": {
-            "type": "object",
-            "properties": {
-                "attachments": {
-                    "type": "string"
-                },
-                "branchReason": {
-                    "type": "string"
-                },
-                "cacheReadTokens": {
-                    "type": "integer"
-                },
-                "cacheWriteTokens": {
-                    "type": "integer"
-                },
-                "content": {
-                    "type": "string"
-                },
-                "contentType": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "editedAt": {
-                    "type": "string"
-                },
-                "errorCode": {
-                    "type": "string"
-                },
-                "errorMessage": {
-                    "type": "string"
-                },
-                "inputTokens": {
-                    "type": "integer"
-                },
-                "latencyMS": {
-                    "type": "integer"
-                },
-                "modelIcon": {
-                    "type": "string"
-                },
-                "modelVendor": {
-                    "type": "string"
-                },
-                "outputTokens": {
-                    "type": "integer"
-                },
-                "parentPublicID": {
-                    "type": "string"
-                },
-                "platformModelName": {
-                    "type": "string"
-                },
-                "processTrace": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageProcessTraceResponse"
-                },
-                "publicID": {
-                    "type": "string"
-                },
-                "reasoningTokens": {
-                    "type": "integer"
-                },
-                "role": {
-                    "type": "string"
-                },
-                "runID": {
-                    "type": "string"
-                },
-                "sourcePublicID": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "tokenUsage": {
-                    "type": "integer"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "upstreamModelName": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.RenameConversationRequest": {
+        "UsageLogResponse": {
             "type": "object",
             "required": [
-                "title"
+                "balanceAfterNanousd",
+                "balanceAfterUSD",
+                "billedCurrency",
+                "billedNanousd",
+                "billedUSD",
+                "billingAt",
+                "cacheReadTokens",
+                "cacheWrite1hTokens",
+                "cacheWrite5mTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "conversationID",
+                "createdAt",
+                "durationSeconds",
+                "id",
+                "inputTokens",
+                "isFreeModel",
+                "latencyMS",
+                "outputTokens",
+                "platformModelName",
+                "pricingSnapshotJSON",
+                "providerProtocol",
+                "reasoningTokens",
+                "routedBindingCode",
+                "serviceTier",
+                "updatedAt",
+                "upstreamModelName",
+                "upstreamName",
+                "usageDate",
+                "usageSpeed",
+                "userDisplayName",
+                "userID",
+                "userLabel",
+                "username"
             ],
             "properties": {
-                "title": {
-                    "type": "string",
-                    "maxLength": 255
-                }
-            }
-        },
-        "internal_transport_http_conversation.ReorderConversationProjectsRequest": {
-            "type": "object",
-            "required": [
-                "projectIDs"
-            ],
-            "properties": {
-                "projectIDs": {
-                    "type": "array",
-                    "maxItems": 200,
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "internal_transport_http_conversation.RevokeConversationSharesRequest": {
-            "type": "object",
-            "properties": {
-                "conversationPublicIDs": {
-                    "type": "array",
-                    "maxItems": 1000,
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "internal_transport_http_conversation.RevokeConversationSharesResponse": {
-            "type": "object",
-            "properties": {
-                "revoked": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_conversation.RevokeConversationSharesResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.RevokeConversationSharesResponse"
+                "balanceAfterNanousd": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "x-omitempty": false
                 },
-                "errorMsg": {
+                "balanceAfterUSD": {
+                    "type": "number",
+                    "x-nullable": true,
+                    "x-omitempty": false
+                },
+                "billedCurrency": {
                     "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.RunResponse": {
-            "type": "object",
-            "properties": {
+                },
+                "billedNanousd": {
+                    "type": "integer"
+                },
+                "billedUSD": {
+                    "type": "number"
+                },
+                "billingAt": {
+                    "type": "string"
+                },
                 "cacheReadTokens": {
                     "type": "integer"
                 },
+                "cacheWrite1hTokens": {
+                    "type": "integer"
+                },
+                "cacheWrite5mTokens": {
+                    "type": "integer"
+                },
                 "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "callCount": {
                     "type": "integer"
                 },
                 "conversationID": {
@@ -13795,19 +27218,7 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
-                "endedAt": {
-                    "type": "string"
-                },
-                "endpoint": {
-                    "type": "string"
-                },
-                "errorCode": {
-                    "type": "string"
-                },
-                "errorMessage": {
-                    "type": "string"
-                },
-                "firstTokenLatencyMS": {
+                "durationSeconds": {
                     "type": "integer"
                 },
                 "id": {
@@ -13816,11 +27227,11 @@ const docTemplate = `{
                 "inputTokens": {
                     "type": "integer"
                 },
-                "modelIcon": {
-                    "type": "string"
+                "isFreeModel": {
+                    "type": "boolean"
                 },
-                "modelVendor": {
-                    "type": "string"
+                "latencyMS": {
+                    "type": "integer"
                 },
                 "outputTokens": {
                     "type": "integer"
@@ -13828,7 +27239,7 @@ const docTemplate = `{
                 "platformModelName": {
                     "type": "string"
                 },
-                "provider": {
+                "pricingSnapshotJSON": {
                     "type": "string"
                 },
                 "providerProtocol": {
@@ -13837,351 +27248,532 @@ const docTemplate = `{
                 "reasoningTokens": {
                     "type": "integer"
                 },
-                "requestID": {
-                    "type": "string"
-                },
-                "requestedModelName": {
-                    "type": "string"
-                },
                 "routedBindingCode": {
                     "type": "string"
                 },
-                "runID": {
+                "serviceTier": {
                     "type": "string"
-                },
-                "startedAt": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "taskType": {
-                    "type": "string"
-                },
-                "toolCallsCount": {
-                    "type": "integer"
-                },
-                "totalLatencyMS": {
-                    "type": "integer"
                 },
                 "updatedAt": {
                     "type": "string"
-                },
-                "upstreamID": {
-                    "type": "integer"
-                },
-                "upstreamModelID": {
-                    "type": "integer"
                 },
                 "upstreamModelName": {
                     "type": "string"
                 },
+                "upstreamName": {
+                    "type": "string"
+                },
+                "usageDate": {
+                    "type": "string"
+                },
+                "usageSpeed": {
+                    "type": "string"
+                },
+                "userDisplayName": {
+                    "type": "string"
+                },
                 "userID": {
+                    "type": "integer"
+                },
+                "userLabel": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "UsageMonthlyListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/UsageMonthlyResponse"
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "UsageMonthlyResponse": {
+            "type": "object",
+            "required": [
+                "avgLatencyMS",
+                "billedNanousd",
+                "billedUSD",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "durationSeconds",
+                "inputTokens",
+                "monthStartAt",
+                "outputTokens",
+                "reasoningTokens",
+                "recordCount",
+                "totalTokens"
+            ],
+            "properties": {
+                "avgLatencyMS": {
+                    "type": "integer"
+                },
+                "billedNanousd": {
+                    "type": "integer"
+                },
+                "billedUSD": {
+                    "type": "number"
+                },
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "callCount": {
+                    "type": "integer"
+                },
+                "durationSeconds": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "monthStartAt": {
+                    "type": "string"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "reasoningTokens": {
+                    "type": "integer"
+                },
+                "recordCount": {
+                    "type": "integer"
+                },
+                "totalTokens": {
                     "type": "integer"
                 }
             }
         },
-        "internal_transport_http_conversation.SendMessageRequest": {
+        "UsageStatisticsMetricsResponse": {
             "type": "object",
             "required": [
-                "content",
-                "contentType"
+                "avgLatencyMS",
+                "billedNanousd",
+                "billedUSD",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "inputTokens",
+                "outputTokens",
+                "reasoningTokens",
+                "recordCount",
+                "totalTokens"
             ],
             "properties": {
-                "branchReason": {
-                    "type": "string",
-                    "enum": [
-                        "default",
-                        "retry",
-                        "edit"
-                    ]
+                "avgLatencyMS": {
+                    "type": "integer"
                 },
-                "clientRunID": {
-                    "type": "string",
-                    "maxLength": 64
+                "billedNanousd": {
+                    "type": "integer"
                 },
-                "content": {
+                "billedUSD": {
+                    "type": "number"
+                },
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "callCount": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "reasoningTokens": {
+                    "type": "integer"
+                },
+                "recordCount": {
+                    "type": "integer"
+                },
+                "totalTokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "UsageStatisticsModelRankResponse": {
+            "type": "object",
+            "required": [
+                "avgLatencyMS",
+                "billedNanousd",
+                "billedUSD",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "inputTokens",
+                "outputTokens",
+                "platformModelName",
+                "reasoningTokens",
+                "recordCount",
+                "totalTokens",
+                "trend"
+            ],
+            "properties": {
+                "avgLatencyMS": {
+                    "type": "integer"
+                },
+                "billedNanousd": {
+                    "type": "integer"
+                },
+                "billedUSD": {
+                    "type": "number"
+                },
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "callCount": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "platformModelName": {
                     "type": "string"
                 },
-                "contentType": {
-                    "type": "string",
-                    "enum": [
-                        "text",
-                        "markdown",
-                        "image",
-                        "file",
-                        "mixed"
-                    ]
+                "reasoningTokens": {
+                    "type": "integer"
                 },
-                "fileIDs": {
+                "recordCount": {
+                    "type": "integer"
+                },
+                "totalTokens": {
+                    "type": "integer"
+                },
+                "trend": {
                     "type": "array",
-                    "maxItems": 20,
                     "items": {
-                        "type": "string"
+                        "$ref": "#/definitions/UsageStatisticsTrendResponse"
                     }
-                },
-                "htmlVisualColorMode": {
-                    "type": "string",
-                    "enum": [
-                        "light",
-                        "dark"
-                    ]
-                },
-                "htmlVisualPrompt": {
-                    "type": "boolean"
-                },
-                "model": {
-                    "type": "string",
-                    "maxLength": 128
-                },
-                "options": {
+                }
+            }
+        },
+        "UsageStatisticsResponse": {
+            "type": "object",
+            "required": [
+                "range",
+                "section",
+                "topModels",
+                "topUsers",
+                "totals",
+                "trend"
+            ],
+            "properties": {
+                "range": {
                     "type": "object",
-                    "additionalProperties": true
-                },
-                "parentMessagePublicID": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "selectedToolIDs": {
-                    "type": "array",
-                    "maxItems": 128,
-                    "items": {
-                        "type": "integer"
+                    "required": [
+                        "endDate",
+                        "granularity",
+                        "startDate"
+                    ],
+                    "properties": {
+                        "endDate": {
+                            "type": "string"
+                        },
+                        "granularity": {
+                            "type": "string"
+                        },
+                        "startDate": {
+                            "type": "string"
+                        }
                     }
                 },
-                "sourceMessagePublicID": {
-                    "type": "string",
-                    "maxLength": 32
-                }
-            }
-        },
-        "internal_transport_http_conversation.SendMessageResponse": {
-            "type": "object",
-            "properties": {
-                "assistantMessage": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageResponse"
+                "section": {
+                    "type": "string"
                 },
-                "userMessage": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.MessageResponse"
+                "topModels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/UsageStatisticsModelRankResponse"
+                    }
+                },
+                "topUsers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/UsageStatisticsUserRankResponse"
+                    }
+                },
+                "totals": {
+                    "$ref": "#/definitions/UsageStatisticsMetricsResponse"
+                },
+                "trend": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/UsageStatisticsTrendResponse"
+                    }
                 }
             }
         },
-        "internal_transport_http_conversation.SendMessageResponseDoc": {
+        "UsageStatisticsResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.SendMessageResponse"
+                    "$ref": "#/definitions/UsageStatisticsResponse"
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_conversation.SetConversationArchiveRequest": {
+        "UsageStatisticsTrendResponse": {
             "type": "object",
+            "required": [
+                "avgLatencyMS",
+                "billedNanousd",
+                "billedUSD",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "inputTokens",
+                "outputTokens",
+                "periodStart",
+                "reasoningTokens",
+                "recordCount",
+                "totalTokens"
+            ],
             "properties": {
-                "archived": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_conversation.SetConversationProjectRequest": {
-            "type": "object",
-            "properties": {
-                "projectID": {
-                    "type": "string",
-                    "maxLength": 32
-                }
-            }
-        },
-        "internal_transport_http_conversation.SetConversationStarRequest": {
-            "type": "object",
-            "properties": {
-                "starred": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_conversation.SetMessageFeedbackRequest": {
-            "type": "object",
-            "properties": {
-                "feedback": {
-                    "type": "string",
-                    "enum": [
-                        "up",
-                        "down"
-                    ]
-                }
-            }
-        },
-        "internal_transport_http_conversation.StorageQuotaResponse": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
+                "avgLatencyMS": {
+                    "type": "integer"
+                },
+                "billedNanousd": {
+                    "type": "integer"
+                },
+                "billedUSD": {
+                    "type": "number"
+                },
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "callCount": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "periodStart": {
                     "type": "string"
                 },
-                "id": {
+                "reasoningTokens": {
                     "type": "integer"
                 },
-                "quotaBytes": {
+                "recordCount": {
                     "type": "integer"
                 },
-                "reservedBytes": {
+                "totalTokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "UsageStatisticsUserRankResponse": {
+            "type": "object",
+            "required": [
+                "avgLatencyMS",
+                "billedNanousd",
+                "billedUSD",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "callCount",
+                "inputTokens",
+                "outputTokens",
+                "reasoningTokens",
+                "recordCount",
+                "totalTokens",
+                "trend",
+                "userDisplayName",
+                "userID",
+                "userLabel",
+                "username"
+            ],
+            "properties": {
+                "avgLatencyMS": {
                     "type": "integer"
                 },
-                "updatedAt": {
+                "billedNanousd": {
+                    "type": "integer"
+                },
+                "billedUSD": {
+                    "type": "number"
+                },
+                "cacheReadTokens": {
+                    "type": "integer"
+                },
+                "cacheWriteTokens": {
+                    "type": "integer"
+                },
+                "callCount": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "reasoningTokens": {
+                    "type": "integer"
+                },
+                "recordCount": {
+                    "type": "integer"
+                },
+                "totalTokens": {
+                    "type": "integer"
+                },
+                "trend": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/UsageStatisticsTrendResponse"
+                    }
+                },
+                "userDisplayName": {
                     "type": "string"
-                },
-                "usedBytes": {
-                    "type": "integer"
                 },
                 "userID": {
                     "type": "integer"
-                }
-            }
-        },
-        "internal_transport_http_conversation.UpdateConversationProjectRequest": {
-            "type": "object",
-            "properties": {
-                "color": {
-                    "type": "string",
-                    "maxLength": 32
                 },
-                "description": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "icon": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 80
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "active",
-                        "archived"
-                    ]
-                },
-                "systemPrompt": {
-                    "type": "string",
-                    "maxLength": 12000
-                }
-            }
-        },
-        "internal_transport_http_conversation.UpdateFileRequest": {
-            "type": "object",
-            "properties": {
-                "fileName": {
+                "userLabel": {
                     "type": "string"
                 },
-                "ragOptOut": {
-                    "type": "boolean"
+                "username": {
+                    "type": "string"
                 }
             }
         },
-        "internal_transport_http_conversation.UpdateMessageRequest": {
+        "UserAuthEventListResponseDoc": {
             "type": "object",
             "required": [
-                "content"
+                "data",
+                "errorMsg"
             ],
             "properties": {
-                "content": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_conversation.UploadFileResponseDoc": {
-            "type": "object",
-            "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_conversation.FileUploadResponse"
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/AuthEventResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
                 },
                 "errorMsg": {
                     "type": "string"
                 }
             }
         },
-        "internal_transport_http_memory.ErrorDoc": {
-            "type": "object",
-            "properties": {
-                "data": {},
-                "details": {},
-                "errorCode": {
-                    "type": "string"
-                },
-                "errorMsg": {
-                    "type": "string"
-                },
-                "requestId": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_memory.UpsertMemoryResponse": {
-            "type": "object",
-            "properties": {
-                "saved": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "internal_transport_http_memory.UpsertUserMemoryRequest": {
+        "UserDataResponse": {
             "type": "object",
             "required": [
+                "user"
+            ],
+            "properties": {
+                "user": {
+                    "$ref": "#/definitions/AdminUserResponse"
+                }
+            }
+        },
+        "UserListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "required": [
+                        "results",
+                        "total"
+                    ],
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/AdminUserResponse"
+                            }
+                        },
+                        "total": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "UserMemoryListResponseDoc": {
+            "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/UserMemoryResponse"
+                    }
+                },
+                "errorMsg": {
+                    "type": "string"
+                }
+            }
+        },
+        "UserMemoryResponse": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "id",
                 "memoryKey",
                 "scope",
+                "updatedAt",
+                "updatedBy",
+                "userID",
                 "value"
             ],
-            "properties": {
-                "memoryKey": {
-                    "type": "string",
-                    "maxLength": 128
-                },
-                "scope": {
-                    "type": "string",
-                    "enum": [
-                        "profile",
-                        "preference",
-                        "custom"
-                    ]
-                },
-                "value": {
-                    "type": "string",
-                    "maxLength": 10000
-                }
-            }
-        },
-        "internal_transport_http_memory.UpsertUserMemoryResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_transport_http_memory.UpsertMemoryResponse"
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_memory.UserMemoryListResponseDoc": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_memory.UserMemoryResponse"
-                    }
-                },
-                "errorMsg": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_memory.UserMemoryResponse": {
-            "type": "object",
             "properties": {
                 "createdAt": {
                     "type": "string"
@@ -14209,43 +27801,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_settings.PatchItem": {
-            "type": "object",
-            "required": [
-                "key",
-                "namespace"
-            ],
-            "properties": {
-                "clear": {
-                    "type": "boolean"
-                },
-                "key": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_transport_http_settings.PatchSettingsRequest": {
-            "type": "object",
-            "required": [
-                "items"
-            ],
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/internal_transport_http_settings.PatchItem"
-                    }
-                }
-            }
-        },
-        "internal_transport_http_usersettings.PatchSettingsRequest": {
+        "UserSettingsPatchSettingsRequest": {
             "type": "object",
             "required": [
                 "settings"
@@ -14259,8 +27815,11 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_usersettings.UserSettingsResponse": {
+        "UserSettingsResponse": {
             "type": "object",
+            "required": [
+                "settings"
+            ],
             "properties": {
                 "settings": {
                     "type": "object",
@@ -14270,14 +27829,120 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_usersettings.UserSettingsResponseDoc": {
+        "UserSettingsResponseDoc": {
             "type": "object",
+            "required": [
+                "data",
+                "errorMsg"
+            ],
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/internal_transport_http_usersettings.UserSettingsResponse"
+                    "$ref": "#/definitions/UserSettingsResponse"
                 },
                 "errorMsg": {
                     "type": "string"
+                }
+            }
+        },
+        "WriteKnowledgeBaseRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "sortOrder": {
+                    "type": "integer"
+                }
+            }
+        },
+        "WriteMyKnowledgeBaseRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 80
+                }
+            }
+        },
+        "WritePromptPresetRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "title",
+                "trigger"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "maxLength": 10000
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 256
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "trigger": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "WriteSkillRequest": {
+            "type": "object",
+            "required": [
+                "markdown",
+                "title",
+                "trigger"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 256
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "markdown": {
+                    "type": "string",
+                    "maxLength": 10000
+                },
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "trigger": {
+                    "type": "string",
+                    "maxLength": 64
                 }
             }
         }
@@ -14293,7 +27958,7 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "0.2.2",
+	Version:          "0.4.0",
 	Host:             "",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},

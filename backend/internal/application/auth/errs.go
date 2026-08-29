@@ -2,6 +2,8 @@ package auth
 
 import "errors"
 
+const ProviderEmailConflictActionSignInThenBind = "sign_in_then_bind"
+
 var (
 	// ErrInvalidCredentials 用户名或密码错误。
 	ErrInvalidCredentials = errors.New("invalid username or password")
@@ -29,6 +31,12 @@ var (
 	ErrDeleteSuperAdminNotAllowed = errors.New("superadmin account deletion not allowed")
 	// ErrAccountDeleteVerificationRequired 删除账号必须先完成安全验证。
 	ErrAccountDeleteVerificationRequired = errors.New("account deletion requires verification")
+	// ErrSecurityVerificationMethodUnavailable 所选安全验证方式当前不可用。
+	ErrSecurityVerificationMethodUnavailable = errors.New("verification method is unavailable")
+	// ErrSecurityVerificationEmailInvalid 用户邮箱缺失或格式非法，无法完成邮箱验证。
+	ErrSecurityVerificationEmailInvalid = errors.New("user email is invalid")
+	// ErrSecurityVerificationCodeInvalid 安全验证码错误或已过期。
+	ErrSecurityVerificationCodeInvalid = errors.New("verification code is invalid or expired")
 	// ErrInvalidRefreshToken 无效刷新令牌。
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	// ErrSessionRevoked 会话已吊销。
@@ -39,8 +47,6 @@ var (
 	ErrIdentityNotFound = errors.New("identity not found")
 	// ErrIdentityProviderDeleteConflict 表示删除身份源会让用户失去最后一种登录方式。
 	ErrIdentityProviderDeleteConflict = errors.New("identity provider delete conflict")
-	// ErrIdentityProviderLogoUnavailable 表示身份源图标不可用或不符合代理安全策略。
-	ErrIdentityProviderLogoUnavailable = errors.New("identity provider logo unavailable")
 	// ErrIdentityProviderSuperAdminDefaultRoleNotAllowed 表示非 superadmin 不允许设置 superadmin 默认角色。
 	ErrIdentityProviderSuperAdminDefaultRoleNotAllowed = errors.New("only superadmin can set superadmin default role")
 	// ErrTwoFactorSetupExpired 两步验证设置已过期。
@@ -51,6 +57,10 @@ var (
 	ErrTwoFactorSetupNotPersisted = errors.New("two factor setup not persisted")
 	// ErrTwoFactorChallengeExpired 登录二次验证挑战已过期。
 	ErrTwoFactorChallengeExpired = errors.New("two factor challenge expired")
+	// ErrPasswordResetFailed 表示密码重置失败，避免暴露邮箱或账号状态。
+	ErrPasswordResetFailed = errors.New("password reset failed")
+	// ErrProviderEmailConflict 表示第三方身份邮箱已存在但不能安全自动合并。
+	ErrProviderEmailConflict = errors.New("provider email conflict")
 )
 
 // IdentityProviderDeleteConflictError 携带身份源删除冲突的受影响用户数量。
@@ -64,4 +74,19 @@ func (e *IdentityProviderDeleteConflictError) Error() string {
 
 func (e *IdentityProviderDeleteConflictError) Unwrap() error {
 	return ErrIdentityProviderDeleteConflict
+}
+
+// ProviderEmailConflictError 携带第三方登录邮箱冲突的安全绑定引导信息。
+type ProviderEmailConflictError struct {
+	ProviderSlug string
+	Email        string
+	Action       string
+}
+
+func (e *ProviderEmailConflictError) Error() string {
+	return ErrProviderEmailConflict.Error()
+}
+
+func (e *ProviderEmailConflictError) Unwrap() error {
+	return ErrProviderEmailConflict
 }

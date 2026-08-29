@@ -1,8 +1,8 @@
 "use client";
 
-import * as React from "react";
 import { CircleHelp } from "lucide-react";
 import { useMessages, useTranslations } from "next-intl";
+import * as React from "react";
 import { toast } from "sonner";
 
 import { Cog } from "@/components/animate-ui/icons/cog";
@@ -31,13 +31,14 @@ import {
   isReservedConversationOptionKey,
   sanitizeConversationOptions,
 } from "@/features/chat/model/conversation-options";
-import { cn } from "@/lib/utils";
 import type { ModelOptionControl } from "@/features/chat/types/chat-runtime";
+import { cn } from "@/lib/utils";
 import type { ConversationOptions } from "@/shared/api/conversation.types";
 import { JsonCodeEditor } from "@/shared/components/json-code-editor";
 import type { ModelNativeToolConfig, ModelOptionPolicy, NativeToolDefinition } from "@/shared/lib/model-option-policy";
 import { isModelOptionPathFiltered, resolveModelOptionPolicyProtocol } from "@/shared/lib/model-option-policy";
 import { localizedNativeToolText } from "@/shared/lib/native-tool-i18n";
+import { nativeToolDefinitionVariantsFromConfig, nativeToolPayloadSignature } from "@/shared/lib/native-tool-payload";
 
 type EditableOptionValue = string | number | boolean | null;
 type VisualOptionKind = "boolean" | "number" | "select" | "text";
@@ -53,10 +54,11 @@ type VisualOption = {
   placeholder?: string;
   active: boolean;
   editable: boolean;
+  locked?: boolean;
   forcedFilterStatus?: ModelOptionFilterStatus;
 };
 
-type ModelOptionFilterStatus = "inactive" | "passed" | "filtered" | "unknown";
+type ModelOptionFilterStatus = "inactive" | "passed" | "filtered" | "route-dependent" | "unknown";
 
 type OptionValueEntry = {
   key: string;
@@ -65,9 +67,9 @@ type OptionValueEntry = {
 };
 
 type NativeToolVisualOption = {
-  definition: NativeToolDefinition;
+  primary: NativeToolDefinition;
+  variants: NativeToolDefinition[];
   protocols: string[];
-  protocolMatched: boolean;
 };
 
 type ChatModelConfigProps = {
@@ -75,10 +77,11 @@ type ChatModelConfigProps = {
   options: ConversationOptions;
   defaultOptions: ConversationOptions;
   optionControls: ModelOptionControl[];
+  lockedOptionPaths: string[];
   nativeToolKeys: string[];
   nativeTools: ModelNativeToolConfig[];
   modelOptionPolicy: ModelOptionPolicy | null;
-  selectedProtocol: string;
+  selectedProtocols: string[];
   selectedModelName: string;
   onOptionsChange: React.Dispatch<React.SetStateAction<ConversationOptions>>;
   onOptionsReset: (defaults?: ConversationOptions) => void;
@@ -93,6 +96,7 @@ const OPTION_LABEL_KEYS = new Set<string>([
   "budget_tokens",
   "cache_timeout",
   "candidate_count",
+  "duration",
   "effort",
   "enable_cache",
   "enable_thinking",
@@ -112,6 +116,9 @@ const OPTION_LABEL_KEYS = new Set<string>([
   "generationConfig.thinkingConfig.includeThoughts",
   "generationConfig.thinkingConfig.thinkingBudget",
   "generationConfig.thinkingConfig.thinkingLevel",
+  "generation_config.max_output_tokens",
+  "generation_config.thinking_level",
+  "generation_config.thinking_summaries",
   "generationConfig.topK",
   "logprobs",
   "max_completion_tokens",
@@ -199,6 +206,7 @@ const OPTION_ORDER = [
   "generationConfig.frequencyPenalty",
   "generationConfig.imageConfig.aspectRatio",
   "generationConfig.imageConfig.imageSize",
+  "duration",
   "size",
   "quality",
   "background",
@@ -269,6 +277,7 @@ const OPTION_ORDER = [
 const NUMBER_OPTION_KEYS = new Set([
   "budget_tokens",
   "candidate_count",
+  "duration",
   "frequency_penalty",
   "generationConfig.candidateCount",
   "generationConfig.frequencyPenalty",
@@ -295,6 +304,10 @@ const NUMBER_OPTION_KEYS = new Set([
   "top_k",
   "top_p",
 ]);
+
+const NUMBER_OPTION_PLACEHOLDERS: Record<string, string> = {
+  "generation_config.max_output_tokens": "4096",
+};
 
 const OPTION_SELECT_VALUES: Record<string, string[]> = {
   cache_timeout: ["5m", "1h"],
@@ -387,7 +400,9 @@ const PROTOCOL_LABELS: Record<string, string> = {
   fal_queue: "Queue",
   google_generate_content: "Generate Content",
   google_image_generation: "Image Generation",
+  gemini_interactions: "Interactions",
   openai_chat_completions: "Chat Completions",
+  openrouter_chat_completions: "OpenRouter Chat Completions",
   openai_image_edits: "Images Edits",
   openai_image_generations: "Images Generations",
   openai_responses: "Responses",
@@ -397,6 +412,8 @@ const PROTOCOL_LABELS: Record<string, string> = {
   stability_ai_generate: "Image Generation",
   xai_image: "Images Generations",
   xai_image_edits: "Images Edits",
+  xai_video: "Video Generations",
+  xai_video_extensions: "Video Extensions",
   xai_responses: "xAI Responses",
 };
 
@@ -486,7 +503,7 @@ function providerToolMatchesDefinition(tool: Record<string, unknown>, definition
   if (toolType) {
     return toolType === definition.type;
   }
-  return Object.keys(definition.payload ?? {}).some((key) => key !== "type" && Object.prototype.hasOwnProperty.call(tool, key));
+  return Object.keys(definition.payload ?? {}).some((key) => key !== "type" && Object.hasOwn(tool, key));
 }
 
 function nativeToolDefinitionsFromKeys(
@@ -497,56 +514,15 @@ function nativeToolDefinitionsFromKeys(
   return catalog.filter((tool) => allowedKeys.has(tool.toolKey.trim()));
 }
 
-function nativeToolConfigPayloadType(config: ModelNativeToolConfig): string {
-  return typeof config.payload.type === "string" ? config.payload.type.trim() : "";
-}
-
-function nativeToolDefinitionFromConfig(
-  config: ModelNativeToolConfig,
-  catalog: NativeToolDefinition[],
-  selectedProtocol: string,
-): NativeToolDefinition | null {
-  const key = config.key.trim();
-  const protocols = config.protocols.length > 0 ? config.protocols : (config.protocol.trim() ? [config.protocol.trim()] : []);
-  const type = config.type.trim() || nativeToolConfigPayloadType(config);
-  const policyProtocol = selectedProtocol ? resolveModelOptionPolicyProtocol(selectedProtocol) : "";
-  const matched = (key && policyProtocol && protocols.includes(policyProtocol) ? catalog.find((tool) => tool.toolKey === key && tool.protocol === policyProtocol) : undefined)
-    ?? (key && protocols.length > 0 ? catalog.find((tool) => tool.toolKey === key && protocols.includes(tool.protocol)) : undefined)
-    ?? (key && policyProtocol ? catalog.find((tool) => tool.toolKey === key && tool.protocol === policyProtocol) : undefined)
-    ?? catalog.find((tool) => tool.toolKey === key)
-    ?? (type && policyProtocol && (protocols.length === 0 || protocols.includes(policyProtocol)) ? catalog.find((tool) => tool.protocol === policyProtocol && tool.type === type) : undefined)
-    ?? (type && protocols.length > 0 ? catalog.find((tool) => protocols.includes(tool.protocol) && tool.type === type) : undefined)
-    ?? (!policyProtocol && type ? catalog.find((tool) => tool.type === type) : undefined);
-  if (!matched && !key && !type && Object.keys(config.payload).length === 0) {
-    return null;
-  }
-  return {
-    protocol: matched?.protocol || protocols[0] || selectedProtocol,
-    provider: config.provider || matched?.provider || "Provider",
-    type: type || matched?.type || key,
-    toolKey: key || matched?.toolKey || type,
-    label: config.label || matched?.label || type || key,
-    description: config.description || matched?.description || type || key,
-    payload: Object.keys(config.payload).length > 0 ? config.payload : (matched?.payload ?? {}),
-    defaultEnabled: config.defaultEnabled,
-    billable: matched?.billable ?? false,
-    billingUnit: matched?.billingUnit ?? "",
-    priceNanousd: matched?.priceNanousd ?? 0,
-    priceLabel: matched?.priceLabel ?? "",
-    riskLevel: matched?.riskLevel ?? "",
-    usageAliases: matched?.usageAliases ?? [],
-  };
-}
-
-function nativeToolDefinitionsFromConfigs(
+function nativeToolVisualOptionsFromConfigs(
   configs: ModelNativeToolConfig[],
-  legacyKeys: string[],
+  fallbackToolKeys: string[],
   catalog: NativeToolDefinition[],
-  selectedProtocol: string,
+  modelProtocols: string[],
 ): NativeToolVisualOption[] {
   const sourceConfigs = configs.length > 0
     ? configs
-    : nativeToolDefinitionsFromKeys(legacyKeys, catalog).map((tool): ModelNativeToolConfig => ({
+    : nativeToolDefinitionsFromKeys(fallbackToolKeys, catalog).map((tool): ModelNativeToolConfig => ({
       id: `${tool.protocol}:${tool.toolKey}:${tool.type}`,
       key: tool.toolKey,
       protocol: tool.protocol,
@@ -559,28 +535,40 @@ function nativeToolDefinitionsFromConfigs(
       defaultEnabled: false,
       payload: tool.payload,
     }));
-  return sourceConfigs.flatMap((config): NativeToolVisualOption[] => {
+  const visualOptions = new Map<string, NativeToolVisualOption>();
+  sourceConfigs.forEach((config) => {
     if (!config.enabled) {
-      return [];
+      return;
     }
-    const definition = nativeToolDefinitionFromConfig(config, catalog, selectedProtocol);
-    if (!definition) {
-      return [];
+    const definitions = nativeToolDefinitionVariantsFromConfig(config, catalog, modelProtocols);
+    if (definitions.length === 0) {
+      return;
     }
-    const matchingDefinitions = catalog.filter((tool) => tool.toolKey === definition.toolKey);
-    const protocols = config.protocols.length > 0
-      ? config.protocols
-      : Array.from(new Set([
-        config.protocol,
-        definition.protocol,
-        ...matchingDefinitions.map((tool) => tool.protocol).filter(Boolean),
-      ].filter(Boolean)));
-    return [{
-      definition,
-      protocols,
-      protocolMatched: !selectedProtocol || protocols.includes(resolveModelOptionPolicyProtocol(selectedProtocol)),
-    }];
+    definitions.forEach((definition) => {
+      const visualKey = definition.type.trim()
+        || definition.toolKey.trim()
+        || definition.provider.trim()
+        || `payload:${nativeToolPayloadSignature(definition.payload)}`;
+      const existing = visualOptions.get(visualKey);
+      if (!existing) {
+        visualOptions.set(visualKey, {
+          primary: definition,
+          variants: [definition],
+          protocols: [definition.protocol].filter(Boolean),
+        });
+        return;
+      }
+      const variantSignature = `${resolveModelOptionPolicyProtocol(definition.protocol)}:${nativeToolPayloadSignature(definition.payload)}`;
+      const hasVariant = existing.variants.some((candidate) =>
+        `${resolveModelOptionPolicyProtocol(candidate.protocol)}:${nativeToolPayloadSignature(candidate.payload)}` === variantSignature
+      );
+      if (!hasVariant) {
+        existing.variants.push(definition);
+      }
+      existing.protocols = Array.from(new Set([...existing.protocols, definition.protocol].filter(Boolean)));
+    });
   });
+  return Array.from(visualOptions.values());
 }
 
 function providerToolMatchesAnyDefinition(
@@ -606,23 +594,35 @@ function ignoredProviderToolValues(
   return value.filter((item) => !providerToolMatchesAnyDefinition(item, definitions));
 }
 
-function hasProviderTool(options: ConversationOptions, definition: NativeToolDefinition): boolean {
-  return providerToolObjectsFromOptions(options).some((tool) => providerToolMatchesDefinition(tool, definition));
+function hasProviderTool(options: ConversationOptions, definitions: NativeToolDefinition[]): boolean {
+  return providerToolObjectsFromOptions(options).some((tool) =>
+    definitions.some((definition) => providerToolMatchesDefinition(tool, definition))
+  );
 }
 
 function setProviderToolEnabled(
   options: ConversationOptions,
-  toolOption: NativeToolDefinition,
+  definitions: NativeToolDefinition[],
   enabled: boolean,
 ): ConversationOptions {
-  const type = toolOption.type;
   const tools = providerToolObjectsFromOptions(options);
-  const hasTool = tools.some((tool) => providerToolMatchesDefinition(tool, toolOption));
-  const nextTools = enabled
-    ? hasTool
-      ? tools
-      : [...tools, { ...(toolOption.payload ?? { type }) }]
-    : tools.filter((tool) => !providerToolMatchesDefinition(tool, toolOption));
+  const matchesTool = (tool: Record<string, unknown>) =>
+    definitions.some((definition) => providerToolMatchesDefinition(tool, definition));
+  const nextTools = tools.filter((tool) => !matchesTool(tool));
+  if (enabled) {
+    const seenPayloads = new Set<string>();
+    for (const definition of definitions) {
+      const payload = Object.keys(definition.payload).length > 0
+        ? definition.payload
+        : { type: definition.type };
+      const signature = nativeToolPayloadSignature(payload);
+      if (seenPayloads.has(signature)) {
+        continue;
+      }
+      seenPayloads.add(signature);
+      nextTools.push({ ...payload });
+    }
+  }
 
   if (nextTools.length === 0) {
     const { tools: _tools, ...rest } = options;
@@ -636,26 +636,30 @@ function optionPathKey(path: string[]): string {
   return path.join(".");
 }
 
-function isIgnoredOptionPath(
+function optionFilterStatusForPath(
   policy: ModelOptionPolicy | null,
-  protocol: string,
+  protocols: string[],
   key: string,
   path: string[],
-): boolean {
+): ModelOptionFilterStatus {
   if (isReservedConversationOptionKey(path[0] ?? "")) {
-    return true;
+    return "filtered";
   }
-  return Boolean(policy && isModelOptionPathFiltered({ policy, protocol, path: key }));
+  return resolveModelOptionFilterStatus(policy, protocols, key);
 }
 
-function ignoredVisualOption(entry: OptionValueEntry, value: unknown): VisualOption {
+function policyLimitedVisualOption(
+  entry: OptionValueEntry,
+  value: unknown,
+  status: "filtered" | "route-dependent",
+): VisualOption {
   return {
     key: entry.key,
     path: entry.path,
     value,
     active: true,
     editable: false,
-    forcedFilterStatus: "filtered",
+    forcedFilterStatus: status,
   };
 }
 
@@ -673,7 +677,7 @@ function getOptionAtPath(options: ConversationOptions, path: string[]): unknown 
 function hasOptionAtPath(options: ConversationOptions, path: string[]): boolean {
   let current: unknown = options;
   for (const segment of path) {
-    if (!isPlainOptionObject(current) || !Object.prototype.hasOwnProperty.call(current, segment)) {
+    if (!isPlainOptionObject(current) || !Object.hasOwn(current, segment)) {
       return false;
     }
     current = current[segment];
@@ -696,10 +700,28 @@ function setOptionAtPath(options: ConversationOptions, path: string[], value: un
   };
 }
 
+function applyLockedDefaultOptions(
+  options: ConversationOptions,
+  defaults: ConversationOptions,
+  lockedPaths: string[],
+): ConversationOptions {
+  if (lockedPaths.length === 0) {
+    return options;
+  }
+  return lockedPaths.reduce((nextOptions, key) => {
+    const path = optionPathFromControl(key);
+    if (path.length === 0) {
+      return nextOptions;
+    }
+    const defaultValue = getOptionAtPath(defaults, path);
+    return defaultValue === undefined ? nextOptions : setOptionAtPath(nextOptions, path, defaultValue);
+  }, options);
+}
+
 function visualOptionsFromOptions(
   options: ConversationOptions,
   policy: ModelOptionPolicy | null,
-  protocol: string,
+  protocols: string[],
   nativeToolDefinitions: NativeToolDefinition[],
 ): VisualOption[] {
   const nestedOptions = NESTED_VISUAL_OPTION_PATHS.flatMap((path): VisualOption[] => {
@@ -730,12 +752,13 @@ function visualOptionsFromOptions(
     }
     if (entry.key === "tools") {
       const ignoredTools = ignoredProviderToolValues(entry.value, nativeToolDefinitions);
-      return ignoredTools.length > 0 ? [ignoredVisualOption(entry, ignoredTools)] : [];
+      return ignoredTools.length > 0 ? [policyLimitedVisualOption(entry, ignoredTools, "filtered")] : [];
     }
-    if (!isIgnoredOptionPath(policy, protocol, entry.key, entry.path)) {
+    const status = optionFilterStatusForPath(policy, protocols, entry.key, entry.path);
+    if (status !== "filtered" && status !== "route-dependent") {
       return [];
     }
-    return [ignoredVisualOption(entry, entry.value)];
+    return [policyLimitedVisualOption(entry, entry.value, status)];
   });
   return [...editableOptions, ...ignoredOptions]
     .filter((item, index, items) => items.findIndex((candidate) => candidate.key === item.key) === index)
@@ -777,6 +800,7 @@ function resolveControlKind(control: ModelOptionControl): VisualOptionKind | und
 function visualOptionsFromControls(
   controls: ModelOptionControl[],
   options: ConversationOptions,
+  defaultOptions: ConversationOptions = {},
 ): VisualOption[] {
   return controls.flatMap((control): VisualOption[] => {
     const path = optionPathFromControl(control.path);
@@ -784,8 +808,11 @@ function visualOptionsFromControls(
       return [];
     }
     const key = optionPathKey(path);
-    const value = resolveControlEditableValue(options, path);
-    const active = hasOptionAtPath(options, path);
+    const hasLockedDefault = Boolean(control.locked && hasOptionAtPath(defaultOptions, path));
+    const value = hasLockedDefault
+      ? resolveControlEditableValue(defaultOptions, path)
+      : resolveControlEditableValue(options, path);
+    const active = hasOptionAtPath(options, path) || hasLockedDefault;
     const selectValues = normalizeControlSelectValues(control.options);
     return [{
       key,
@@ -797,7 +824,8 @@ function visualOptionsFromControls(
       kind: resolveControlKind(control),
       selectValues,
       placeholder: control.placeholder,
-      editable: true,
+      editable: !control.locked,
+      locked: control.locked,
     }];
   });
 }
@@ -807,13 +835,13 @@ function hasVisualConfigurationContent({
   optionControls,
   options,
   policy,
-  protocol,
+  protocols,
 }: {
   nativeToolDefinitions: NativeToolDefinition[];
   optionControls: ModelOptionControl[];
   options: ConversationOptions;
   policy: ModelOptionPolicy | null;
-  protocol: string;
+  protocols: string[];
 }): boolean {
   if (nativeToolDefinitions.length > 0) {
     return true;
@@ -823,7 +851,7 @@ function hasVisualConfigurationContent({
     return true;
   }
   const configuredKeys = new Set(configuredOptions.map((item) => item.key));
-  return visualOptionsFromOptions(options, policy, protocol, nativeToolDefinitions)
+  return visualOptionsFromOptions(options, policy, protocols, nativeToolDefinitions)
     .some((item) => !configuredKeys.has(item.key));
 }
 
@@ -877,15 +905,53 @@ function resolveSelectValues(key: string, configuredValues?: string[]): string[]
   return Array.from(new Set((sourceValues ?? []).map((item) => item.trim()).filter(Boolean)));
 }
 
+function resolveSelectOptionValue(key: string, value: string, selectValues: string[]): string | number {
+  if (NUMBER_OPTION_KEYS.has(key) && selectValues.every((item) => typeof parseVisualNumberInput(item) === "number")) {
+    const parsed = parseVisualNumberInput(value);
+    if (typeof parsed === "number") {
+      return parsed;
+    }
+  }
+  return value;
+}
+
 function resolveModelOptionFilterStatus(
   policy: ModelOptionPolicy | null,
-  protocol: string,
+  protocols: string[],
   path: string,
 ): ModelOptionFilterStatus {
   if (!policy) {
     return "unknown";
   }
-  return isModelOptionPathFiltered({ policy, protocol, path }) ? "filtered" : "passed";
+  const policyProtocols = Array.from(new Set(protocols.map(resolveModelOptionPolicyProtocol).filter(Boolean)));
+  if (policyProtocols.length === 0) {
+    return isModelOptionPathFiltered({ policy, protocol: "", path }) ? "filtered" : "passed";
+  }
+  const filteredCount = policyProtocols.filter((protocol) =>
+    isModelOptionPathFiltered({ policy, protocol, path })
+  ).length;
+  if (filteredCount === 0) {
+    return "passed";
+  }
+  return filteredCount === policyProtocols.length ? "filtered" : "route-dependent";
+}
+
+function resolveNativeToolRouteStatus(modelProtocols: string[], toolProtocols: string[]): ModelOptionFilterStatus {
+  const modelProtocolSet = new Set(modelProtocols.map(resolveModelOptionPolicyProtocol).filter(Boolean));
+  const toolProtocolSet = new Set(toolProtocols.map(resolveModelOptionPolicyProtocol).filter(Boolean));
+  if (modelProtocolSet.size === 0 || toolProtocolSet.size === 0) {
+    return "passed";
+  }
+  let matchedCount = 0;
+  for (const protocol of modelProtocolSet) {
+    if (toolProtocolSet.has(protocol)) {
+      matchedCount++;
+    }
+  }
+  if (matchedCount === 0) {
+    return "filtered";
+  }
+  return matchedCount === modelProtocolSet.size ? "passed" : "route-dependent";
 }
 
 function ModelOptionFilterBadge({
@@ -893,11 +959,13 @@ function ModelOptionFilterBadge({
   inactiveLabel,
   ignoredLabel,
   passedLabel,
+  routeDependentLabel,
 }: {
   status: ModelOptionFilterStatus;
   inactiveLabel: string;
   ignoredLabel: string;
   passedLabel: string;
+  routeDependentLabel: string;
 }) {
   if (status === "unknown") {
     return null;
@@ -906,9 +974,16 @@ function ModelOptionFilterBadge({
     <span
       data-filtered={status === "filtered"}
       data-inactive={status === "inactive"}
-      className="shrink-0 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] leading-none text-emerald-700 data-[filtered=true]:bg-muted data-[filtered=true]:text-muted-foreground data-[inactive=true]:bg-muted data-[inactive=true]:text-muted-foreground"
+      data-route-dependent={status === "route-dependent"}
+      className="shrink-0 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] leading-none text-emerald-700 data-[filtered=true]:bg-muted data-[filtered=true]:text-muted-foreground data-[inactive=true]:bg-muted data-[inactive=true]:text-muted-foreground data-[route-dependent=true]:bg-amber-500/10 data-[route-dependent=true]:text-amber-700"
     >
-      {status === "inactive" ? inactiveLabel : status === "filtered" ? ignoredLabel : passedLabel}
+      {status === "inactive"
+        ? inactiveLabel
+        : status === "filtered"
+          ? ignoredLabel
+          : status === "route-dependent"
+            ? routeDependentLabel
+            : passedLabel}
     </span>
   );
 }
@@ -956,10 +1031,11 @@ export function ChatModelConfig({
   options,
   defaultOptions,
   optionControls,
+  lockedOptionPaths,
   nativeToolKeys,
   nativeTools,
   modelOptionPolicy,
-  selectedProtocol,
+  selectedProtocols,
   selectedModelName,
   onOptionsChange,
   onOptionsReset,
@@ -979,33 +1055,35 @@ export function ChatModelConfig({
   const [restoredDefaultOptions, setRestoredDefaultOptions] = React.useState<ConversationOptions | null>(null);
   const optionsObjectRef = React.useRef<ConversationOptions>({});
   const effectiveDefaultOptions = restoredDefaultOptions ?? defaultOptions;
-  const selectedProtocolLabel = selectedProtocol ? resolveProtocolLabel(selectedProtocol) : "";
+  const modelProtocolLabels = selectedProtocols.map(resolveProtocolLabel).join(" / ");
   const nativeToolVisualOptions = React.useMemo(
-    () => nativeToolDefinitionsFromConfigs(nativeTools, nativeToolKeys, modelOptionPolicy?.nativeTools ?? [], selectedProtocol),
-    [modelOptionPolicy?.nativeTools, nativeToolKeys, nativeTools, selectedProtocol],
+    () => nativeToolVisualOptionsFromConfigs(nativeTools, nativeToolKeys, modelOptionPolicy?.nativeTools ?? [], selectedProtocols),
+    [modelOptionPolicy?.nativeTools, nativeToolKeys, nativeTools, selectedProtocols],
   );
   const nativeToolDefinitions = React.useMemo(
-    () => nativeToolVisualOptions.map((item) => item.definition),
+    () => nativeToolVisualOptions.flatMap((item) => item.variants),
     [nativeToolVisualOptions],
   );
   const configuredOptions = React.useMemo(
-    () => visualOptionsFromControls(optionControls, optionsObject),
-    [optionControls, optionsObject],
+    () => visualOptionsFromControls(optionControls, optionsObject, effectiveDefaultOptions),
+    [effectiveDefaultOptions, optionControls, optionsObject],
   );
   const configuredOptionKeys = React.useMemo(
     () => new Set(configuredOptions.map((item) => item.key)),
     [configuredOptions],
   );
   const editableOptions = React.useMemo(
-    () => visualOptionsFromOptions(optionsObject, modelOptionPolicy, selectedProtocol, nativeToolDefinitions)
+    () => visualOptionsFromOptions(optionsObject, modelOptionPolicy, selectedProtocols, nativeToolDefinitions)
       .filter((item) => !configuredOptionKeys.has(item.key)),
-    [configuredOptionKeys, modelOptionPolicy, nativeToolDefinitions, optionsObject, selectedProtocol],
+    [configuredOptionKeys, modelOptionPolicy, nativeToolDefinitions, optionsObject, selectedProtocols],
   );
   const nativeToolGroup = React.useMemo(() => {
     if (nativeToolVisualOptions.length === 0) {
       return null;
     }
-    const providers = Array.from(new Set(nativeToolVisualOptions.map((item) => item.definition.provider).filter(Boolean)));
+    const providers = Array.from(new Set(
+      nativeToolVisualOptions.flatMap((item) => item.variants.map((variant) => variant.provider).filter(Boolean)),
+    ));
     const provider = providers.length === 1 ? providers[0] : "";
     return {
       title: provider ? resolveNativeToolGroupTitle(provider, provider, tComposer) : tComposer("nativeTools.official"),
@@ -1016,6 +1094,7 @@ export function ChatModelConfig({
     () => [...configuredOptions, ...editableOptions],
     [configuredOptions, editableOptions],
   );
+  const lockedOptionPathSet = React.useMemo(() => new Set(lockedOptionPaths), [lockedOptionPaths]);
   const hasRecognizedOptions = Boolean(nativeToolGroup) || visibleOptions.length > 0;
 
   React.useEffect(() => {
@@ -1023,13 +1102,17 @@ export function ChatModelConfig({
   }, [optionsObject]);
 
   const openOptionsDialog = React.useCallback(() => {
-    const sanitized = sanitizeConversationOptions(options);
+    const sanitized = applyLockedDefaultOptions(
+      sanitizeConversationOptions(options),
+      effectiveDefaultOptions,
+      lockedOptionPaths,
+    );
     const hasVisualContent = hasVisualConfigurationContent({
       nativeToolDefinitions,
       optionControls,
       options: sanitized,
       policy: modelOptionPolicy,
-      protocol: selectedProtocol,
+      protocols: selectedProtocols,
     });
     optionsObjectRef.current = sanitized;
     setOptionsObject(sanitized);
@@ -1037,22 +1120,30 @@ export function ChatModelConfig({
     setMobileView(hasVisualContent ? "visual" : "json");
     setRestoredDefaultOptions(null);
     setDialogOpen(true);
-  }, [modelOptionPolicy, nativeToolDefinitions, optionControls, options, selectedProtocol]);
+  }, [effectiveDefaultOptions, lockedOptionPaths, modelOptionPolicy, nativeToolDefinitions, optionControls, options, selectedProtocols]);
 
   const replaceOptionsDraft = React.useCallback((next: ConversationOptions) => {
-    const sanitized = sanitizeConversationOptions(next);
+    const sanitized = applyLockedDefaultOptions(
+      sanitizeConversationOptions(next),
+      effectiveDefaultOptions,
+      lockedOptionPaths,
+    );
     optionsObjectRef.current = sanitized;
     setOptionsObject(sanitized);
     setOptionsDraft(stringifyOptions(sanitized));
-  }, []);
+  }, [effectiveDefaultOptions, lockedOptionPaths]);
 
   const replaceRawOptionsDraft = React.useCallback((next: ConversationOptions) => {
     const parsed = parseOptionsDraft(stringifyOptions(next));
-    const nextOptions = parsed.rawOptions ?? next;
+    const nextOptions = applyLockedDefaultOptions(
+      parsed.rawOptions ?? next,
+      effectiveDefaultOptions,
+      lockedOptionPaths,
+    );
     optionsObjectRef.current = nextOptions;
     setOptionsObject(nextOptions);
-    setOptionsDraft(stringifyOptions(next));
-  }, []);
+    setOptionsDraft(stringifyOptions(nextOptions));
+  }, [effectiveDefaultOptions, lockedOptionPaths]);
 
   const updateOptionValue = React.useCallback(
     (path: string[], value: unknown) => {
@@ -1062,8 +1153,8 @@ export function ChatModelConfig({
   );
 
   const updateProviderTool = React.useCallback(
-    (tool: NativeToolDefinition, enabled: boolean) => {
-      replaceRawOptionsDraft(setProviderToolEnabled(optionsObjectRef.current, tool, enabled));
+    (definitions: NativeToolDefinition[], enabled: boolean) => {
+      replaceRawOptionsDraft(setProviderToolEnabled(optionsObjectRef.current, definitions, enabled));
     },
     [replaceRawOptionsDraft],
   );
@@ -1073,10 +1164,11 @@ export function ChatModelConfig({
 
     const parsed = parseOptionsDraft(value);
     if (parsed.rawOptions && parsed.options) {
-      optionsObjectRef.current = parsed.rawOptions;
-      setOptionsObject(parsed.rawOptions);
+      const nextOptions = applyLockedDefaultOptions(parsed.rawOptions, effectiveDefaultOptions, lockedOptionPaths);
+      optionsObjectRef.current = nextOptions;
+      setOptionsObject(nextOptions);
     }
-  }, []);
+  }, [effectiveDefaultOptions, lockedOptionPaths]);
 
   const handleRestoreDefaultOptions = React.useCallback(async () => {
     if (defaultRestorePending) {
@@ -1106,14 +1198,24 @@ export function ChatModelConfig({
       toast.error(tComposer("saveFailed"));
       return;
     }
-    if (JSON.stringify(parsed.options) === JSON.stringify(effectiveDefaultOptions)) {
+    const nextOptions = applyLockedDefaultOptions(
+      parsed.options,
+      effectiveDefaultOptions,
+      lockedOptionPaths,
+    );
+    if (JSON.stringify(nextOptions) !== JSON.stringify(parsed.options)) {
+      setOptionsDraft(stringifyOptions(nextOptions));
+      setOptionsObject(nextOptions);
+      optionsObjectRef.current = nextOptions;
+    }
+    if (JSON.stringify(nextOptions) === JSON.stringify(effectiveDefaultOptions)) {
       onOptionsReset(effectiveDefaultOptions);
       setDialogOpen(false);
       return;
     }
-    onOptionsChange(parsed.options);
+    onOptionsChange(nextOptions);
     setDialogOpen(false);
-  }, [effectiveDefaultOptions, onOptionsChange, onOptionsReset, optionsDraft, tComposer]);
+  }, [effectiveDefaultOptions, lockedOptionPaths, onOptionsChange, onOptionsReset, optionsDraft, tComposer]);
 
   const renderOptionsViewToggle = () => (
     <Tabs
@@ -1134,12 +1236,12 @@ export function ChatModelConfig({
         <div className="flex min-w-0 items-center gap-2">
           <p className="shrink-0 text-xs text-muted-foreground">{tComposer("jsonConfig")}</p>
         </div>
-        {selectedProtocolLabel ? (
+        {modelProtocolLabels ? (
           <span
             className="max-w-[70%] shrink-0 truncate rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] leading-none text-muted-foreground"
-            title={selectedProtocol}
+            title={selectedProtocols.join(", ")}
           >
-            {selectedProtocolLabel}
+            {modelProtocolLabels}
           </span>
         ) : null}
       </div>
@@ -1203,7 +1305,12 @@ export function ChatModelConfig({
             </button>
           </TooltipTrigger>
           <TooltipContent side="left" align="end" className="max-w-64">
-            <p>{tComposer("ignoredHelp")}</p>
+            <div className="space-y-1.5 text-xs">
+              <p>{tComposer("notEnabledHelp")}</p>
+              <p>{tComposer("ignoredHelp")}</p>
+              <p>{tComposer("routeDependentHelp")}</p>
+              <p>{tComposer("lockedHelp")}</p>
+            </div>
           </TooltipContent>
         </Tooltip>
       </div>
@@ -1217,21 +1324,23 @@ export function ChatModelConfig({
                 </div>
                 <div className="space-y-1">
                   {nativeToolGroup.options.map((toolOption) => {
-                    const tool = toolOption.definition;
-                    const checked = hasProviderTool(optionsObject, tool);
+                    const tool = toolOption.primary;
+                    const checked = hasProviderTool(optionsObject, toolOption.variants);
                     const label = resolveNativeToolLabel(tool, messages);
                     const description = resolveNativeToolDescription(tool, messages);
                     const typeLabel = tool.type.trim();
                     const protocolLabels = toolOption.protocols.map(resolveProtocolLabel).join(" / ");
-                    const status = checked ? "passed" : "inactive";
+                    const status = checked
+                      ? resolveNativeToolRouteStatus(selectedProtocols, toolOption.protocols)
+                      : "inactive";
                     return (
                       <label
-                        key={`${tool.protocol}:${tool.toolKey}:${tool.type}`}
+                        key={tool.toolKey || `${tool.provider}:${tool.type}`}
                         className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50"
                       >
                         <Checkbox
                           checked={checked}
-                          onCheckedChange={(nextChecked) => updateProviderTool(tool, nextChecked === true)}
+                          onCheckedChange={(nextChecked) => updateProviderTool(toolOption.variants, nextChecked === true)}
                         />
                         <span className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] text-xs">
                           <span className="min-w-0 truncate text-foreground/80">
@@ -1262,24 +1371,22 @@ export function ChatModelConfig({
                                 inactiveLabel={tComposer("notEnabled")}
                                 ignoredLabel={tComposer("ignored")}
                                 passedLabel={tComposer("willPass")}
+                                routeDependentLabel={tComposer("routeDependent")}
                               />
-                              {!toolOption.protocolMatched ? (
-                                <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] leading-none text-amber-700">
-                                  {tComposer("nativeToolMayNotApply")}
-                                </span>
-                              ) : null}
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="left" align="end" className="max-w-72 text-xs">
                             <p>{description}</p>
                             <p className="mt-1 text-muted-foreground">
-                              {tComposer("currentProtocol")}：{selectedProtocolLabel || selectedProtocol || "-"}
+                              {tComposer("modelProtocols")}：{modelProtocolLabels || "-"}
                             </p>
                             <p className="text-muted-foreground">
                               {tComposer("toolProtocols")}：{protocolLabels || "-"}
                             </p>
-                            {!toolOption.protocolMatched ? (
-                              <p className="mt-1 text-amber-700">{tComposer("nativeToolMayNotApplyHelp")}</p>
+                            {status === "route-dependent" ? (
+                              <p className="mt-1 text-amber-700">{tComposer("routeDependentHelp")}</p>
+                            ) : status === "filtered" ? (
+                              <p className="mt-1 text-muted-foreground">{tComposer("ignoredHelp")}</p>
                             ) : null}
                           </TooltipContent>
                         </Tooltip>
@@ -1289,7 +1396,7 @@ export function ChatModelConfig({
                 </div>
               </div>
             ) : null}
-            {visibleOptions.map(({ key, path, value, active, editable, forcedFilterStatus, label, description, kind: configuredKind, selectValues: configuredSelectValues, placeholder }) => {
+            {visibleOptions.map(({ key, path, value, active, editable, locked, forcedFilterStatus, label, description, kind: configuredKind, selectValues: configuredSelectValues, placeholder }) => {
               const editableValue = isEditableOptionValue(value) ? value : null;
               const selectValues = resolveSelectValues(key, configuredSelectValues);
               const kind = configuredKind === "select" && selectValues.length === 0
@@ -1298,9 +1405,11 @@ export function ChatModelConfig({
               const title = resolveOptionTitle(key, label, tOptionLabels);
               const optionDescription = resolveOptionDescription(key, description, tOptionDescriptions);
               const detailText = optionDescription || key;
-              const filterStatus = forcedFilterStatus ?? (active ? resolveModelOptionFilterStatus(modelOptionPolicy, selectedProtocol, key) : "inactive");
+              const filterStatus = forcedFilterStatus ?? (active ? resolveModelOptionFilterStatus(modelOptionPolicy, selectedProtocols, key) : "inactive");
               const ignored = filterStatus === "filtered";
-              const valueText = editable ? "" : formatVisualOptionValue(value);
+              const lockedByPath = locked || lockedOptionPathSet.has(key);
+              const editableInput = editable && !lockedByPath;
+              const valueText = editableInput ? "" : formatVisualOptionValue(value);
 
               return (
                 <div
@@ -1321,10 +1430,11 @@ export function ChatModelConfig({
                         {title}
                       </p>
                       <ModelOptionFilterBadge
-                        status={filterStatus}
+                        status={lockedByPath && filterStatus === "inactive" ? "passed" : filterStatus}
                         inactiveLabel={tComposer("notEnabled")}
                         ignoredLabel={tComposer("ignored")}
-                        passedLabel={tComposer("willPass")}
+                        passedLabel={lockedByPath ? tComposer("locked") : tComposer("willPass")}
+                        routeDependentLabel={tComposer("routeDependent")}
                       />
                     </div>
                     {detailText ? (
@@ -1336,9 +1446,12 @@ export function ChatModelConfig({
                       </p>
                     ) : null}
                   </div>
-                  {!editable ? (
+                  {!editableInput ? (
                     <code
-                      className="block max-w-full truncate justify-self-start rounded-md bg-muted/60 px-2 py-1 font-mono text-[11px] leading-none text-muted-foreground line-through sm:justify-self-end"
+                      className={cn(
+                        "block max-w-full truncate justify-self-start rounded-md bg-muted/60 px-2 py-1 font-mono text-[11px] leading-none text-muted-foreground sm:justify-self-end",
+                        ignored && "line-through",
+                      )}
                       title={valueText}
                     >
                       {valueText}
@@ -1358,8 +1471,10 @@ export function ChatModelConfig({
                     </Select>
                   ) : kind === "select" ? (
                     <Select
-                      value={typeof editableValue === "string" && editableValue.trim() ? editableValue : undefined}
-                      onValueChange={(nextValue) => updateOptionValue(path, nextValue)}
+                      value={(typeof editableValue === "string" || typeof editableValue === "number") && String(editableValue).trim()
+                        ? String(editableValue)
+                        : undefined}
+                      onValueChange={(nextValue) => updateOptionValue(path, resolveSelectOptionValue(key, nextValue, selectValues))}
                     >
                       <SelectTrigger size="sm">
                         <SelectValue placeholder={placeholder ?? key} />
@@ -1376,7 +1491,7 @@ export function ChatModelConfig({
                     <Input
                       value={editableValue === null ? "" : String(editableValue)}
                       inputMode={kind === "number" ? "decimal" : undefined}
-                      placeholder={placeholder ?? (kind === "number" ? "0.7" : key)}
+                      placeholder={placeholder ?? (kind === "number" ? (NUMBER_OPTION_PLACEHOLDERS[key] ?? "0.7") : key)}
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         if (kind === "number") {
@@ -1406,24 +1521,30 @@ export function ChatModelConfig({
 
   return (
     <>
-      <InputGroupButton
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="size-7 rounded-md text-muted-foreground hover:text-foreground sm:size-8"
-        disabled={disabled}
-        onClick={openOptionsDialog}
-        aria-label={tComposer("modelOptions")}
-        title={tComposer("modelOptions")}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        <Cog
-          size={20}
-          strokeWidth={1.4}
-          animate={hovered ? "default" : undefined}
-        />
-      </InputGroupButton>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <InputGroupButton
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="size-7 rounded-md text-muted-foreground hover:text-foreground sm:size-8"
+            disabled={disabled}
+            onClick={openOptionsDialog}
+            aria-label={tComposer("modelOptions")}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+          >
+            <Cog
+              size={20}
+              strokeWidth={1.4}
+              animate={hovered ? "default" : false}
+            />
+          </InputGroupButton>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {tComposer("modelOptions")}
+        </TooltipContent>
+      </Tooltip>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent

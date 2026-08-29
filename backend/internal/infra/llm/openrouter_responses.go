@@ -66,7 +66,7 @@ func buildOpenRouterResponsesRequestBody(
 	if streamOptions := responsesStreamOptions(providerStreamOptions); stream && len(streamOptions) > 0 {
 		payload["stream_options"] = streamOptions
 	}
-	applyProviderOptions(payload, input.Options, responsesProtectedProviderOptionKeys(AdapterOpenRouterResponses)...)
+	applyProviderOptions(payload, input.Options, responsesProtectedProviderOptionKeys(AdapterOpenRouterResponses, false)...)
 	if include := responseIncludeValues(input.Options); len(include) > 0 {
 		appendResponseInclude(payload, include...)
 	}
@@ -113,7 +113,7 @@ func buildOpenRouterResponsesAPIInput(messages []Message) []map[string]interface
 		item := map[string]interface{}{
 			"type":    "message",
 			"role":    role,
-			"content": buildResponsesAPIContent(msg),
+			"content": buildResponsesAPIContent(msg, nil),
 		}
 		if role == "assistant" {
 			item["id"] = openRouterResponsesItemID("msg_deeix", index, msg.Content)

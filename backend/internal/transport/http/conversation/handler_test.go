@@ -1,29 +1,29 @@
 package conversation
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	appbilling "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/billing"
 	appconversation "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/conversation"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/response"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
 )
 
-func TestSafeFileContentTypeDowngradesActiveContent(t *testing.T) {
-	tests := []struct {
-		contentType string
-		want        string
-	}{
-		{contentType: "text/html; charset=utf-8", want: "text/plain; charset=utf-8"},
-		{contentType: "application/javascript", want: "text/plain; charset=utf-8"},
-		{contentType: "image/svg+xml", want: "text/plain; charset=utf-8"},
-		{contentType: "application/pdf", want: "application/pdf"},
+func TestMediaStreamErrorPayloadPreservesPersistedResult(t *testing.T) {
+	result := &appconversation.SendMessageResult{}
+	payload := mediaStreamErrorPayload(errors.New("store generated video"), result)
+	if payload["type"] != "error" {
+		t.Fatalf("payload type = %#v, want error", payload["type"])
 	}
-	for _, tt := range tests {
-		if got := safeFileContentType(tt.contentType); got != tt.want {
-			t.Fatalf("safeFileContentType(%q) = %q, want %q", tt.contentType, got, tt.want)
-		}
+	if _, ok := payload["data"]; !ok {
+		t.Fatalf("media error payload lost persisted result: %#v", payload)
 	}
 }
 
@@ -44,11 +44,28 @@ func TestMessagePageParamsAllowsRestoreWindow(t *testing.T) {
 	}
 }
 
-func TestBuildContentDispositionDefaultsToAttachment(t *testing.T) {
-	got := buildContentDisposition("report.html", false)
-	want := `attachment; filename="report.html"; filename*=UTF-8''report.html`
-	if got != want {
-		t.Fatalf("unexpected disposition: got %q want %q", got, want)
+func TestSearchConversationsRejectsLongQueryWithStableCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/conversations/search?q="+strings.Repeat("a", maxConversationSearchQueryRunes+1),
+		nil,
+	)
+	c.Set(middleware.ContextKeyUserID, uint(1))
+
+	(&Handler{}).SearchConversations(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	var payload response.Envelope
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.ErrorCode != response.CodeRequestInvalidQuery {
+		t.Fatalf("errorCode = %q, want %q", payload.ErrorCode, response.CodeRequestInvalidQuery)
 	}
 }
 
@@ -99,6 +116,42 @@ func TestMapStreamErrorDoesNotExposeUpstreamUnauthorizedAsPlatformUnauthorized(t
 	}
 	if mapped.Code == "auth.unauthorized" || mapped.Code == "auth.invalid_token" || mapped.Code == "auth.session_invalid" {
 		t.Fatalf("expected upstream 401 to avoid platform auth codes, got %#v", mapped)
+	}
+}
+
+func TestMapStreamErrorPreservesUpstreamRateLimit(t *testing.T) {
+	err := errors.Join(appconversation.ErrUpstreamRequestFailed, &llm.UpstreamError{StatusCode: http.StatusTooManyRequests})
+
+	mapped := mapStreamError(err)
+	if mapped.Status != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", mapped.Status, http.StatusTooManyRequests)
+	}
+	if mapped.Code != appconversation.MessageErrorCodeUpstreamRateLimited {
+		t.Fatalf("code = %q, want %q", mapped.Code, appconversation.MessageErrorCodeUpstreamRateLimited)
+	}
+	payload := streamErrorPayload(err)
+	if payload["status"] != http.StatusTooManyRequests {
+		t.Fatalf("payload status = %#v, want %d", payload["status"], http.StatusTooManyRequests)
+	}
+}
+
+func TestMapStreamErrorClassifiesGeneratedMediaArtifactFailure(t *testing.T) {
+	mapped := mapStreamError(appconversation.ErrGeneratedMediaArtifactUnavailable)
+	if mapped.Status != http.StatusBadGateway {
+		t.Fatalf("expected artifact failure to be mapped to gateway failure, got status=%d", mapped.Status)
+	}
+	if mapped.Code != appconversation.MessageErrorCodeMediaArtifactUnavailable {
+		t.Fatalf("unexpected artifact error code: %#v", mapped)
+	}
+	if mapped.Message != appconversation.ErrGeneratedMediaArtifactUnavailable.Error() {
+		t.Fatalf("unexpected public artifact message: %#v", mapped)
+	}
+}
+
+func TestMapBillingStreamErrorReturnsConcurrencyLimit(t *testing.T) {
+	mapped := mapBillingStreamError(appbilling.ErrUsageConcurrencyLimitExceeded)
+	if mapped.Status != http.StatusTooManyRequests || mapped.Code != "billing.concurrency_limit_exceeded" {
+		t.Fatalf("billing stream error = %#v", mapped)
 	}
 }
 

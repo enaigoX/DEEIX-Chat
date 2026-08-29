@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 )
 
@@ -95,6 +95,12 @@ func TestFilterModelProbeRowsUsesRouteProtocolWhenTaskIsEmpty(t *testing.T) {
 	}
 	if got[0].Protocol != "openai_image_generations" || got[1].Protocol != "openai_image_edits" {
 		t.Fatalf("unexpected filtered route order: %#v", got)
+	}
+}
+
+func TestLightweightModelProbeSupportsOpenRouterResponses(t *testing.T) {
+	if !isLightweightModelProbeProtocol(llm.AdapterOpenRouterResponses) {
+		t.Fatal("expected OpenRouter Responses to support lightweight model probes")
 	}
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
@@ -36,12 +37,46 @@ import {
   planRank,
   resolveDefaultPrice,
   resolvePlanActionKind,
-} from "./subscription-format";
+  billingDisplayAmountToMinorUnits,
+} from "@/features/settings/model/subscription-format";
+import {
+  normalizeBillingDisplayCurrency,
+  type BillingDisplayOptions,
+} from "@/shared/lib/billing-display";
 import { RedemptionDialog, TopUpDialog } from "./subscription-billing-dialogs";
 import { SubscriptionSummary } from "./subscription-summary";
-import { SubscriptionTrend } from "./subscription-trend";
-import type { UsageTrendView } from "./subscription-trend";
 import { SubscriptionUsageLog } from "./subscription-usage-log";
+import type { UsageTrendView } from "./subscription-trend";
+
+const SubscriptionTrend = dynamic(
+  () => import("./subscription-trend").then((module) => module.SubscriptionTrend),
+  {
+    ssr: false,
+    loading: () => <SubscriptionTrendSkeleton />,
+  },
+);
+
+function SubscriptionTrendSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex h-9 items-center justify-between gap-3">
+        <div className="h-4 w-28 rounded-full bg-muted/50" />
+        <div className="h-7 w-24 rounded-full bg-muted/50" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={`subscription-trend-skeleton-${index}`} className="rounded-md bg-muted/40 p-3">
+            <div className="h-3 w-16 rounded-full bg-muted/60" />
+            <div className="mt-2 h-4 w-20 rounded-full bg-muted/60" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-md bg-muted/35 p-3">
+        <div className="h-[260px] rounded-md bg-muted/30" />
+      </div>
+    </div>
+  );
+}
 
 type BillingRuntimeConfig = BillingConfigData["config"];
 type PaymentProvider = "stripe" | "epay";
@@ -81,6 +116,13 @@ export function SettingsSubscription() {
   const [redemptionCode, setRedemptionCode] = React.useState("");
   const [redemptionLoading, setRedemptionLoading] = React.useState(false);
   const billingMode: BillingMode = billingConfig?.mode ?? "self";
+  const billingDisplay = React.useMemo<BillingDisplayOptions>(
+    () => ({
+      currency: normalizeBillingDisplayCurrency(billingConfig?.displayCurrency),
+      usdToCnyRate: billingConfig?.usdToCNYRate ?? null,
+    }),
+    [billingConfig?.displayCurrency, billingConfig?.usdToCNYRate],
+  );
 
   const intervalLabels = React.useMemo(
     () => ({
@@ -242,8 +284,9 @@ export function SettingsSubscription() {
   }, [accessToken, resolveErrorMessage, t]);
 
   const handleTopUp = React.useCallback(async () => {
-    const amount = Number(topUpAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const displayAmount = Number(topUpAmount);
+    const amountMinorUnits = billingDisplayAmountToMinorUnits(displayAmount);
+    if (!Number.isFinite(displayAmount) || displayAmount <= 0 || amountMinorUnits <= 0) {
       toast.error(t("toasts.invalidTopUpAmount"), { description: t("toasts.invalidTopUpAmountDescription") });
       return;
     }
@@ -251,7 +294,7 @@ export function SettingsSubscription() {
     try {
       const data = await createBillingCheckout(accessToken, {
         orderType: "topup",
-        amountUSD: amount,
+        amountMinorUnits,
         cycles: 1,
         paymentProvider: selectedPaymentProvider,
         epayType: selectedPaymentProvider === "epay" ? selectedEPayType : undefined,
@@ -393,6 +436,7 @@ export function SettingsSubscription() {
         periodCredit={periodCredit}
         periodUsed={periodUsed}
         periodPercent={periodPercent}
+        billingDisplay={billingDisplay}
         onOpenRedemptionDialog={() => setRedemptionDialogOpen(true)}
         onOpenTopUpDialog={() => setTopUpDialogOpen(true)}
         onPricingDialogOpenChange={setPricingDialogOpen}
@@ -410,6 +454,7 @@ export function SettingsSubscription() {
           monthlyUsage={monthlyUsage}
           loading={billingLoading}
           view={usageView}
+          billingDisplay={billingDisplay}
           onViewChange={setUsageView}
         />
         <Separator />
@@ -422,6 +467,7 @@ export function SettingsSubscription() {
           query={usageQuery}
           status={usageStatus}
           sort={usageSort}
+          billingDisplay={billingDisplay}
           onQueryChange={(value) => {
             setUsageQuery(value);
             setUsagePage(1);
@@ -447,7 +493,7 @@ export function SettingsSubscription() {
         open={topUpDialogOpen}
         onOpenChange={setTopUpDialogOpen}
         amount={topUpAmount}
-        currentBalance={formatAccountBalance(billingAccount?.balanceUSD ?? 0)}
+        currentBalance={formatAccountBalance(billingAccount?.balanceUSD ?? 0, billingDisplay)}
         billingLoading={billingLoading}
         topUpLoading={topUpLoading}
         paymentDisabled={paymentDisabled}
@@ -455,6 +501,7 @@ export function SettingsSubscription() {
         selectedPaymentProvider={selectedPaymentProvider}
         selectedEPayType={selectedEPayType}
         epayTypes={epayTypes}
+        billingDisplay={billingDisplay}
         epayLabels={epayLabels}
         onAmountChange={setTopUpAmount}
         onPaymentProviderChange={setSelectedPaymentProvider}

@@ -14,21 +14,38 @@ import (
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/response"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // Handler 封装计费 HTTP 处理。
 type Handler struct {
-	service  *appbilling.Service
-	settings *appsettings.Service
-	cfg      *config.Runtime
+	service         *appbilling.Service
+	settings        *appsettings.Service
+	cfg             *config.Runtime
+	officialPricing *appbilling.OfficialPricingService
+	paymentCheckout *appbilling.PaymentCheckoutService
+	logger          *zap.Logger
 }
 
 // NewHandler 创建处理器。
-func NewHandler(service *appbilling.Service, settingsService *appsettings.Service, cfg *config.Runtime) *Handler {
+func NewHandler(
+	service *appbilling.Service,
+	settingsService *appsettings.Service,
+	cfg *config.Runtime,
+	officialPricing *appbilling.OfficialPricingService,
+	paymentCheckout *appbilling.PaymentCheckoutService,
+	logger *zap.Logger,
+) *Handler {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &Handler{
-		service:  service,
-		settings: settingsService,
-		cfg:      cfg,
+		service:         service,
+		settings:        settingsService,
+		cfg:             cfg,
+		officialPricing: officialPricing,
+		paymentCheckout: paymentCheckout,
+		logger:          logger,
 	}
 }
 
@@ -71,6 +88,7 @@ func (h *Handler) loadBillingConfig(ctx context.Context) (BillingConfigResponse,
 	nativeToolPricingJSON := ""
 	paymentProviders := []string{}
 	usdToCNYRate := 7.2
+	displayCurrency := "USD"
 	epayTypes := defaultEPayTypes()
 	if h.settings != nil {
 		items, err := h.settings.ListByNamespace(ctx, "billing")
@@ -100,6 +118,10 @@ func (h *Handler) loadBillingConfig(ctx context.Context) (BillingConfigResponse,
 				if parsed, parseErr := strconv.ParseFloat(value, 64); parseErr == nil && parsed > 0 {
 					usdToCNYRate = parsed
 				}
+			case "display_currency":
+				if value == "USD" || value == "CNY" {
+					displayCurrency = value
+				}
 			case "epay_types":
 				epayTypes = normalizeEPayTypes(value)
 			}
@@ -117,6 +139,7 @@ func (h *Handler) loadBillingConfig(ctx context.Context) (BillingConfigResponse,
 		NativeToolPricing:        toNativeToolPricingResponses(nativeToolPricing),
 		PaymentProviders:         paymentProviders,
 		USDToCNYRate:             usdToCNYRate,
+		DisplayCurrency:          displayCurrency,
 		EPayTypes:                epayTypes,
 	}, nil
 }
@@ -154,6 +177,20 @@ func (h *Handler) PatchBillingConfig(c *gin.Context) {
 			Value:     strconv.FormatFloat(*req.PrepaidAmountUSD, 'f', -1, 64),
 		})
 	}
+	if req.USDToCNYRate != nil {
+		patches = append(patches, appsettings.PatchItem{
+			Namespace: "billing",
+			Key:       "usd_to_cny_rate",
+			Value:     strconv.FormatFloat(*req.USDToCNYRate, 'f', -1, 64),
+		})
+	}
+	if req.DisplayCurrency != nil {
+		patches = append(patches, appsettings.PatchItem{
+			Namespace: "billing",
+			Key:       "display_currency",
+			Value:     strings.TrimSpace(*req.DisplayCurrency),
+		})
+	}
 	if req.NativeToolBillingEnabled != nil {
 		patches = append(patches, appsettings.PatchItem{
 			Namespace: "billing",
@@ -188,6 +225,8 @@ func (h *Handler) PatchBillingConfig(c *gin.Context) {
 		map[string]interface{}{
 			"mode":                        mode,
 			"prepaid_amount_usd":          req.PrepaidAmountUSD,
+			"usd_to_cny_rate":             req.USDToCNYRate,
+			"display_currency":            req.DisplayCurrency,
 			"native_tool_billing_enabled": req.NativeToolBillingEnabled,
 			"native_tool_pricing_updated": req.NativeToolPricing != nil,
 		},
@@ -253,7 +292,7 @@ func (h *Handler) GetBillingAccount(c *gin.Context) {
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/billing/accounts/{user_id}/balance [patch]
 func (h *Handler) UpdateBillingAccountBalance(c *gin.Context) {
-	targetUserID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
+	targetUserID, err := strconv.ParseUint(c.Param("user_id"), 10, strconv.IntSize)
 	if err != nil || targetUserID == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid user id")
 		return
@@ -263,10 +302,11 @@ func (h *Handler) UpdateBillingAccountBalance(c *gin.Context) {
 		response.InvalidRequestBody(c, err)
 		return
 	}
+	balanceUSD := *req.BalanceUSD
 	actorUserID := middleware.MustUserID(c)
 	account, err := h.service.SetBillingAccountBalance(c.Request.Context(), appbilling.BillingAccountBalanceInput{
 		UserID:      uint(targetUserID),
-		BalanceUSD:  req.BalanceUSD,
+		BalanceUSD:  balanceUSD,
 		RefNo:       middleware.MustRequestID(c),
 		Description: req.Description,
 	})
@@ -282,7 +322,7 @@ func (h *Handler) UpdateBillingAccountBalance(c *gin.Context) {
 		strconv.FormatUint(targetUserID, 10),
 		map[string]interface{}{
 			"user_id":     targetUserID,
-			"balance_usd": req.BalanceUSD,
+			"balance_usd": balanceUSD,
 		},
 	)
 	response.Success(c, BillingAccountDataResponse{Account: toBillingAccountResponse(account)})
@@ -378,7 +418,10 @@ func (h *Handler) CreateRedemptionCodes(c *gin.Context) {
 func writeRedemptionCodeError(c *gin.Context, err error) {
 	var validationErr appbilling.RedemptionCodeValidationError
 	if errors.As(err, &validationErr) {
-		response.ErrorWithDetails(c, http.StatusBadRequest, "billing.invalid_redemption_code", err.Error(), validationErr)
+		response.ErrorWithDetails(c, http.StatusBadRequest, "billing.invalid_redemption_code", err.Error(), RedemptionCodeValidationErrorResponse{
+			Field:  validationErr.Field,
+			Reason: validationErr.Reason,
+		})
 		return
 	}
 	if errors.Is(err, appbilling.ErrRedemptionCodeConflict) {
@@ -414,7 +457,7 @@ func writeRedemptionCodeError(c *gin.Context, err error) {
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/billing/redemption-codes/{id}/code [get]
 func (h *Handler) RevealRedemptionCode(c *gin.Context) {
-	codeID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	codeID, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
 	if err != nil || codeID == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid redemption code id")
 		return
@@ -455,7 +498,7 @@ func (h *Handler) RevealRedemptionCode(c *gin.Context) {
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/billing/redemption-codes/{id} [patch]
 func (h *Handler) PatchRedemptionCode(c *gin.Context) {
-	codeID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	codeID, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
 	if err != nil || codeID == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid redemption code id")
 		return
@@ -508,7 +551,7 @@ func (h *Handler) PatchRedemptionCode(c *gin.Context) {
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/billing/redemption-codes/{id} [delete]
 func (h *Handler) DeleteRedemptionCode(c *gin.Context) {
-	codeID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	codeID, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
 	if err != nil || codeID == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid redemption code id")
 		return
@@ -645,10 +688,11 @@ func (h *Handler) GetBillingOverview(c *gin.Context) {
 // @Param body body UpdateBillingPlanRequest true "套餐配置"
 // @Success 200 {object} BillingPlanResponseDoc
 // @Failure 400 {object} ErrorDoc
+// @Failure 404 {object} ErrorDoc
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/billing/plans/{id} [patch]
 func (h *Handler) UpdatePlan(c *gin.Context) {
-	planID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	planID, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
 	if err != nil || planID == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid plan id")
 		return
@@ -662,6 +706,14 @@ func (h *Handler) UpdatePlan(c *gin.Context) {
 
 	item, err := h.service.UpdatePlan(c.Request.Context(), uint(planID), planUpdateInputFromRequest(req))
 	if err != nil {
+		if errors.Is(err, appbilling.ErrInvalidPermissionGroup) || errors.Is(err, appbilling.ErrInvalidBillingPlan) {
+			response.ErrorFrom(c, http.StatusBadRequest, err)
+			return
+		}
+		if errors.Is(err, appbilling.ErrBillingPlanNotFound) {
+			response.ErrorFrom(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "update billing plan failed")
 		return
 	}
@@ -676,9 +728,9 @@ func (h *Handler) UpdatePlan(c *gin.Context) {
 		map[string]interface{}{
 			"plan_id":           planID,
 			"name":              req.Name,
-			"period_credit_usd": req.PeriodCreditUSD,
-			"discount_percent":  req.DiscountPercent,
-			"amount_usd":        req.AmountUSD,
+			"period_credit_usd": *req.PeriodCreditUSD,
+			"discount_percent":  *req.DiscountPercent,
+			"amount_usd":        *req.AmountUSD,
 			"billing_interval":  req.BillingInterval,
 		},
 	)
@@ -707,7 +759,8 @@ func (h *Handler) Subscribe(c *gin.Context) {
 		return
 	}
 
-	item, err := h.service.Subscribe(c.Request.Context(), userID, req.PriceID, req.Cycles)
+	cycles := optionalIntValue(req.Cycles)
+	item, err := h.service.Subscribe(c.Request.Context(), userID, req.PriceID, cycles)
 	if err != nil {
 		if errors.Is(err, appbilling.ErrPaymentRequired) {
 			response.Error(c, http.StatusBadRequest, "payment is required")
@@ -725,7 +778,7 @@ func (h *Handler) Subscribe(c *gin.Context) {
 		strconv.FormatUint(uint64(item.ID), 10),
 		map[string]interface{}{
 			"price_id": req.PriceID,
-			"cycles":   req.Cycles,
+			"cycles":   cycles,
 		},
 	)
 
@@ -955,6 +1008,7 @@ func (h *Handler) UpsertModelPricing(c *gin.Context) {
 func pageParams(c *gin.Context) (int, int) {
 	page := 1
 	pageSize := 20
+	const maxPageSize = 1000
 
 	if raw := c.Query("page"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
@@ -963,8 +1017,8 @@ func pageParams(c *gin.Context) (int, int) {
 	}
 	if raw := c.Query("page_size"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
-			if parsed > 100 {
-				parsed = 100
+			if parsed > maxPageSize {
+				parsed = maxPageSize
 			}
 			pageSize = parsed
 		}

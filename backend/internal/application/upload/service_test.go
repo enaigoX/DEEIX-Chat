@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -47,6 +48,96 @@ func TestUploadFileReturnsExistingActiveDuplicate(t *testing.T) {
 	}
 	if second.File.LastAccessedAt == nil {
 		t.Fatal("duplicate upload should touch the existing file access time")
+	}
+}
+
+func TestUploadFileSerializesConcurrentIdenticalUploads(t *testing.T) {
+	ctx := context.Background()
+	repo := newUploadTestRepo()
+	repo.createDelay = 25 * time.Millisecond
+	store := newUploadTestStore()
+	service := newUploadTestService(repo, store)
+	start := make(chan struct{})
+	results := make(chan *UploadFileResult, 2)
+	errors := make(chan error, 2)
+	var uploads sync.WaitGroup
+
+	for _, name := range []string{"notes.md", "copy.md"} {
+		uploads.Add(1)
+		go func(fileName string) {
+			defer uploads.Done()
+			<-start
+			result, err := service.UploadFile(ctx, uploadTestInput(fileName, "same content"))
+			if err != nil {
+				errors <- err
+				return
+			}
+			results <- result
+		}(name)
+	}
+	close(start)
+	uploads.Wait()
+	close(results)
+	close(errors)
+
+	for err := range errors {
+		t.Fatalf("concurrent upload failed: %v", err)
+	}
+	var fileID string
+	reusedCount := 0
+	resultCount := 0
+	for result := range results {
+		resultCount++
+		if fileID == "" {
+			fileID = result.File.FileID
+		} else if result.File.FileID != fileID {
+			t.Fatalf("concurrent duplicates returned different file ids: %s and %s", fileID, result.File.FileID)
+		}
+		if result.Reused {
+			reusedCount++
+		}
+	}
+	if resultCount != 2 {
+		t.Fatalf("concurrent uploads returned %d results, want 2", resultCount)
+	}
+	if reusedCount != 1 {
+		t.Fatalf("concurrent uploads reused count = %d, want 1", reusedCount)
+	}
+	if got := repo.activeFileCount(); got != 1 {
+		t.Fatalf("concurrent uploads created %d active rows, want 1", got)
+	}
+	if got := store.objectCount(); got != 1 {
+		t.Fatalf("concurrent uploads left %d physical objects, want 1", got)
+	}
+}
+
+func TestUploadFileStoresSystemAssetOutsideUploaderOwnership(t *testing.T) {
+	ctx := context.Background()
+	repo := newUploadTestRepo()
+	store := newUploadTestStore()
+	service := newUploadTestService(repo, store)
+	input := uploadTestInput("policy.md", "platform knowledge")
+	input.Ownership = FileOwnershipSystem
+
+	result, err := service.UploadFile(ctx, input)
+	if err != nil {
+		t.Fatalf("system upload failed: %v", err)
+	}
+	if result.File.UserID != 0 {
+		t.Fatalf("system asset owner = %d, want platform owner 0", result.File.UserID)
+	}
+	if result.Quota.QuotaBytes != 0 {
+		t.Fatalf("system quota limit = %d, want unlimited platform quota", result.Quota.QuotaBytes)
+	}
+	if !strings.HasPrefix(result.File.StoragePath, "system/") {
+		t.Fatalf("system storage path = %q, want system namespace", result.File.StoragePath)
+	}
+	deleted, ok, err := service.DeleteFileIfUnreferenced(ctx, 0, result.File.FileID)
+	if err != nil || !ok || deleted == nil {
+		t.Fatalf("system delete = %#v deleted=%v error=%v, want deleted platform asset", deleted, ok, err)
+	}
+	if deleted.Quota.QuotaBytes != 0 {
+		t.Fatalf("system quota limit after delete = %d, want unlimited platform quota", deleted.Quota.QuotaBytes)
 	}
 }
 
@@ -261,6 +352,132 @@ func TestNormalizeDetectedMIMEDowngradesActiveContent(t *testing.T) {
 	}
 }
 
+func TestNormalizeDetectedMIMERecognizesVideoExtensions(t *testing.T) {
+	tests := []struct {
+		detected string
+		fileName string
+		want     string
+	}{
+		{detected: "application/octet-stream", fileName: "clip.mp4", want: "video/mp4"},
+		{detected: "application/octet-stream", fileName: "clip.webm", want: "video/webm"},
+	}
+	for _, tt := range tests {
+		if got := normalizeDetectedMIME(tt.detected, tt.fileName); got != tt.want {
+			t.Fatalf("normalizeDetectedMIME(%q, %q) = %q, want %q", tt.detected, tt.fileName, got, tt.want)
+		}
+	}
+}
+
+func TestNormalizeDetectedMIMERecognizesPresentations(t *testing.T) {
+	tests := []struct {
+		detected string
+		fileName string
+		wantMIME string
+	}{
+		{
+			detected: "application/octet-stream",
+			fileName: "slides.ppt",
+			wantMIME: "application/vnd.ms-powerpoint",
+		},
+		{
+			detected: "application/zip",
+			fileName: "slides.pptx",
+			wantMIME: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		},
+	}
+
+	for _, tt := range tests {
+		if got := normalizeDetectedMIME(tt.detected, tt.fileName); got != tt.wantMIME {
+			t.Fatalf("normalizeDetectedMIME(%q, %q) = %q, want %q", tt.detected, tt.fileName, got, tt.wantMIME)
+		}
+		if got := inferFileCategory(tt.wantMIME, tt.fileName); got != fileCategoryPresentation {
+			t.Fatalf("inferFileCategory(%q, %q) = %q, want %q", tt.wantMIME, tt.fileName, got, fileCategoryPresentation)
+		}
+	}
+}
+
+func TestUploadFileAllowsMP4WhenVideoMP4IsAllowed(t *testing.T) {
+	ctx := context.Background()
+	repo := newUploadTestRepo()
+	store := newUploadTestStore()
+	cfg := config.Config{
+		MaxUploadFileBytes:    1024 * 1024,
+		UserStorageQuotaBytes: 10 * 1024 * 1024,
+		FileAllowedMIMETypes:  "video/mp4",
+	}
+	service := NewServiceWithRuntime(config.NewRuntime(cfg), repo, nil, Hooks{}, ErrorSet{
+		InvalidFileReference: repository.ErrInvalidInput,
+		InvalidFileName:      repository.ErrInvalidInput,
+		StorageQuotaExceeded: repository.ErrConflict,
+		FileTooLarge:         repository.ErrInvalidInput,
+		MIMEBlocked:          repository.ErrInvalidInput,
+		DangerousMIMEType:    repository.ErrInvalidInput,
+	}, "test")
+	service.SetObjectStoreProvider(uploadTestStoreProvider{store: store})
+
+	content := []byte("not a real mp4 but uploaded with a .mp4 extension")
+	result, err := service.UploadFile(ctx, UploadFileInput{
+		UserID:       1,
+		Purpose:      "chat",
+		FileName:     "clip.mp4",
+		MimeType:     "video/mp4",
+		DeclaredSize: int64(len(content)),
+		Reader:       bytes.NewReader(content),
+	})
+	if err != nil {
+		t.Fatalf("mp4 upload should be allowed: %v", err)
+	}
+	if result.File.DetectedMIME != "video/mp4" {
+		t.Fatalf("DetectedMIME = %q, want video/mp4", result.File.DetectedMIME)
+	}
+	if result.File.FileCategory != fileCategoryVideo {
+		t.Fatalf("FileCategory = %q, want %q", result.File.FileCategory, fileCategoryVideo)
+	}
+	if result.File.ProcessingStatus != "uploaded" || !result.File.ProcessingReady {
+		t.Fatalf("video processing state = %q ready=%v, want uploaded ready=true", result.File.ProcessingStatus, result.File.ProcessingReady)
+	}
+}
+
+func TestValidateImageFile(t *testing.T) {
+	repo := newUploadTestRepo()
+	store := newUploadTestStore()
+	service := newUploadTestService(repo, store)
+	image := domainconversation.FileObject{
+		FileID:       "file_image",
+		UserID:       1,
+		FileName:     "avatar.png",
+		MimeType:     "image/png",
+		DetectedMIME: "image/png",
+		FileCategory: "image",
+		Status:       "active",
+	}
+	repo.files = append(repo.files, image)
+
+	if err := service.ValidateImageFile(context.Background(), 1, image.FileID); err != nil {
+		t.Fatalf("ValidateImageFile() failed: %v", err)
+	}
+}
+
+func TestValidateImageFileRejectsNonImage(t *testing.T) {
+	repo := newUploadTestRepo()
+	store := newUploadTestStore()
+	service := newUploadTestService(repo, store)
+	file := domainconversation.FileObject{
+		FileID:       "file_text",
+		UserID:       1,
+		FileName:     "notes.txt",
+		MimeType:     "text/plain",
+		DetectedMIME: "text/plain",
+		FileCategory: "text",
+		Status:       "active",
+	}
+	repo.files = append(repo.files, file)
+
+	if err := service.ValidateImageFile(context.Background(), 1, file.FileID); err == nil {
+		t.Fatal("ValidateImageFile() should reject non-image files")
+	}
+}
+
 func newUploadTestService(repo *uploadTestRepo, store *uploadTestStore) *Service {
 	cfg := config.Config{
 		MaxUploadFileBytes:    1024 * 1024,
@@ -300,6 +517,7 @@ func (p uploadTestStoreProvider) Open(ctx context.Context) (objectstore.Store, e
 }
 
 type uploadTestStore struct {
+	mu      sync.Mutex
 	objects map[string][]byte
 }
 
@@ -313,27 +531,36 @@ func (s *uploadTestStore) Put(ctx context.Context, key string, body io.Reader, o
 	if err != nil {
 		return objectstore.ObjectInfo{}, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.objects[key] = append([]byte(nil), data...)
 	return objectstore.ObjectInfo{Key: key, SizeBytes: int64(len(data)), ContentType: opts.ContentType, ModTime: time.Now()}, nil
 }
 
 func (s *uploadTestStore) Open(ctx context.Context, key string) (io.ReadCloser, objectstore.ObjectInfo, error) {
 	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	data, ok := s.objects[key]
 	if !ok {
 		return nil, objectstore.ObjectInfo{}, objectstore.ErrNotFound
 	}
-	return io.NopCloser(bytes.NewReader(data)), objectstore.ObjectInfo{Key: key, SizeBytes: int64(len(data)), ModTime: time.Now()}, nil
+	copyOfData := append([]byte(nil), data...)
+	return io.NopCloser(bytes.NewReader(copyOfData)), objectstore.ObjectInfo{Key: key, SizeBytes: int64(len(copyOfData)), ModTime: time.Now()}, nil
 }
 
 func (s *uploadTestStore) Delete(ctx context.Context, key string) error {
 	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	delete(s.objects, key)
 	return nil
 }
 
 func (s *uploadTestStore) Materialize(ctx context.Context, key string) (string, func(), error) {
 	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, ok := s.objects[key]; !ok {
 		return "", nil, objectstore.ErrNotFound
 	}
@@ -341,10 +568,13 @@ func (s *uploadTestStore) Materialize(ctx context.Context, key string) (string, 
 }
 
 func (s *uploadTestStore) objectCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return len(s.objects)
 }
 
 type uploadTestRepo struct {
+	mu                      sync.Mutex
 	user                    domainuser.User
 	nextID                  uint
 	files                   []domainconversation.FileObject
@@ -352,6 +582,7 @@ type uploadTestRepo struct {
 	missNextDuplicateLookup bool
 	failNextCreateDuplicate bool
 	referencedFileIDs       map[string]bool
+	createDelay             time.Duration
 }
 
 func newUploadTestRepo() *uploadTestRepo {
@@ -392,6 +623,8 @@ func (r *uploadTestRepo) UpdateFileObjectRagOptOut(context.Context, uint, string
 }
 
 func (r *uploadTestRepo) TouchFileObjectLastAccessedAt(_ context.Context, userID uint, fileID string, accessedAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for i := range r.files {
 		if r.files[i].UserID == userID && r.files[i].FileID == fileID && r.files[i].Status == "active" {
 			r.files[i].LastAccessedAt = &accessedAt
@@ -401,12 +634,49 @@ func (r *uploadTestRepo) TouchFileObjectLastAccessedAt(_ context.Context, userID
 	return repository.ErrNotFound
 }
 
+func (r *uploadTestRepo) RevokeGeneratedFileForModeration(_ context.Context, fileID string) error {
+	for i := range r.files {
+		if r.files[i].FileID == fileID {
+			r.files[i].Status = "moderation_blocked"
+			r.files[i].UserID = 0
+			return nil
+		}
+	}
+	return repository.ErrNotFound
+}
+
+func (r *uploadTestRepo) DeleteGeneratedFileArtifactsForModeration(context.Context, string) error {
+	return nil
+}
+
+func (r *uploadTestRepo) ClearGeneratedFileStoragePath(_ context.Context, fileID string) error {
+	for i := range r.files {
+		if r.files[i].FileID == fileID {
+			r.files[i].StoragePath = ""
+			return nil
+		}
+	}
+	return repository.ErrNotFound
+}
+
+func (r *uploadTestRepo) GetFileObjectByFileIDAnyStatus(_ context.Context, fileID string) (*domainconversation.FileObject, error) {
+	for i := range r.files {
+		if r.files[i].FileID == fileID {
+			result := r.files[i]
+			return &result, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
+
 func (r *uploadTestRepo) GetUserByID(context.Context, uint) (*domainuser.User, error) {
 	result := r.user
 	return &result, nil
 }
 
 func (r *uploadTestRepo) GetLatestActiveFileObjectBySHA(_ context.Context, userID uint, sha256 string, sizeBytes int64) (*domainconversation.FileObject, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.missNextDuplicateLookup {
 		r.missNextDuplicateLookup = false
 		return nil, nil
@@ -422,6 +692,11 @@ func (r *uploadTestRepo) GetLatestActiveFileObjectBySHA(_ context.Context, userI
 }
 
 func (r *uploadTestRepo) CreateFileObjectAndConsumeQuota(_ context.Context, item *domainconversation.FileObject, quotaLimit int64) (*domainconversation.StorageQuota, error) {
+	if r.createDelay > 0 {
+		time.Sleep(r.createDelay)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.failNextCreateDuplicate {
 		r.failNextCreateDuplicate = false
 		return nil, repository.ErrDuplicate
@@ -477,6 +752,8 @@ func (r *uploadTestRepo) DeleteFileObjectAndReleaseQuota(_ context.Context, user
 }
 
 func (r *uploadTestRepo) GetOrInitUserStorageQuota(_ context.Context, _ uint, quotaLimit int64) (*domainconversation.StorageQuota, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if quotaLimit < 0 {
 		quotaLimit = 0
 	}
@@ -485,6 +762,8 @@ func (r *uploadTestRepo) GetOrInitUserStorageQuota(_ context.Context, _ uint, qu
 }
 
 func (r *uploadTestRepo) activeFileCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	count := 0
 	for _, item := range r.files {
 		if item.Status == "active" {
@@ -495,6 +774,8 @@ func (r *uploadTestRepo) activeFileCount() int {
 }
 
 func (r *uploadTestRepo) fileStatus(fileID string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for _, item := range r.files {
 		if item.FileID == fileID {
 			return item.Status

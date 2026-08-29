@@ -15,7 +15,7 @@ type LoginRequest struct {
 
 type TwoFactorVerifyRequest struct {
 	ChallengeToken     string `json:"challengeToken" binding:"required,min=20,max=4096"`
-	VerificationMethod string `json:"verificationMethod" binding:"omitempty,oneof=two_factor email"`
+	VerificationMethod string `json:"verificationMethod,omitempty" binding:"omitempty,oneof=two_factor email"`
 	Code               string `json:"code" binding:"required,min=6,max=32"`
 }
 
@@ -32,7 +32,7 @@ type TwoFactorStatusResponse struct {
 	TOTPEnabled   bool       `json:"totpEnabled"`
 	Required      bool       `json:"required"`
 	RecoveryCount int        `json:"recoveryCount"`
-	EnabledAt     *time.Time `json:"enabledAt"`
+	EnabledAt     *time.Time `json:"enabledAt" extensions:"x-nullable,!x-omitempty"`
 }
 
 type TwoFactorSetupStartResponse struct {
@@ -56,7 +56,7 @@ type TwoFactorSetupCancelResponse struct {
 
 type EmailRegistrationStartRequest struct {
 	Email          string `json:"email" binding:"required,max=128,email"`
-	TurnstileToken string `json:"turnstileToken" binding:"omitempty,max=2048"`
+	TurnstileToken string `json:"turnstileToken,omitempty" binding:"omitempty,max=2048"`
 }
 
 type EmailRegistrationStartResponse struct {
@@ -74,15 +74,34 @@ type PasswordChangeVerificationStartResponse struct {
 type EmailRegistrationCompleteRequest struct {
 	Email          string `json:"email" binding:"required,max=128,email"`
 	Password       string `json:"password" binding:"required,min=8,max=128"`
-	Code           string `json:"code" binding:"omitempty,len=6"`
-	TurnstileToken string `json:"turnstileToken" binding:"omitempty,max=2048"`
+	Code           string `json:"code,omitempty" binding:"omitempty,len=6"`
+	TurnstileToken string `json:"turnstileToken,omitempty" binding:"omitempty,max=2048"`
+}
+
+type PasswordResetStartRequest struct {
+	Email string `json:"email" binding:"required,max=128,email"`
+}
+
+type PasswordResetCompleteRequest struct {
+	Email       string `json:"email" binding:"required,max=128,email"`
+	Code        string `json:"code" binding:"required,len=6"`
+	NewPassword string `json:"newPassword" binding:"required,min=8,max=128"`
+}
+
+type PasswordResetStartResponse struct {
+	Sent      bool      `json:"sent"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+type PasswordResetCompleteResponse struct {
+	Changed bool `json:"changed"`
 }
 
 type ChangePasswordRequest struct {
-	CurrentPassword    string `json:"currentPassword" binding:"omitempty,max=128"`
+	CurrentPassword    string `json:"currentPassword,omitempty" binding:"omitempty,max=128"`
 	NewPassword        string `json:"newPassword" binding:"required,min=8,max=128"`
-	VerificationMethod string `json:"verificationMethod" binding:"omitempty,oneof=none two_factor email"`
-	Code               string `json:"code" binding:"omitempty,min=6,max=32"`
+	VerificationMethod string `json:"verificationMethod,omitempty" binding:"omitempty,oneof=none two_factor email"`
+	Code               string `json:"code,omitempty" binding:"omitempty,min=6,max=32"`
 }
 
 type ChangePasswordResponse struct {
@@ -90,7 +109,7 @@ type ChangePasswordResponse struct {
 }
 
 type CompleteOnboardingRequest struct {
-	NewPassword string `json:"newPassword" binding:"omitempty,min=8,max=128"`
+	NewPassword string `json:"newPassword,omitempty" binding:"omitempty,min=8,max=128"`
 }
 
 type EmailVerificationStartRequest struct {
@@ -98,7 +117,7 @@ type EmailVerificationStartRequest struct {
 }
 
 type SecurityVerificationStartRequest struct {
-	VerificationMethod string `json:"verificationMethod" binding:"omitempty,oneof=none two_factor email"`
+	VerificationMethod string `json:"verificationMethod,omitempty" binding:"omitempty,oneof=none two_factor email"`
 }
 
 type DeleteAccountRequest struct {
@@ -115,7 +134,7 @@ type EmailVerificationStartResponse struct {
 
 type EmailBootstrapCompleteRequest struct {
 	Email string `json:"email" binding:"required,max=128,email"`
-	Code  string `json:"code" binding:"omitempty,len=6"`
+	Code  string `json:"code,omitempty" binding:"omitempty,len=6"`
 }
 
 type EmailVerificationCompleteRequest struct {
@@ -124,14 +143,14 @@ type EmailVerificationCompleteRequest struct {
 
 type EmailChangeCompleteRequest struct {
 	Email                     string `json:"email" binding:"required,max=128,email"`
-	CurrentVerificationMethod string `json:"currentVerificationMethod" binding:"omitempty,oneof=none two_factor email"`
-	CurrentCode               string `json:"currentCode" binding:"omitempty,min=6,max=32"`
-	NewCode                   string `json:"newCode" binding:"omitempty,len=6"`
+	CurrentVerificationMethod string `json:"currentVerificationMethod,omitempty" binding:"omitempty,oneof=none two_factor email"`
+	CurrentCode               string `json:"currentCode,omitempty" binding:"omitempty,min=6,max=32"`
+	NewCode                   string `json:"newCode,omitempty" binding:"omitempty,len=6"`
 }
 
 type IdentityProviderResponse struct {
 	PublicID            string    `json:"publicID"`
-	Type                string    `json:"type"`
+	Type                string    `json:"type" enums:"oidc,oauth2"`
 	Name                string    `json:"name"`
 	Slug                string    `json:"slug"`
 	LogoURL             string    `json:"logoURL"`
@@ -145,7 +164,7 @@ type IdentityProviderResponse struct {
 	UserInfoURL         string    `json:"userinfoURL,omitempty"`
 	JWKSURL             string    `json:"jwksURL,omitempty"`
 	Scopes              string    `json:"scopes"`
-	DefaultRole         string    `json:"defaultRole"`
+	DefaultRole         string    `json:"defaultRole" enums:"user,admin,superadmin"`
 	SubjectField        string    `json:"subjectField"`
 	EmailField          string    `json:"emailField"`
 	EmailVerifiedField  string    `json:"emailVerifiedField"`
@@ -179,7 +198,7 @@ type UserIdentityResponse struct {
 	Email               string     `json:"email"`
 	EmailVerified       bool       `json:"emailVerified"`
 	LinkedAt            time.Time  `json:"linkedAt"`
-	LastLoginAt         *time.Time `json:"lastLoginAt"`
+	LastLoginAt         *time.Time `json:"lastLoginAt" extensions:"x-nullable,!x-omitempty"`
 }
 
 type UserIdentityListResponse struct {
@@ -195,33 +214,41 @@ type LoginOptionsResponse struct {
 	EmailEnabled                 bool                       `json:"emailEnabled"`
 	EmailRegistrationEnabled     bool                       `json:"emailRegistrationEnabled"`
 	EmailVerificationEnabled     bool                       `json:"emailVerificationEnabled"`
+	PasswordResetEnabled         bool                       `json:"passwordResetEnabled"`
 	TurnstileRegistrationEnabled bool                       `json:"turnstileRegistrationEnabled"`
 	TurnstileSiteKey             string                     `json:"turnstileSiteKey"`
+	ProviderAuthBridge           ProviderAuthBridgeResponse `json:"providerAuthBridge"`
 	Providers                    []IdentityProviderResponse `json:"providers"`
+}
+
+type ProviderAuthBridgeResponse struct {
+	Enabled         bool   `json:"enabled"`
+	ProtocolVersion int    `json:"protocolVersion"`
+	CallbackBaseURL string `json:"callbackBaseURL"`
 }
 
 type UpsertIdentityProviderRequest struct {
 	Type                string `json:"type" binding:"required,oneof=oidc oauth2"`
 	Name                string `json:"name" binding:"required,max=80"`
-	Slug                string `json:"slug" binding:"omitempty,max=64"`
-	LogoURL             string `json:"logoURL" binding:"omitempty,max=512"`
-	LoginEnabled        *bool  `json:"loginEnabled"`
-	RegistrationEnabled *bool  `json:"registrationEnabled"`
+	Slug                string `json:"slug,omitempty" binding:"omitempty,max=64"`
+	LogoURL             string `json:"logoURL,omitempty" binding:"omitempty,max=512"`
+	LoginEnabled        *bool  `json:"loginEnabled,omitempty"`
+	RegistrationEnabled *bool  `json:"registrationEnabled,omitempty"`
 	ClientID            string `json:"clientID" binding:"required,max=255"`
-	ClientSecret        string `json:"clientSecret" binding:"omitempty,max=4096"`
-	IssuerURL           string `json:"issuerURL" binding:"omitempty,max=512"`
-	DiscoveryURL        string `json:"discoveryURL" binding:"omitempty,max=512"`
-	AuthURL             string `json:"authURL" binding:"omitempty,max=512"`
-	TokenURL            string `json:"tokenURL" binding:"omitempty,max=512"`
-	UserInfoURL         string `json:"userinfoURL" binding:"omitempty,max=512"`
-	JWKSURL             string `json:"jwksURL" binding:"omitempty,max=512"`
-	Scopes              string `json:"scopes" binding:"omitempty,max=255"`
-	DefaultRole         string `json:"defaultRole" binding:"omitempty,oneof=user admin superadmin"`
-	SubjectField        string `json:"subjectField" binding:"omitempty,max=64"`
-	EmailField          string `json:"emailField" binding:"omitempty,max=64"`
-	EmailVerifiedField  string `json:"emailVerifiedField" binding:"omitempty,max=64"`
-	NameField           string `json:"nameField" binding:"omitempty,max=64"`
-	AvatarField         string `json:"avatarField" binding:"omitempty,max=64"`
+	ClientSecret        string `json:"clientSecret,omitempty" binding:"omitempty,max=4096"`
+	IssuerURL           string `json:"issuerURL,omitempty" binding:"omitempty,max=512"`
+	DiscoveryURL        string `json:"discoveryURL,omitempty" binding:"omitempty,max=512"`
+	AuthURL             string `json:"authURL,omitempty" binding:"omitempty,max=512"`
+	TokenURL            string `json:"tokenURL,omitempty" binding:"omitempty,max=512"`
+	UserInfoURL         string `json:"userinfoURL,omitempty" binding:"omitempty,max=512"`
+	JWKSURL             string `json:"jwksURL,omitempty" binding:"omitempty,max=512"`
+	Scopes              string `json:"scopes,omitempty" binding:"omitempty,max=255"`
+	DefaultRole         string `json:"defaultRole,omitempty" binding:"omitempty,oneof=user admin superadmin"`
+	SubjectField        string `json:"subjectField,omitempty" binding:"omitempty,max=64"`
+	EmailField          string `json:"emailField,omitempty" binding:"omitempty,max=64"`
+	EmailVerifiedField  string `json:"emailVerifiedField,omitempty" binding:"omitempty,max=64"`
+	NameField           string `json:"nameField,omitempty" binding:"omitempty,max=64"`
+	AvatarField         string `json:"avatarField,omitempty" binding:"omitempty,max=64"`
 }
 
 type ReorderIdentityProvidersRequest struct {
@@ -233,7 +260,27 @@ type CompleteProviderLoginRequest struct {
 	State        string `json:"state" binding:"required,max=4096"`
 	RedirectURI  string `json:"redirectURI" binding:"required,max=2048"`
 	CodeVerifier string `json:"codeVerifier" binding:"required,min=43,max=128"`
-	Intent       string `json:"intent" binding:"omitempty,oneof=login register bind"`
+	Intent       string `json:"intent,omitempty" binding:"omitempty,oneof=login register bind"`
+}
+
+type ProviderAuthBridgeStartRequest struct {
+	ClientID      string `json:"clientID" binding:"required,max=128"`
+	RedirectURI   string `json:"redirectURI" binding:"required,max=2048"`
+	CodeChallenge string `json:"codeChallenge" binding:"required,min=43,max=128"`
+	ClientState   string `json:"clientState" binding:"required,min=43,max=128"`
+	Intent        string `json:"intent,omitempty" binding:"omitempty,oneof=login register"`
+	Next          string `json:"next,omitempty" binding:"omitempty,max=2048"`
+}
+
+type ProviderAuthBridgeStartResponse struct {
+	AuthorizationURL string    `json:"authorizationURL"`
+	ExpiresAt        time.Time `json:"expiresAt"`
+}
+
+type ProviderAuthBridgeExchangeRequest struct {
+	ClientID     string `json:"clientID" binding:"required,max=128"`
+	Grant        string `json:"grant" binding:"required,min=43,max=128"`
+	CodeVerifier string `json:"codeVerifier" binding:"required,min=43,max=128"`
 }
 
 type CompleteProviderBindRequest struct {
@@ -249,12 +296,12 @@ type UserIdentityResponseData struct {
 
 // PatchMeRequest 更新当前用户资料请求。
 type PatchMeRequest struct {
-	AvatarURL             *string `json:"avatarURL" binding:"omitempty,max=2048"`
-	DisplayName           *string `json:"displayName" binding:"omitempty,min=3,max=16"`
-	Timezone              *string `json:"timezone" binding:"omitempty,max=64"`
-	Locale                *string `json:"locale" binding:"omitempty,max=16"`
-	ProfilePreferences    *string `json:"profilePreferences" binding:"omitempty,max=1024"`
-	AppearancePreferences *string `json:"appearancePreferences" binding:"omitempty,max=2048"`
+	AvatarURL             *string `json:"avatarURL,omitempty" binding:"omitempty,max=2048"`
+	DisplayName           *string `json:"displayName,omitempty" binding:"omitempty,min=3,max=16"`
+	Timezone              *string `json:"timezone,omitempty" binding:"omitempty,max=64"`
+	Locale                *string `json:"locale,omitempty" binding:"omitempty,max=16"`
+	ProfilePreferences    *string `json:"profilePreferences,omitempty" binding:"omitempty,max=1024"`
+	AppearancePreferences *string `json:"appearancePreferences,omitempty" binding:"omitempty,max=2048"`
 }
 
 type PatchUsernameRequest struct {
@@ -265,49 +312,60 @@ type PatchUsernameRequest struct {
 type UpdateCurrentSessionLocationRequest struct {
 	Latitude       float64  `json:"latitude" binding:"required"`
 	Longitude      float64  `json:"longitude" binding:"required"`
-	AccuracyMeters *float64 `json:"accuracyMeters" binding:"omitempty,min=0,max=1000000"`
-	Timezone       string   `json:"timezone" binding:"omitempty,max=64"`
+	AccuracyMeters *float64 `json:"accuracyMeters,omitempty" binding:"omitempty,min=0,max=1000000"`
+	Timezone       string   `json:"timezone,omitempty" binding:"omitempty,max=64"`
 }
 
 // UserResponse 面向前端的用户视图响应。
 type UserResponse struct {
-	ID                      uint       `json:"id"`
-	PublicID                string     `json:"publicID"`
-	Username                string     `json:"username"`
-	DisplayName             string     `json:"displayName"`
-	AvatarURL               string     `json:"avatarURL"`
-	Email                   string     `json:"email"`
-	Phone                   string     `json:"phone"`
-	Role                    string     `json:"role"`
-	Status                  string     `json:"status"`
-	Timezone                string     `json:"timezone"`
-	Locale                  string     `json:"locale"`
-	ProfilePreferences      string     `json:"profilePreferences"`
-	AppearancePreferences   string     `json:"appearancePreferences"`
-	OnboardingCompletedAt   *time.Time `json:"onboardingCompletedAt"`
-	EmailVerifiedAt         *time.Time `json:"emailVerifiedAt"`
-	EmailSource             string     `json:"emailSource"`
-	EmailBootstrapUsedAt    *time.Time `json:"emailBootstrapUsedAt"`
-	PhoneVerifiedAt         *time.Time `json:"phoneVerifiedAt"`
-	UsernameChangedAt       *time.Time `json:"usernameChangedAt"`
-	PasswordEnabled         bool       `json:"passwordEnabled"`
-	PasswordSetAt           *time.Time `json:"passwordSetAt"`
-	PasswordOrigin          string     `json:"passwordOrigin"`
-	MustResetPassword       bool       `json:"mustResetPassword"`
-	InitialUsernameRequired bool       `json:"initialUsernameRequired"`
-	InitialSecurityRequired bool       `json:"initialSecurityRequired"`
-	TwoFactorAvailable      bool       `json:"twoFactorAvailable"`
-	TwoFactorEnabled        bool       `json:"twoFactorEnabled"`
-	TwoFactorRequired       bool       `json:"twoFactorRequired"`
-	TwoFactorRecoveryCount  int        `json:"twoFactorRecoveryCount"`
-	LastLoginAt             *time.Time `json:"lastLoginAt"`
-	CreatedAt               time.Time  `json:"createdAt"`
-	UpdatedAt               time.Time  `json:"updatedAt"`
-	SubscriptionTier        string     `json:"subscriptionTier"`
-	SubscriptionPlanID      *uint      `json:"subscriptionPlanID"`
-	SubscriptionPlanName    string     `json:"subscriptionPlanName"`
-	SubscriptionStatus      string     `json:"subscriptionStatus"`
-	SubscriptionExpiresAt   *time.Time `json:"subscriptionExpiresAt"`
+	ID                      uint                                  `json:"id"`
+	PublicID                string                                `json:"publicID"`
+	Username                string                                `json:"username"`
+	DisplayName             string                                `json:"displayName"`
+	AvatarURL               string                                `json:"avatarURL"`
+	Email                   string                                `json:"email"`
+	Phone                   string                                `json:"phone"`
+	Role                    string                                `json:"role"`
+	Status                  string                                `json:"status"`
+	Timezone                string                                `json:"timezone"`
+	Locale                  string                                `json:"locale"`
+	ProfilePreferences      string                                `json:"profilePreferences"`
+	AppearancePreferences   string                                `json:"appearancePreferences"`
+	OnboardingCompletedAt   *time.Time                            `json:"onboardingCompletedAt" extensions:"x-nullable,!x-omitempty"`
+	EmailVerifiedAt         *time.Time                            `json:"emailVerifiedAt" extensions:"x-nullable,!x-omitempty"`
+	EmailSource             string                                `json:"emailSource"`
+	EmailBootstrapUsedAt    *time.Time                            `json:"emailBootstrapUsedAt" extensions:"x-nullable,!x-omitempty"`
+	PhoneVerifiedAt         *time.Time                            `json:"phoneVerifiedAt" extensions:"x-nullable,!x-omitempty"`
+	UsernameChangedAt       *time.Time                            `json:"usernameChangedAt" extensions:"x-nullable,!x-omitempty"`
+	PasswordEnabled         bool                                  `json:"passwordEnabled"`
+	PasswordSetAt           *time.Time                            `json:"passwordSetAt" extensions:"x-nullable,!x-omitempty"`
+	PasswordOrigin          string                                `json:"passwordOrigin"`
+	MustResetPassword       bool                                  `json:"mustResetPassword"`
+	InitialUsernameRequired bool                                  `json:"initialUsernameRequired"`
+	InitialSecurityRequired bool                                  `json:"initialSecurityRequired"`
+	TwoFactorAvailable      bool                                  `json:"twoFactorAvailable"`
+	TwoFactorEnabled        bool                                  `json:"twoFactorEnabled"`
+	TwoFactorRequired       bool                                  `json:"twoFactorRequired"`
+	TwoFactorRecoveryCount  int                                   `json:"twoFactorRecoveryCount"`
+	LastLoginAt             *time.Time                            `json:"lastLoginAt" extensions:"x-nullable,!x-omitempty"`
+	LastActiveAt            *time.Time                            `json:"lastActiveAt" extensions:"x-nullable,!x-omitempty"`
+	CreatedAt               time.Time                             `json:"createdAt"`
+	UpdatedAt               time.Time                             `json:"updatedAt"`
+	SubscriptionTier        string                                `json:"subscriptionTier"`
+	SubscriptionPlanID      *uint                                 `json:"subscriptionPlanID" extensions:"x-nullable,!x-omitempty"`
+	SubscriptionPlanName    string                                `json:"subscriptionPlanName"`
+	SubscriptionStatus      string                                `json:"subscriptionStatus"`
+	SubscriptionExpiresAt   *time.Time                            `json:"subscriptionExpiresAt" extensions:"x-nullable,!x-omitempty"`
+	IdentityProviders       []UserIdentityProviderSummaryResponse `json:"identityProviders"`
+}
+
+// UserIdentityProviderSummaryResponse 用户绑定身份源摘要。
+type UserIdentityProviderSummaryResponse struct {
+	ID      uint   `json:"id"`
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Slug    string `json:"slug"`
+	LogoURL string `json:"logoURL"`
 }
 
 // LoginResponse 登录响应。
@@ -354,15 +412,15 @@ type ActiveSessionResponse struct {
 	RegionName       string     `json:"regionName"`
 	CityName         string     `json:"cityName"`
 	TimezoneName     string     `json:"timezoneName"`
-	IPLatitude       *float64   `json:"ipLatitude"`
-	IPLongitude      *float64   `json:"ipLongitude"`
-	PreciseLatitude  *float64   `json:"preciseLatitude"`
-	PreciseLongitude *float64   `json:"preciseLongitude"`
-	PreciseAccuracyM *float64   `json:"preciseAccuracyMeters"`
-	PreciseLocatedAt *time.Time `json:"preciseLocatedAt"`
+	IPLatitude       *float64   `json:"ipLatitude" extensions:"x-nullable,!x-omitempty"`
+	IPLongitude      *float64   `json:"ipLongitude" extensions:"x-nullable,!x-omitempty"`
+	PreciseLatitude  *float64   `json:"preciseLatitude" extensions:"x-nullable,!x-omitempty"`
+	PreciseLongitude *float64   `json:"preciseLongitude" extensions:"x-nullable,!x-omitempty"`
+	PreciseAccuracyM *float64   `json:"preciseAccuracyMeters" extensions:"x-nullable,!x-omitempty"`
+	PreciseLocatedAt *time.Time `json:"preciseLocatedAt" extensions:"x-nullable,!x-omitempty"`
 	CreatedAt        time.Time  `json:"createdAt"`
 	UpdatedAt        time.Time  `json:"updatedAt"`
-	LastSeenAt       *time.Time `json:"lastSeenAt"`
+	LastSeenAt       *time.Time `json:"lastSeenAt" extensions:"x-nullable,!x-omitempty"`
 	ExpiresAt        time.Time  `json:"expiresAt"`
 }
 
@@ -386,10 +444,49 @@ type LoginOptionsResponseDoc struct {
 	Data     LoginOptionsResponse `json:"data"`
 }
 
+type ProviderAuthBridgeStartResponseDoc struct {
+	ErrorMsg string                          `json:"errorMsg"`
+	Data     ProviderAuthBridgeStartResponse `json:"data"`
+}
+
+// IdentityProviderListResponseDoc 管理员身份源列表响应（Swagger 用）。
+type IdentityProviderListResponseDoc struct {
+	ErrorMsg string                       `json:"errorMsg"`
+	Data     IdentityProviderListResponse `json:"data"`
+}
+
+// IdentityProviderResponseDoc 管理员身份源详情响应（Swagger 用）。
+type IdentityProviderResponseDoc struct {
+	ErrorMsg string                   `json:"errorMsg"`
+	Data     IdentityProviderResponse `json:"data"`
+}
+
+// IdentityProviderReorderResponseDoc 管理员身份源排序响应（Swagger 用）。
+type IdentityProviderReorderResponseDoc struct {
+	ErrorMsg string                          `json:"errorMsg"`
+	Data     IdentityProviderReorderResponse `json:"data"`
+}
+
+// IdentityProviderDeleteResponseDoc 管理员身份源删除响应（Swagger 用）。
+type IdentityProviderDeleteResponseDoc struct {
+	ErrorMsg string                         `json:"errorMsg"`
+	Data     IdentityProviderDeleteResponse `json:"data"`
+}
+
 // EmailRegistrationStartResponseDoc 邮箱注册验证码发送响应（Swagger 用）。
 type EmailRegistrationStartResponseDoc struct {
 	ErrorMsg string                         `json:"errorMsg"`
 	Data     EmailRegistrationStartResponse `json:"data"`
+}
+
+type PasswordResetStartResponseDoc struct {
+	ErrorMsg string                     `json:"errorMsg"`
+	Data     PasswordResetStartResponse `json:"data"`
+}
+
+type PasswordResetCompleteResponseDoc struct {
+	ErrorMsg string                        `json:"errorMsg"`
+	Data     PasswordResetCompleteResponse `json:"data"`
 }
 
 // MeResponseDoc 当前用户信息响应（Swagger 用）。
@@ -491,6 +588,7 @@ func toUserResponse(v userview.UserView) UserResponse {
 		TwoFactorRequired:       v.TwoFactorRequired,
 		TwoFactorRecoveryCount:  v.TwoFactorRecoveryCount,
 		LastLoginAt:             v.LastLoginAt,
+		LastActiveAt:            v.LastActiveAt,
 		CreatedAt:               v.CreatedAt,
 		UpdatedAt:               v.UpdatedAt,
 		SubscriptionTier:        v.SubscriptionTier,
@@ -498,7 +596,22 @@ func toUserResponse(v userview.UserView) UserResponse {
 		SubscriptionPlanName:    v.SubscriptionPlanName,
 		SubscriptionStatus:      v.SubscriptionStatus,
 		SubscriptionExpiresAt:   v.SubscriptionExpiresAt,
+		IdentityProviders:       toUserIdentityProviderSummaryResponses(v.IdentityProviders),
 	}
+}
+
+func toUserIdentityProviderSummaryResponses(items []userview.IdentityProviderSummary) []UserIdentityProviderSummaryResponse {
+	results := make([]UserIdentityProviderSummaryResponse, 0, len(items))
+	for _, item := range items {
+		results = append(results, UserIdentityProviderSummaryResponse{
+			ID:      item.ID,
+			Type:    item.Type,
+			Name:    item.Name,
+			Slug:    item.Slug,
+			LogoURL: item.LogoURL,
+		})
+	}
+	return results
 }
 
 // toLoginResponse 将 LoginResult 映射为响应 DTO。
@@ -527,6 +640,13 @@ func toTwoFactorStatusResponse(d *appauth.TwoFactorStatusResult) TwoFactorStatus
 
 func toEmailRegistrationStartResponse(d *appauth.EmailRegistrationStartResult) EmailRegistrationStartResponse {
 	return EmailRegistrationStartResponse{
+		Sent:      d.Sent,
+		ExpiresAt: d.ExpiresAt,
+	}
+}
+
+func toPasswordResetStartResponse(d *appauth.PasswordResetStartResult) PasswordResetStartResponse {
+	return PasswordResetStartResponse{
 		Sent:      d.Sent,
 		ExpiresAt: d.ExpiresAt,
 	}
@@ -564,9 +684,15 @@ func toLoginOptionsResponse(d *appauth.LoginOptions) LoginOptionsResponse {
 		EmailEnabled:                 d.EmailEnabled,
 		EmailRegistrationEnabled:     d.EmailRegistrationEnabled,
 		EmailVerificationEnabled:     d.EmailVerificationEnabled,
+		PasswordResetEnabled:         d.PasswordResetEnabled,
 		TurnstileRegistrationEnabled: d.TurnstileRegistrationEnabled,
 		TurnstileSiteKey:             d.TurnstileSiteKey,
-		Providers:                    toIdentityProviderResponses(d.Providers),
+		ProviderAuthBridge: ProviderAuthBridgeResponse{
+			Enabled:         d.ProviderAuthBridge.Enabled,
+			ProtocolVersion: d.ProviderAuthBridge.ProtocolVersion,
+			CallbackBaseURL: d.ProviderAuthBridge.CallbackBaseURL,
+		},
+		Providers: toIdentityProviderResponses(d.Providers),
 	}
 }
 

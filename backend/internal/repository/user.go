@@ -38,6 +38,31 @@ type UpdateUserTwoFactorInput struct {
 	TrustedDeviceExpiresAt **time.Time
 }
 
+// UserImportRecord 描述一次管理员导入需要原子写入的用户、凭据和余额。
+type UserImportRecord struct {
+	User                      domainuser.User
+	Credential                domainuser.Credential
+	BillingBalanceNanousd     int64
+	BillingBalanceRefNo       string
+	BillingBalanceDescription string
+}
+
+// OpenWebUIUserRow 描述从外部 OpenWebUI 数据库读取的用户行。
+type OpenWebUIUserRow struct {
+	PublicID    string
+	Username    string
+	DisplayName string
+	Email       string
+	Balance     float64
+}
+
+// UserListFilter 定义管理员用户列表过滤条件。
+type UserListFilter struct {
+	Query              string
+	SubscriptionStatus string
+	IdentityProvider   string
+}
+
 // UpdateSessionActivityInput 定义会话活动元数据更新字段。
 type UpdateSessionActivityInput struct {
 	LastSeenAt       *time.Time
@@ -183,8 +208,11 @@ type UserRepository interface {
 	GetByUsername(ctx context.Context, username string) (*domainuser.User, error)
 	GetByEmail(ctx context.Context, email string) (*domainuser.User, error)
 	GetByID(ctx context.Context, userID uint) (*domainuser.User, error)
+	GetByPublicID(ctx context.Context, publicID string) (*domainuser.User, error)
+	ListUsersByLowerEmails(ctx context.Context, emails []string) (map[string]domainuser.User, error)
+	ListAllUsernames(ctx context.Context) ([]string, error)
 	UpdateFields(ctx context.Context, userID uint, input UpdateUserFieldsInput) (*domainuser.User, error)
-	ListUsers(ctx context.Context, offset int, limit int) ([]domainuser.User, int64, error)
+	ListUsers(ctx context.Context, offset int, limit int, filter UserListFilter) ([]domainuser.User, int64, error)
 	CountSuperAdmins(ctx context.Context) (int64, error)
 	GetActivePlanByCode(ctx context.Context, code string) (*domainbilling.Plan, error)
 	GetActiveDefaultPriceByPlanID(ctx context.Context, planID uint) (*domainbilling.Price, error)
@@ -207,6 +235,7 @@ type UserRepository interface {
 		subscriptionEndAt *time.Time,
 		autoRenew bool,
 	) error
+	ImportUsersWithCredentialsAndBalances(ctx context.Context, records []UserImportRecord) ([]domainuser.User, error)
 	GetCredentialByUserID(ctx context.Context, userID uint) (*domainuser.Credential, error)
 	GetUserTwoFactorByUserID(ctx context.Context, userID uint) (*domainuser.UserTwoFactor, error)
 	UpsertUserTwoFactor(ctx context.Context, item *domainuser.UserTwoFactor) (*domainuser.UserTwoFactor, error)
@@ -219,6 +248,7 @@ type UserRepository interface {
 	ResetPasswordByAdmin(ctx context.Context, userID uint, passwordHash string, mustResetPassword bool) error
 	MarkBootstrapSuperAdminPasswordResetRequired(ctx context.Context, username string) error
 	UpdateLastLogin(ctx context.Context, userID uint) error
+	ListLatestSessionActivityByUserIDs(ctx context.Context, userIDs []uint) (map[uint]time.Time, error)
 	DeleteAccountHard(ctx context.Context, userID uint) error
 	ListDistinctFileStoragePathsByUserID(ctx context.Context, userID uint) ([]string, error)
 	RecordAuthEvent(
@@ -249,6 +279,7 @@ type UserRepository interface {
 	UpdateIdentityProviderSortOrders(ctx context.Context, publicIDs []string) error
 	DeleteIdentityProvider(ctx context.Context, publicID string, force bool) error
 	ListUserIdentitiesByUserID(ctx context.Context, userID uint) ([]domainuser.UserIdentity, error)
+	ListUserIdentitiesByUserIDs(ctx context.Context, userIDs []uint) (map[uint][]domainuser.UserIdentity, error)
 	GetUserIdentityByProviderSubject(ctx context.Context, providerID uint, subject string) (*domainuser.UserIdentity, error)
 	CreateUserIdentity(ctx context.Context, identity *domainuser.UserIdentity) (*domainuser.UserIdentity, error)
 	UpdateUserIdentityLogin(ctx context.Context, identityID uint, profileJSON string, providerDisplayName string, email string, emailVerified bool) error

@@ -1,18 +1,16 @@
 "use client";
 
-import * as React from "react";
 import { useTranslations } from "next-intl";
+import * as React from "react";
 import { toast } from "sonner";
-
-import { resolveApiBaseURL } from "@/shared/api/http-client";
-import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
+import { useLocalizedErrorMessage } from "@/i18n/use-localized-error";
 import {
   cancelCurrentTwoFactorSetup,
   changePassword,
-  confirmCurrentTwoFactorSetup,
+  completeCurrentEmailVerification,
   completeEmailBootstrap,
   completeEmailChange,
-  completeCurrentEmailVerification,
+  confirmCurrentTwoFactorSetup,
   deleteCurrentUserIdentity,
   deleteMe,
   disableCurrentTwoFactor,
@@ -24,17 +22,18 @@ import {
   logoutAll,
   logoutSession,
   regenerateCurrentTwoFactorRecoveryCodes,
-  startCurrentTwoFactorSetup,
+  startAccountDeleteVerification,
   startCurrentEmailChange,
   startCurrentEmailVerification,
-  startAccountDeleteVerification,
+  startCurrentTwoFactorSetup,
   startEmailBootstrap,
   startNewEmailChange,
   startPasswordChangeVerification,
 } from "@/shared/api/auth";
-import { clearSessionAndRedirectToLogin } from "@/shared/auth/session";
-import { useLocalizedErrorMessage } from "@/i18n/use-localized-error";
 import type { ActiveSessionDTO, IdentityProviderDTO, SecurityVerificationMethod, TwoFactorSetupStartData, TwoFactorStatusData, UserDTO, UserIdentityDTO } from "@/shared/api/auth.types";
+import { resolveApiBaseURL } from "@/shared/api/http-client";
+import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
+import { clearSessionAndRedirectToLogin } from "@/shared/auth/session";
 
 type UseSettingsAccountResult = {
   viewer: UserDTO | null;
@@ -606,6 +605,7 @@ export function useSettingsAccount(): UseSettingsAccountResult {
       params.set("next", "/setting/account");
       params.set("code_challenge", pkce.challenge);
       params.set("intent", "bind");
+      // OAuth must use a full document navigation so the provider redirect can leave the app origin.
       window.location.href = `${resolveApiBaseURL()}/api/v1/auth/providers/${encodeURIComponent(provider.slug)}/start?${params.toString()}`;
     } catch (error) {
       toast.error(t("bindIdentityFailed"), { description: translateError(error, t("retryLater")) });

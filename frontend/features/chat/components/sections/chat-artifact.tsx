@@ -1,9 +1,9 @@
 "use client";
 
-import * as React from "react";
-import { AnimatePresence, motion } from "motion/react";
 import { Download, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useTranslations } from "next-intl";
+import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,14 +15,25 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ChatArtifactSVGPreview } from "@/features/chat/components/sections/chat-artifact-svg-preview";
 import {
   buildArtifactPreviewDocument,
-  downloadArtifactHTML,
-  resolveArtifactDownloadName,
   type ChatArtifact,
+  resolveArtifactDownloadName,
 } from "@/features/chat/model/chat-artifacts";
-import { CopyActionButton } from "@/shared/components/copy-action";
+import {
+  useChatFontPreference,
+  useChatFontWeightPreference,
+  useFontSizePreference,
+} from "@/features/settings";
 import { cn } from "@/lib/utils";
+import { CopyActionButton } from "@/shared/components/copy-action";
+import { useTheme } from "@/shared/components/theme-provider";
+import { downloadBlob } from "@/shared/lib/export-download";
+import {
+  captureHTMLVisualThemeSnapshot,
+  type HTMLVisualThemeSnapshot,
+} from "@/shared/lib/html-visual-theme";
 
 type ChatArtifactWorkspaceProps = {
   artifact: ChatArtifact | null;
@@ -129,7 +140,7 @@ function ArtifactPreviewFrame({ documentHTML, title }: ArtifactPreviewFrameProps
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       srcDoc={documentHTML}
-      className="h-full min-h-[320px] w-full bg-white"
+      className="h-full min-h-[320px] w-full bg-background"
     />
   );
 }
@@ -142,9 +153,32 @@ function ChatArtifactPanel({
   onClose,
 }: ChatArtifactPanelProps) {
   const t = useTranslations("chat.artifacts");
-  const previewHTML = React.useMemo(
-    () => buildArtifactPreviewDocument(artifact.kind, artifact.code),
-    [artifact.code, artifact.kind],
+  const { preset, resolvedTheme } = useTheme();
+  const chatFont = useChatFontPreference();
+  const chatFontWeight = useChatFontWeightPreference();
+  const fontSize = useFontSizePreference();
+  const [previewTheme, setPreviewTheme] = React.useState<HTMLVisualThemeSnapshot>({
+    colorScheme: "light",
+    variables: [],
+  });
+
+  React.useEffect(() => {
+    setPreviewTheme(captureHTMLVisualThemeSnapshot(resolvedTheme));
+  }, [chatFont, chatFontWeight, fontSize, preset, resolvedTheme]);
+
+  const artifactPreview = React.useMemo(
+    () =>
+      artifact.kind === "svg"
+        ? ({ mode: "svg" } as const)
+        : ({
+            documentHTML: buildArtifactPreviewDocument(
+              artifact.kind,
+              artifact.code,
+              previewTheme,
+            ),
+            mode: "frame",
+          } as const),
+    [artifact.code, artifact.kind, previewTheme],
   );
   const canPreview = artifact.code.trim().length > 0;
   const artifactOptions = React.useMemo(
@@ -154,8 +188,18 @@ function ChatArtifactPanel({
 
   const handleDownload = React.useCallback(() => {
     if (!canPreview) return;
-    downloadArtifactHTML(resolveArtifactDownloadName(artifact.kind), previewHTML);
-  }, [artifact.kind, canPreview, previewHTML]);
+    if (artifactPreview.mode === "svg") {
+      downloadBlob(
+        new Blob([artifact.code], { type: "image/svg+xml;charset=utf-8" }),
+        resolveArtifactDownloadName(artifact.kind),
+      );
+      return;
+    }
+    downloadBlob(
+      new Blob([artifactPreview.documentHTML], { type: "text/html;charset=utf-8" }),
+      resolveArtifactDownloadName(artifact.kind),
+    );
+  }, [artifact.kind, artifact.code, artifactPreview, canPreview]);
 
   return (
     <aside
@@ -209,7 +253,11 @@ function ChatArtifactPanel({
               </TooltipTrigger>
               <TooltipContent side="bottom">{t("copySource")}</TooltipContent>
             </Tooltip>
-            <ArtifactActionButton label={t("downloadHtml")} disabled={!canPreview} onClick={handleDownload}>
+            <ArtifactActionButton
+              label={artifact.kind === "svg" ? t("downloadSvg") : t("downloadHtml")}
+              disabled={!canPreview}
+              onClick={handleDownload}
+            >
               <Download className="size-3" />
             </ArtifactActionButton>
             <ArtifactActionButton label={t("close")} onClick={onClose}>
@@ -220,11 +268,21 @@ function ChatArtifactPanel({
 
         <TabsContent value="preview" className="mt-0 min-h-0 flex-1 overflow-hidden">
           {canPreview ? (
-            <ArtifactPreviewFrame
-              key={artifact.id}
-              documentHTML={previewHTML}
-              title={t("previewTitle")}
-            />
+            artifactPreview.mode === "svg" ? (
+              <ChatArtifactSVGPreview
+                complete={artifact.complete}
+                invalidMessage={t("invalidSvg")}
+                source={artifact.code}
+                theme={previewTheme}
+                title={t("previewTitle")}
+              />
+            ) : (
+              <ArtifactPreviewFrame
+                key={artifact.id}
+                documentHTML={artifactPreview.documentHTML}
+                title={t("previewTitle")}
+              />
+            )
           ) : (
             <div className="flex h-full min-h-[320px] items-center justify-center bg-muted/15 px-6 text-center text-sm text-muted-foreground">
               {t("empty")}

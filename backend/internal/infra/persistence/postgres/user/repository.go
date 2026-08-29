@@ -9,11 +9,21 @@ import (
 	"time"
 
 	domainbilling "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/billing"
+	domainknowledgebase "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/knowledgebase"
+	domainskill "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/skill"
 	domainuser "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/user"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/dberror"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/models"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+)
+
+var userListSearchEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+const (
+	userListSubscriptionStatusActive = "active"
+	userListSubscriptionStatusFree   = "free"
 )
 
 // translateError 将 gorm 底层错误统一映射为仓储语义错误。
@@ -21,29 +31,13 @@ func translateError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if dberror.IsRecordNotFound(err) {
 		return repository.ErrNotFound
 	}
-	if isUniqueConstraintError(err) {
+	if dberror.IsUniqueConstraint(err) {
 		return translateUniqueConstraint(err)
 	}
 	return err
-}
-
-type sqlStateError interface {
-	SQLState() string
-}
-
-func isUniqueConstraintError(err error) bool {
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return true
-	}
-	var stateErr sqlStateError
-	if errors.As(err, &stateErr) && stateErr.SQLState() == "23505" {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint")
 }
 
 func translateUniqueConstraint(err error) error {
@@ -86,6 +80,58 @@ func (r *Repo) GetByEmail(ctx context.Context, email string) (*domainuser.User, 
 		return nil, translateError(err)
 	}
 	return toDomainUser(item), nil
+}
+
+// GetByPublicID 按公开 ID 查询用户。
+func (r *Repo) GetByPublicID(ctx context.Context, publicID string) (*domainuser.User, error) {
+	var item model.User
+	if err := r.db.WithContext(ctx).Where("public_id = ?", publicID).First(&item).Error; err != nil {
+		return nil, translateError(err)
+	}
+	return toDomainUser(item), nil
+}
+
+// ListUsersByLowerEmails 按小写邮箱批量查询用户。
+func (r *Repo) ListUsersByLowerEmails(ctx context.Context, emails []string) (map[string]domainuser.User, error) {
+	results := make(map[string]domainuser.User)
+	normalized := make([]string, 0, len(emails))
+	seen := make(map[string]struct{}, len(emails))
+	for _, email := range emails {
+		value := strings.ToLower(strings.TrimSpace(email))
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	if len(normalized) == 0 {
+		return results, nil
+	}
+
+	items := make([]model.User, 0)
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(email) IN ?", normalized).
+		Find(&items).Error; err != nil {
+		return nil, translateError(err)
+	}
+	for _, item := range items {
+		results[strings.ToLower(strings.TrimSpace(item.Email))] = *toDomainUser(item)
+	}
+	return results, nil
+}
+
+// ListAllUsernames 查询当前全部用户名，用于导入时规避唯一约束冲突。
+func (r *Repo) ListAllUsernames(ctx context.Context) ([]string, error) {
+	var usernames []string
+	if err := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Pluck("username", &usernames).Error; err != nil {
+		return nil, translateError(err)
+	}
+	return usernames, nil
 }
 
 // GetByID 按 ID 查询用户。
@@ -154,36 +200,54 @@ func (r *Repo) updateUserFields(ctx context.Context, userID uint, input reposito
 	}
 
 	if input.Role != nil && *input.Role != model.RoleSuperAdmin {
-		return r.updateUserFieldsWithSuperAdminGuard(ctx, userID, updates)
+		return r.updateUserFieldsInTransaction(ctx, userID, updates, true)
 	}
 
-	return r.applyUserFieldUpdates(ctx, userID, updates)
+	return r.updateUserFieldsInTransaction(ctx, userID, updates, false)
 }
 
-func (r *Repo) updateUserFieldsWithSuperAdminGuard(
+func (r *Repo) updateUserFieldsInTransaction(
 	ctx context.Context,
 	userID uint,
 	updates map[string]interface{},
+	withSuperAdminGuard bool,
 ) (*domainuser.User, error) {
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var superAdmins []model.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id").
-			Where("role = ?", model.RoleSuperAdmin).
-			Order("id ASC").
-			Find(&superAdmins).Error; err != nil {
-			return translateError(err)
-		}
+		if withSuperAdminGuard {
+			var superAdmins []model.User
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Select("id").
+				Where("role = ?", model.RoleSuperAdmin).
+				Order("id ASC").
+				Find(&superAdmins).Error; err != nil {
+				return translateError(err)
+			}
 
-		targetIsSuperAdmin := false
-		for _, item := range superAdmins {
-			if item.ID == userID {
-				targetIsSuperAdmin = true
-				break
+			targetIsSuperAdmin := false
+			for _, item := range superAdmins {
+				if item.ID == userID {
+					targetIsSuperAdmin = true
+					break
+				}
+			}
+			if targetIsSuperAdmin && len(superAdmins) <= 1 {
+				return repository.ErrLastSuperAdminRoleChange
 			}
 		}
-		if targetIsSuperAdmin && len(superAdmins) <= 1 {
-			return repository.ErrLastSuperAdminRoleChange
+
+		if rawAvatarURL, ok := updates["avatar_url"].(string); ok {
+			if fileID, isFileAvatar := domainuser.ParseFileAvatarURL(rawAvatarURL); isFileAvatar {
+				var fileObject model.FileObject
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+					Select("id").
+					Where("user_id = ? AND file_id = ? AND status = ?", userID, fileID, "active").
+					First(&fileObject).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return repository.ErrNotFound
+					}
+					return translateError(err)
+				}
+			}
 		}
 
 		result := tx.Model(&model.User{}).
@@ -200,25 +264,6 @@ func (r *Repo) updateUserFieldsWithSuperAdminGuard(
 	if err != nil {
 		return nil, err
 	}
-	return r.GetByID(ctx, userID)
-}
-
-func (r *Repo) applyUserFieldUpdates(
-	ctx context.Context,
-	userID uint,
-	updates map[string]interface{},
-) (*domainuser.User, error) {
-	result := r.db.WithContext(ctx).
-		Model(&model.User{}).
-		Where("id = ?", userID).
-		Updates(updates)
-	if result.Error != nil {
-		return nil, translateError(result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return nil, repository.ErrNotFound
-	}
-
 	return r.GetByID(ctx, userID)
 }
 
@@ -270,14 +315,69 @@ func userFieldUpdates(input repository.UpdateUserFieldsInput) map[string]interfa
 }
 
 // ListUsers 分页查询用户。
-func (r *Repo) ListUsers(ctx context.Context, offset int, limit int) ([]domainuser.User, int64, error) {
+func (r *Repo) ListUsers(ctx context.Context, offset int, limit int, filter repository.UserListFilter) ([]domainuser.User, int64, error) {
 	items := make([]model.User, 0)
 	var total int64
 
-	if err := r.db.WithContext(ctx).Model(&model.User{}).Count(&total).Error; err != nil {
+	query := r.db.WithContext(ctx).Model(&model.User{})
+	if keyword := strings.TrimSpace(filter.Query); keyword != "" {
+		like := "%" + userListSearchEscaper.Replace(strings.ToLower(keyword)) + "%"
+		query = query.Where(
+			"LOWER(username) LIKE ? ESCAPE '\\' OR LOWER(display_name) LIKE ? ESCAPE '\\' OR LOWER(email) LIKE ? ESCAPE '\\' OR LOWER(public_id) LIKE ? ESCAPE '\\'",
+			like,
+			like,
+			like,
+			like,
+		)
+	}
+	if providerSlug := strings.TrimSpace(filter.IdentityProvider); providerSlug != "" {
+		query = query.Where(
+			`EXISTS (
+				SELECT 1
+				FROM identity_user_links user_identity_filter
+				INNER JOIN identity_providers identity_provider_filter
+					ON identity_provider_filter.id = user_identity_filter.provider_id
+				WHERE user_identity_filter.user_id = identity_users.id
+					AND identity_provider_filter.slug = ?
+			)`,
+			providerSlug,
+		)
+	}
+	if subscriptionStatus := strings.TrimSpace(filter.SubscriptionStatus); subscriptionStatus != "" {
+		now := time.Now()
+		currentPaidSubscriptionSQL := `EXISTS (
+			SELECT 1
+			FROM billing_subscriptions subscription_filter
+			INNER JOIN billing_plans subscription_plan_filter
+				ON subscription_plan_filter.id = subscription_filter.plan_id
+			WHERE subscription_filter.user_id = identity_users.id
+				AND subscription_filter.status = ?
+				AND subscription_filter.current_period_start_at <= ?
+				AND (subscription_filter.current_period_end_at IS NULL OR subscription_filter.current_period_end_at > ?)
+				AND subscription_plan_filter.code <> ?
+		)`
+		switch subscriptionStatus {
+		case userListSubscriptionStatusFree:
+			query = query.Where("NOT "+currentPaidSubscriptionSQL, userListSubscriptionStatusActive, now, now, userListSubscriptionStatusFree)
+		case userListSubscriptionStatusActive:
+			query = query.Where(currentPaidSubscriptionSQL, userListSubscriptionStatusActive, now, now, userListSubscriptionStatusFree)
+		default:
+			query = query.Where(
+				`EXISTS (
+					SELECT 1
+					FROM billing_subscriptions subscription_filter
+					WHERE subscription_filter.user_id = identity_users.id
+						AND subscription_filter.status = ?
+				)`,
+				subscriptionStatus,
+			)
+		}
+	}
+
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, translateError(err)
 	}
-	if err := r.db.WithContext(ctx).
+	if err := query.
 		Order("id DESC").
 		Offset(offset).
 		Limit(limit).
@@ -364,6 +464,98 @@ func (r *Repo) CreateWithCredentialAndIdentity(
 		identity.UpdatedAt = dbIdentity.UpdatedAt
 		return nil
 	}))
+}
+
+// ImportUsersWithCredentialsAndBalances 在同一事务中导入用户、凭据与初始余额账户。
+func (r *Repo) ImportUsersWithCredentialsAndBalances(ctx context.Context, records []repository.UserImportRecord) ([]domainuser.User, error) {
+	results := make([]domainuser.User, 0, len(records))
+	if len(records) == 0 {
+		return results, nil
+	}
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, record := range records {
+			dbUser := toModelUser(&record.User)
+			if err := tx.Create(dbUser).Error; err != nil {
+				return translateError(err)
+			}
+
+			now := time.Now()
+			passwordAlgo := record.Credential.PasswordAlgo
+			if passwordAlgo == "" {
+				passwordAlgo = "bcrypt"
+			}
+			passwordOrigin := record.Credential.PasswordOrigin
+			if passwordOrigin == "" {
+				passwordOrigin = domainuser.PasswordOriginAdminCreated
+			}
+			passwordUpdatedAt := record.Credential.PasswordUpdatedAt
+			if passwordUpdatedAt == nil {
+				passwordUpdatedAt = &now
+			}
+			passwordSetAt := record.Credential.PasswordSetAt
+			if passwordSetAt == nil {
+				passwordSetAt = &now
+			}
+
+			dbCredential := &model.UserCredential{
+				UserID:            dbUser.ID,
+				PasswordHash:      record.Credential.PasswordHash,
+				PasswordAlgo:      passwordAlgo,
+				PasswordEnabled:   record.Credential.PasswordEnabled,
+				PasswordUpdatedAt: passwordUpdatedAt,
+				PasswordSetAt:     passwordSetAt,
+				PasswordOrigin:    passwordOrigin,
+				MustResetPassword: record.Credential.MustResetPassword,
+				FailedLoginCount:  record.Credential.FailedLoginCount,
+			}
+			if err := tx.Create(dbCredential).Error; err != nil {
+				return translateError(err)
+			}
+
+			balanceNanousd := record.BillingBalanceNanousd
+			if balanceNanousd < 0 {
+				balanceNanousd = 0
+			}
+			account := &model.BillingAccount{
+				UserID:         dbUser.ID,
+				Currency:       "USD",
+				BalanceNanousd: balanceNanousd,
+				Status:         "active",
+			}
+			if err := tx.Create(account).Error; err != nil {
+				return translateError(err)
+			}
+			if balanceNanousd > 0 {
+				transaction := &model.BalanceTransaction{
+					AccountID:           account.ID,
+					UserID:              dbUser.ID,
+					Type:                domainbilling.BalanceTransactionTypeAdminSet,
+					AmountNanousd:       balanceNanousd,
+					BalanceAfterNanousd: balanceNanousd,
+					RefType:             "admin_import",
+					RefNo:               strings.TrimSpace(record.BillingBalanceRefNo),
+					Description:         strings.TrimSpace(record.BillingBalanceDescription),
+				}
+				if transaction.Description == "" {
+					transaction.Description = "OpenWebUI import"
+				}
+				if err := tx.Create(transaction).Error; err != nil {
+					return translateError(err)
+				}
+			}
+
+			record.User.ID = dbUser.ID
+			record.User.CreatedAt = dbUser.CreatedAt
+			record.User.UpdatedAt = dbUser.UpdatedAt
+			results = append(results, record.User)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 func (r *Repo) createWithCredentialTx(
@@ -658,10 +850,56 @@ func (r *Repo) UpdateLastLogin(ctx context.Context, userID uint) error {
 		Error)
 }
 
+// ListLatestSessionActivityByUserIDs 批量查询用户最近会话活跃时间。
+func (r *Repo) ListLatestSessionActivityByUserIDs(ctx context.Context, userIDs []uint) (map[uint]time.Time, error) {
+	results := make(map[uint]time.Time, len(userIDs))
+	if len(userIDs) == 0 {
+		return results, nil
+	}
+
+	sessions := make([]model.UserSession, 0, len(userIDs))
+	latestSessionQuery := r.db.WithContext(ctx).
+		Model(&model.UserSession{}).
+		Select("identity_sessions.*, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY COALESCE(last_seen_at, issued_at) DESC, id DESC) AS row_number").
+		Where("user_id IN ?", userIDs)
+
+	if err := r.db.WithContext(ctx).
+		Table("(?) AS latest_sessions", latestSessionQuery).
+		Where("row_number = ?", 1).
+		Find(&sessions).Error; err != nil {
+		return nil, translateError(err)
+	}
+
+	for _, session := range sessions {
+		if session.LastSeenAt != nil {
+			results[session.UserID] = *session.LastSeenAt
+			continue
+		}
+		results[session.UserID] = session.IssuedAt
+	}
+	return results, nil
+}
+
 // DeleteAccountHard 删除用户主记录及主要用户域数据。
 func (r *Repo) DeleteAccountHard(ctx context.Context, userID uint) error {
 	return translateError(r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var builtinFileReferences int64
+		if err := tx.Table("knowledge_base_files AS kbf").
+			Joins("JOIN knowledge_bases AS kb ON kb.id = kbf.knowledge_base_id").
+			Joins("JOIN file_objects AS fo ON fo.id = kbf.file_object_id").
+			Where("kb.scope = ? AND fo.user_id = ? AND fo.status = ?", domainknowledgebase.ScopeBuiltin, userID, "active").
+			Count(&builtinFileReferences).Error; err != nil {
+			return err
+		}
+		if builtinFileReferences > 0 {
+			return domainknowledgebase.ErrBuiltinFileOwnerDeleteBlocked
+		}
+
 		conversationSubQuery := tx.Unscoped().Model(&model.Conversation{}).Select("id").Where("user_id = ?", userID)
+		projectSubQuery := tx.Unscoped().Model(&model.ConversationProject{}).Select("id").Where("user_id = ?", userID)
+		userSkillSubQuery := tx.Model(&model.Skill{}).Select("id").Where("scope = ? AND owner_user_id = ?", domainskill.ScopeUser, userID)
+		userKnowledgeBaseSubQuery := tx.Model(&model.KnowledgeBase{}).Select("id").Where("scope = ? AND owner_user_id = ?", domainknowledgebase.ScopeUser, userID)
+		userFileSubQuery := tx.Unscoped().Model(&model.FileObject{}).Select("id").Where("user_id = ?", userID)
 		runSubQuery := tx.Unscoped().Model(&model.ConversationRun{}).Select("run_id").Where("user_id = ?", userID)
 
 		steps := []struct {
@@ -759,6 +997,52 @@ func (r *Repo) DeleteAccountHard(ctx context.Context, userID uint) error {
 				},
 			},
 			{
+				label: "chat_conversation_project_mcp_tools",
+				run: func(db *gorm.DB) error {
+					return db.Where("project_id IN (?)", projectSubQuery).Delete(&model.ConversationProjectMCPTool{}).Error
+				},
+			},
+			{
+				label: "chat_conversation_project_skills",
+				run: func(db *gorm.DB) error {
+					return db.Where("project_id IN (?) OR skill_id IN (?)", projectSubQuery, userSkillSubQuery).
+						Delete(&model.ConversationProjectSkill{}).Error
+				},
+			},
+			{
+				label: "chat_conversation_project_knowledge_bases",
+				run: func(db *gorm.DB) error {
+					return db.Where("project_id IN (?) OR knowledge_base_id IN (?)", projectSubQuery, userKnowledgeBaseSubQuery).
+						Delete(&model.ConversationProjectKnowledgeBase{}).Error
+				},
+			},
+			{
+				label: "chat_conversation_projects",
+				run: func(db *gorm.DB) error {
+					return db.Unscoped().Where("user_id = ?", userID).Delete(&model.ConversationProject{}).Error
+				},
+			},
+			{
+				label: "skills",
+				run: func(db *gorm.DB) error {
+					return db.Where("scope = ? AND owner_user_id = ?", domainskill.ScopeUser, userID).Delete(&model.Skill{}).Error
+				},
+			},
+			{
+				label: "knowledge_base_files",
+				run: func(db *gorm.DB) error {
+					return db.Where("knowledge_base_id IN (?) OR file_object_id IN (?)", userKnowledgeBaseSubQuery, userFileSubQuery).
+						Delete(&model.KnowledgeBaseFile{}).Error
+				},
+			},
+			{
+				label: "knowledge_bases",
+				run: func(db *gorm.DB) error {
+					return db.Where("scope = ? AND owner_user_id = ?", domainknowledgebase.ScopeUser, userID).
+						Delete(&model.KnowledgeBase{}).Error
+				},
+			},
+			{
 				label: "file_chunks",
 				run: func(db *gorm.DB) error {
 					return db.Unscoped().Where("user_id = ?", userID).Delete(&model.FileChunk{}).Error
@@ -786,6 +1070,12 @@ func (r *Repo) DeleteAccountHard(ctx context.Context, userID uint) error {
 				label: "user_settings",
 				run: func(db *gorm.DB) error {
 					return db.Unscoped().Where("user_id = ?", userID).Delete(&model.UserSetting{}).Error
+				},
+			},
+			{
+				label: "permission_group_user_access",
+				run: func(db *gorm.DB) error {
+					return db.Unscoped().Where("user_id = ?", userID).Delete(&model.PermissionGroupUserAccess{}).Error
 				},
 			},
 			// 财务审计事实不在账号硬删除中清理：
@@ -1398,6 +1688,25 @@ func (r *Repo) ListUserIdentitiesByUserID(ctx context.Context, userID uint) ([]d
 	results := make([]domainuser.UserIdentity, 0, len(items))
 	for _, item := range items {
 		results = append(results, *toDomainUserIdentity(item))
+	}
+	return results, nil
+}
+
+func (r *Repo) ListUserIdentitiesByUserIDs(ctx context.Context, userIDs []uint) (map[uint][]domainuser.UserIdentity, error) {
+	results := make(map[uint][]domainuser.UserIdentity, len(userIDs))
+	if len(userIDs) == 0 {
+		return results, nil
+	}
+	items := make([]model.UserIdentity, 0)
+	if err := r.db.WithContext(ctx).
+		Where("user_id IN ?", userIDs).
+		Order("user_id ASC, id ASC").
+		Find(&items).Error; err != nil {
+		return nil, translateError(err)
+	}
+	for _, item := range items {
+		identity := toDomainUserIdentity(item)
+		results[identity.UserID] = append(results[identity.UserID], *identity)
 	}
 	return results, nil
 }

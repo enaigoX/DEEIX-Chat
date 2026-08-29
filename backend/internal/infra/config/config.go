@@ -10,10 +10,20 @@ import (
 	"strings"
 	"sync/atomic"
 
+	sharedsecurity "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/security"
 	"gopkg.in/yaml.v3"
 )
 
 const (
+	defaultAppName                      = "DEEIX Chat"
+	defaultBrandTitle                   = "DEEIX Chat"
+	defaultBrandShortName               = "DEEIX"
+	defaultBrandDescription             = "DEEIX Chat is a multi-model AI conversation system."
+	defaultBrandFaviconURL              = "/favicon.ico"
+	defaultBrandPWAIcon192URL           = "/pwa/icon-192.png"
+	defaultBrandPWAIcon512URL           = "/pwa/icon-512.png"
+	defaultBrandPWAMaskableIcon512URL   = "/pwa/icon-maskable-512.png"
+	defaultBrandAppleTouchIcon180URL    = "/pwa/apple-touch-icon.png"
 	defaultJWTSecret                    = "deeix-chat-dev-secret"
 	defaultDataEncryptionKey            = "deeix-chat-dev-data-encryption-key"
 	defaultAdminUsername                = "admin"
@@ -23,6 +33,21 @@ const (
 	defaultHTTPReadTimeoutSeconds       = 120
 	defaultHTTPIdleTimeoutSeconds       = 120
 	defaultHTTPMaxHeaderBytes           = 1 << 20
+	// defaultHTTPShutdownTimeoutSeconds 是优雅关停排空 in-flight 请求的默认窗口。
+	// 容器编排下应小于 terminationGracePeriodSeconds，为强断兜底与资源释放留余量。
+	defaultHTTPShutdownTimeoutSeconds = 10
+	// DefaultFileFullContextMaxBytes 是全文注入的默认提取文本大小上限（2 MiB）。
+	DefaultFileFullContextMaxBytes int64 = 2 * 1024 * 1024
+
+	// DefaultContextWindowFallbackTokens 是无法从模型能力配置或内置目录识别窗口时的默认值。
+	DefaultContextWindowFallbackTokens = 128_000
+	// MinContextWindowFallbackTokens 与 MaxContextWindowFallbackTokens 限制管理员可配置的安全范围。
+	MinContextWindowFallbackTokens = 16_384
+	MaxContextWindowFallbackTokens = 16_000_000
+	// DefaultContextCompactTriggerPercent 在有效输入预算的 80% 处主动压缩。
+	DefaultContextCompactTriggerPercent = 80
+	MinContextCompactTriggerPercent     = 10
+	MaxContextCompactTriggerPercent     = 95
 )
 
 const (
@@ -52,6 +77,16 @@ func DefaultModelOptionAllowedPathsJSON() string {
     "presence_penalty",
     "frequency_penalty",
     "reasoning_effort",
+    "verbosity",
+    "thinking.type",
+    "stream_options.include_usage"
+  ],
+  "openrouter_chat_completions": [
+    "presence_penalty",
+    "frequency_penalty",
+    "reasoning_effort",
+    "reasoning.effort",
+    "reasoning.summary",
     "verbosity",
     "thinking.type",
     "stream_options.include_usage"
@@ -91,19 +126,44 @@ func DefaultModelOptionAllowedPathsJSON() string {
     "size",
     "user"
   ],
-  "google_image_generation": [
-    "generationConfig.responseModalities",
-    "generationConfig.imageConfig.aspectRatio",
-    "generationConfig.imageConfig.imageSize"
-  ],
   "anthropic_messages": [
     "speed",
     "top_k",
     "thinking.type",
     "thinking.budget_tokens"
   ],
+  "gemini_generate_content": [
+    "generationConfig.temperature",
+    "generationConfig.topP",
+    "generationConfig.maxOutputTokens",
+    "generationConfig.responseMimeType",
+    "generationConfig.thinkingConfig.includeThoughts",
+    "generationConfig.thinkingConfig.thinkingLevel"
+  ],
+  "google_image_generation": [
+    "generationConfig.responseModalities",
+    "generationConfig.imageConfig.aspectRatio",
+    "generationConfig.imageConfig.imageSize"
+  ],
+  "gemini_interactions": [
+    "generation_config.temperature",
+    "generation_config.top_p",
+    "generation_config.max_output_tokens",
+    "generation_config.thinking_level",
+    "generation_config.thinking_summaries",
+    "response_format.type",
+    "response_format.aspect_ratio",
+    "response_format.image_size",
+    "response_format.mime_type",
+    "response_format.schema",
+    "generation_config.video_config.task"
+  ],
   "xai_responses": [
-    "reasoning.effort"
+    "reasoning.effort",
+    "min_p",
+    "parallel_tool_calls",
+    "store",
+    "top_k"
   ],
   "xai_image": [
     "aspect_ratio",
@@ -117,11 +177,13 @@ func DefaultModelOptionAllowedPathsJSON() string {
     "resolution",
     "response_format"
   ],
-  "gemini_generate_content": [
-    "generationConfig.temperature",
-    "generationConfig.topP",
-    "generationConfig.maxOutputTokens",
-    "generationConfig.responseMimeType"
+  "xai_video": [
+    "aspect_ratio",
+    "duration",
+    "resolution"
+  ],
+  "xai_video_extensions": [
+    "duration"
   ]
 }`
 }
@@ -156,6 +218,17 @@ type yamlConfig struct {
 		Name string `yaml:"name"`
 		Env  string `yaml:"env"`
 	} `yaml:"app"`
+	Branding struct {
+		Title                 string `yaml:"title"`
+		ShortName             string `yaml:"short_name"`
+		Description           string `yaml:"description"`
+		LogoURL               string `yaml:"logo_url"`
+		FaviconURL            string `yaml:"favicon_url"`
+		PWAIcon192URL         string `yaml:"pwa_icon_192_url"`
+		PWAIcon512URL         string `yaml:"pwa_icon_512_url"`
+		PWAMaskableIcon512URL string `yaml:"pwa_maskable_icon_512_url"`
+		AppleTouchIcon180URL  string `yaml:"apple_touch_icon_180_url"`
+	} `yaml:"branding"`
 	Server struct {
 		HTTPPort                 string `yaml:"http_port"`
 		CORSAllowOrigin          string `yaml:"cors_allow_origin"`
@@ -167,11 +240,14 @@ type yamlConfig struct {
 		ReadTimeoutSeconds       int    `yaml:"read_timeout_seconds"`
 		IdleTimeoutSeconds       int    `yaml:"idle_timeout_seconds"`
 		MaxHeaderBytes           int    `yaml:"max_header_bytes"`
+		ShutdownTimeoutSeconds   int    `yaml:"shutdown_timeout_seconds"`
 	} `yaml:"server"`
 	Security struct {
 		JWTSecret              string `yaml:"jwt_secret"`
 		DataEncryptionKey      string `yaml:"data_encryption_key"`
 		SSRFProtectionEnabled  *bool  `yaml:"ssrf_protection_enabled"`
+		SSRFAllowedHosts       string `yaml:"ssrf_allowed_hosts"`
+		SSRFAllowedCIDRs       string `yaml:"ssrf_allowed_cidrs"`
 		TurnstileSiteverifyURL string `yaml:"turnstile_siteverify_url"`
 	} `yaml:"security"`
 	Database struct {
@@ -194,10 +270,12 @@ type yamlConfig struct {
 			TempStore     string `yaml:"temp_store"`
 		} `yaml:"sqlite"`
 		Redis struct {
-			Addr     string `yaml:"addr"`
-			Username string `yaml:"username"`
-			Password string `yaml:"password"`
-			DB       int    `yaml:"db"`
+			Addr                  string `yaml:"addr"`
+			Username              string `yaml:"username"`
+			Password              string `yaml:"password"`
+			DB                    int    `yaml:"db"`
+			TLSEnabled            *bool  `yaml:"tls_enabled"`
+			TLSInsecureSkipVerify *bool  `yaml:"tls_insecure_skip_verify"`
 		} `yaml:"redis"`
 	} `yaml:"database"`
 	Cache struct {
@@ -234,6 +312,7 @@ type yamlConfig struct {
 			Endpoint     string  `yaml:"endpoint"`
 			Headers      string  `yaml:"headers"`
 			Insecure     *bool   `yaml:"insecure"`
+			Protocol     string  `yaml:"protocol"`
 			SamplingRate float64 `yaml:"sampling_rate"`
 		} `yaml:"tracing"`
 	} `yaml:"observability"`
@@ -245,6 +324,15 @@ type Config struct {
 	// ── 静态配置（YAML/ENV） ──
 	AppName                      string
 	Env                          string
+	BrandTitle                   string
+	BrandShortName               string
+	BrandDescription             string
+	BrandLogoURL                 string
+	BrandFaviconURL              string
+	BrandPWAIcon192URL           string
+	BrandPWAIcon512URL           string
+	BrandPWAMaskableIcon512URL   string
+	BrandAppleTouchIcon180URL    string
 	HTTPPort                     string
 	CORSAllowOrigin              string
 	TrustedProxies               string
@@ -255,9 +343,12 @@ type Config struct {
 	HTTPReadTimeoutSeconds       int
 	HTTPIdleTimeoutSeconds       int
 	HTTPMaxHeaderBytes           int
+	HTTPShutdownTimeoutSeconds   int
 	JWTSecret                    string
 	DataEncryptionKey            string
 	SSRFProtectionEnabled        bool
+	SSRFAllowedHosts             string
+	SSRFAllowedCIDRs             string
 	DatabaseDriver               string
 	PostgresDSN                  string
 	PostgresMaxOpenConns         int
@@ -277,6 +368,8 @@ type Config struct {
 	RedisUsername                string
 	RedisPassword                string
 	RedisDB                      int
+	RedisTLSEnabled              bool
+	RedisTLSInsecureSkipVerify   bool
 	StorageBackend               string
 	StorageRootDir               string
 	StorageS3Endpoint            string
@@ -306,6 +399,7 @@ type Config struct {
 	OTelExporterOTLPEndpoint     string
 	OTelExporterOTLPHeaders      string
 	OTelExporterOTLPInsecure     bool
+	OTelExporterOTLPProtocol     string
 	OTelSamplingRate             float64
 
 	// ── 动态配置（由 DB 种子初始化默认值，settings.RuntimeSettings.ApplyTo 覆盖） ──
@@ -322,6 +416,7 @@ type Config struct {
 	ThirdPartyLoginEnabled       bool
 	EmailRegistrationEnabled     bool
 	EmailVerificationEnabled     bool
+	PasswordResetEnabled         bool
 	EmailRegistrationDomains     string
 	EmailRegistrationNoAlias     bool
 	AutoLinkVerifiedEmail        bool
@@ -329,18 +424,21 @@ type Config struct {
 	TurnstileSiteKey             string
 	TurnstileSecretKey           string
 	// 对话配置
-	MaxContextMessages       int
-	ContextMaxTurns          int
-	ContextMaxInputTokens    int
-	ContextCompactTrigger    int
-	ContextCompactPreserve   int
-	ConversationTaskModel    string
-	ConversationTitlePrompt  string
-	ConversationLabelsPrompt string
-	DefaultSystemPrompt      string
-	ModelOptionPolicyMode    string
-	ModelOptionAllowedPaths  string
-	ModelOptionDeniedPaths   string
+	MaxContextMessages           int
+	ContextMaxTurns              int
+	ContextCompactEnabled        bool
+	ContextWindowFallbackTokens  int
+	ContextCompactTriggerPercent int
+	ContextCompactPreserve       int
+	ConversationDefaultModel     string
+	ConversationTaskModel        string
+	ConversationTitlePrompt      string
+	ConversationLabelsPrompt     string
+	DefaultSystemPrompt          string
+	SkillsPrompt                 string
+	ModelOptionPolicyMode        string
+	ModelOptionAllowedPaths      string
+	ModelOptionDeniedPaths       string
 	// 存储配置
 	UserStorageQuotaBytes int64
 	MaxUploadFileBytes    int64
@@ -387,8 +485,13 @@ type Config struct {
 	ExtractAliyunOCRTimeoutSeconds    int    // 阿里云 OCR 请求超时(秒)
 	ExtractMinerUSource               string // MinerU 服务类型(cloud/self_hosted)
 	ExtractMinerUBaseURL              string // MinerU 服务地址
+	ExtractMinerUFileTypes            string // MinerU 处理的文件类型（逗号分隔）
 	ExtractMinerUTimeoutSeconds       int    // MinerU 请求超时(秒)
 	ExtractMinerUAuthToken            string // MinerU 鉴权 Token
+	ExtractMistralOCRBaseURL          string // Mistral OCR 服务地址
+	ExtractMistralOCRModel            string // Mistral OCR 请求模型
+	ExtractMistralOCRTimeoutSeconds   int    // Mistral OCR 请求超时(秒)
+	ExtractMistralOCRAuthToken        string // Mistral OCR 鉴权 Token
 	ExtractLLMOCRBaseURL              string // LLM OCR 服务地址
 	ExtractLLMOCRModel                string // LLM OCR 请求模型
 	ExtractLLMOCRTimeoutSeconds       int    // LLM OCR 请求超时(秒)
@@ -443,6 +546,7 @@ type Config struct {
 	MCPMaxSelectedToolsPerMessage int
 	MCPMaxLLMCallsPerRun          int
 	MCPMaxToolCallsPerRun         int
+	MCPToolPrompt                 string
 }
 
 // defaultYAMLPaths 固定读取仓库根目录的 config.yaml。
@@ -458,8 +562,17 @@ func Load() Config {
 	yc := loadYAML()
 	return Config{
 		// 静态基础设施
-		AppName:                      envOr("APP_NAME", yc.App.Name, "DEEIX Chat"),
+		AppName:                      envOr("APP_NAME", yc.App.Name, defaultAppName),
 		Env:                          normalizeEnv(envOrNonEmpty("APP_ENV", yc.App.Env, "prod")),
+		BrandTitle:                   valueOrDefault(yc.Branding.Title, defaultBrandTitle),
+		BrandShortName:               valueOrDefault(yc.Branding.ShortName, defaultBrandShortName),
+		BrandDescription:             valueOrDefault(yc.Branding.Description, defaultBrandDescription),
+		BrandLogoURL:                 strings.TrimSpace(yc.Branding.LogoURL),
+		BrandFaviconURL:              valueOrDefault(yc.Branding.FaviconURL, defaultBrandFaviconURL),
+		BrandPWAIcon192URL:           valueOrDefault(yc.Branding.PWAIcon192URL, defaultBrandPWAIcon192URL),
+		BrandPWAIcon512URL:           valueOrDefault(yc.Branding.PWAIcon512URL, defaultBrandPWAIcon512URL),
+		BrandPWAMaskableIcon512URL:   valueOrDefault(yc.Branding.PWAMaskableIcon512URL, defaultBrandPWAMaskableIcon512URL),
+		BrandAppleTouchIcon180URL:    valueOrDefault(yc.Branding.AppleTouchIcon180URL, defaultBrandAppleTouchIcon180URL),
 		HTTPPort:                     envOr("HTTP_PORT", yc.Server.HTTPPort, "8080"),
 		CORSAllowOrigin:              envOr("CORS_ALLOW_ORIGIN", yc.Server.CORSAllowOrigin, "http://127.0.0.1:8080,http://localhost:8080"),
 		TrustedProxies:               envOr("TRUSTED_PROXIES", yc.Server.TrustedProxies, ""),
@@ -470,11 +583,14 @@ func Load() Config {
 		HTTPReadTimeoutSeconds:       envOrInt("HTTP_READ_TIMEOUT_SECONDS", yc.Server.ReadTimeoutSeconds, defaultHTTPReadTimeoutSeconds),
 		HTTPIdleTimeoutSeconds:       envOrInt("HTTP_IDLE_TIMEOUT_SECONDS", yc.Server.IdleTimeoutSeconds, defaultHTTPIdleTimeoutSeconds),
 		HTTPMaxHeaderBytes:           envOrInt("HTTP_MAX_HEADER_BYTES", yc.Server.MaxHeaderBytes, defaultHTTPMaxHeaderBytes),
+		HTTPShutdownTimeoutSeconds:   envOrInt("HTTP_SHUTDOWN_TIMEOUT_SECONDS", yc.Server.ShutdownTimeoutSeconds, defaultHTTPShutdownTimeoutSeconds),
 		JWTSecret:                    envOr("JWT_SECRET", yc.Security.JWTSecret, defaultJWTSecret),
 		DataEncryptionKey:            envOr("DATA_ENCRYPTION_KEY", yc.Security.DataEncryptionKey, defaultDataEncryptionKey),
 		SSRFProtectionEnabled:        envOrBoolPtr("SSRF_PROTECTION_ENABLED", yc.Security.SSRFProtectionEnabled, false),
+		SSRFAllowedHosts:             envOr("SSRF_ALLOWED_HOSTS", yc.Security.SSRFAllowedHosts, ""),
+		SSRFAllowedCIDRs:             envOr("SSRF_ALLOWED_CIDRS", yc.Security.SSRFAllowedCIDRs, ""),
 		DatabaseDriver:               normalizeDatabaseDriver(envOr("DATABASE_DRIVER", yc.Database.Driver, "postgres")),
-		PostgresDSN:                  envOr("POSTGRES_DSN", yc.Database.Postgres.DSN, "host=127.0.0.1 user=deeix_chat password=deeix_chat_dev_2026 dbname=deeix_chat port=5432 sslmode=disable TimeZone=Asia/Shanghai"),
+		PostgresDSN:                  normalizePostgresDSN(envOr("POSTGRES_DSN", yc.Database.Postgres.DSN, "host=127.0.0.1 user=deeix_chat password=deeix_chat_dev_2026 dbname=deeix_chat port=5432 sslmode=disable TimeZone=Asia/Shanghai")),
 		PostgresMaxOpenConns:         envOrInt("POSTGRES_MAX_OPEN_CONNS", yc.Database.Postgres.MaxOpenConns, 30),
 		PostgresMaxIdleConns:         envOrInt("POSTGRES_MAX_IDLE_CONNS", yc.Database.Postgres.MaxIdleConns, 10),
 		PostgresConnMaxLifetimeMin:   envOrInt("POSTGRES_CONN_MAX_LIFETIME_MINUTES", yc.Database.Postgres.ConnMaxLifetimeMin, 60),
@@ -492,6 +608,8 @@ func Load() Config {
 		RedisUsername:                envOr("REDIS_USERNAME", yc.Database.Redis.Username, ""),
 		RedisPassword:                envOr("REDIS_PASSWORD", yc.Database.Redis.Password, ""),
 		RedisDB:                      envOrInt("REDIS_DB", yc.Database.Redis.DB, 0),
+		RedisTLSEnabled:              envOrBoolPtr("REDIS_TLS_ENABLED", yc.Database.Redis.TLSEnabled, false),
+		RedisTLSInsecureSkipVerify:   envOrBoolPtr("REDIS_TLS_INSECURE_SKIP_VERIFY", yc.Database.Redis.TLSInsecureSkipVerify, false),
 		StorageBackend:               envOr("STORAGE_BACKEND", yc.Storage.Backend, "local"),
 		StorageRootDir:               envOrPath("STORAGE_ROOT_DIR", yc.Storage.Local.RootDir, "./storage", yc.sourceDir),
 		StorageS3Endpoint:            envOr("STORAGE_S3_ENDPOINT", yc.Storage.S3.Endpoint, ""),
@@ -521,6 +639,7 @@ func Load() Config {
 		OTelExporterOTLPEndpoint:     envOr("OTEL_EXPORTER_OTLP_ENDPOINT", yc.Observability.Tracing.Endpoint, ""),
 		OTelExporterOTLPHeaders:      envOr("OTEL_EXPORTER_OTLP_HEADERS", yc.Observability.Tracing.Headers, ""),
 		OTelExporterOTLPInsecure:     envOrBoolPtr("OTEL_EXPORTER_OTLP_INSECURE", yc.Observability.Tracing.Insecure, false),
+		OTelExporterOTLPProtocol:     normalizeOTelExporterOTLPProtocol(envOr("OTEL_EXPORTER_OTLP_PROTOCOL", yc.Observability.Tracing.Protocol, "grpc")),
 		OTelSamplingRate:             envOrFloat("OTEL_TRACES_SAMPLER_ARG", envOrFloat("OTEL_SAMPLING_RATE", yc.Observability.Tracing.SamplingRate, 1), 1),
 
 		// 动态配置默认值（会被 DB 覆盖）
@@ -536,6 +655,7 @@ func Load() Config {
 		ThirdPartyLoginEnabled:            true,
 		EmailRegistrationEnabled:          true,
 		EmailVerificationEnabled:          false,
+		PasswordResetEnabled:              false,
 		EmailRegistrationDomains:          "",
 		EmailRegistrationNoAlias:          false,
 		AutoLinkVerifiedEmail:             true,
@@ -544,13 +664,16 @@ func Load() Config {
 		TurnstileSecretKey:                "",
 		MaxContextMessages:                20,
 		ContextMaxTurns:                   48,
-		ContextMaxInputTokens:             32000,
-		ContextCompactTrigger:             32768,
+		ContextCompactEnabled:             false,
+		ContextWindowFallbackTokens:       DefaultContextWindowFallbackTokens,
+		ContextCompactTriggerPercent:      DefaultContextCompactTriggerPercent,
 		ContextCompactPreserve:            8,
+		ConversationDefaultModel:          "",
 		ConversationTaskModel:             "follow",
 		ConversationTitlePrompt:           "",
 		ConversationLabelsPrompt:          "",
 		DefaultSystemPrompt:               "",
+		SkillsPrompt:                      "",
 		ModelOptionPolicyMode:             "allowlist",
 		ModelOptionAllowedPaths:           DefaultModelOptionAllowedPathsJSON(),
 		ModelOptionDeniedPaths:            DefaultModelOptionDeniedPathsJSON(),
@@ -559,12 +682,12 @@ func Load() Config {
 		MaxMessageFiles:                   10,
 		ImageMaxDimension:                 1024,
 		FileFullContextLimitEnabled:       true,
-		FileFullContextMaxBytes:           51200, // 50KB
-		FileFullContextMaxTokens:          12000,
+		FileFullContextMaxBytes:           DefaultFileFullContextMaxBytes,
+		FileFullContextMaxTokens:          65536,
 		FileImageMaxBytes:                 0,
 		FileDocMaxBytes:                   0,
 		FileFullContextPDFMaxPages:        20,
-		FileAllowedMIMETypes:              "image/jpeg,image/png,image/webp,image/gif,text/plain,text/markdown,text/csv,text/yaml,application/json,application/yaml,application/x-yaml,application/toml,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel",
+		FileAllowedMIMETypes:              "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,text/plain,text/markdown,text/csv,text/yaml,application/json,application/yaml,application/x-yaml,application/toml,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel",
 		ExtractEngine:                     "builtin",
 		ExtractOCREngine:                  "rapidocr",
 		ExtractImageOCREnabled:            false,
@@ -598,8 +721,13 @@ func Load() Config {
 		ExtractAliyunOCRTimeoutSeconds:    60,
 		ExtractMinerUSource:               "cloud",
 		ExtractMinerUBaseURL:              "https://mineru.net/api/v4",
+		ExtractMinerUFileTypes:            "pdf,word,presentation",
 		ExtractMinerUTimeoutSeconds:       180,
 		ExtractMinerUAuthToken:            "",
+		ExtractMistralOCRBaseURL:          "https://api.mistral.ai/v1/ocr",
+		ExtractMistralOCRModel:            "mistral-ocr-latest",
+		ExtractMistralOCRTimeoutSeconds:   60,
+		ExtractMistralOCRAuthToken:        "",
 		ExtractLLMOCRBaseURL:              "",
 		ExtractLLMOCRModel:                "",
 		ExtractLLMOCRTimeoutSeconds:       60,
@@ -645,6 +773,7 @@ func Load() Config {
 		MCPMaxSelectedToolsPerMessage:     DefaultMCPMaxSelectedToolsPerMessage,
 		MCPMaxLLMCallsPerRun:              5,
 		MCPMaxToolCallsPerRun:             8,
+		MCPToolPrompt:                     "",
 	}
 }
 
@@ -665,6 +794,12 @@ func (c Config) Validate() error {
 			return errors.New("invalid config: APP_ENV/app.env must be dev, development, prod, or production (got empty)")
 		}
 		return fmt.Errorf("invalid config: APP_ENV/app.env must be dev, development, prod, or production (got %q)", c.Env)
+	}
+	if _, err := sharedsecurity.NewOutboundPolicy(c.ssrfProtectionEnforced(), splitCommaSeparated(c.SSRFAllowedHosts), splitCommaSeparated(c.SSRFAllowedCIDRs)); err != nil {
+		return fmt.Errorf("invalid config: SSRF allowlist: %w", err)
+	}
+	if err := validateHTTPIntegrationURL(c.TurnstileSiteverifyURL, "TURNSTILE_SITEVERIFY_URL"); err != nil {
+		return err
 	}
 	if env != "prod" {
 		return nil
@@ -744,6 +879,17 @@ func (c Config) validateStorage() error {
 	}
 }
 
+func validateHTTPIntegrationURL(raw string, label string) error {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil
+	}
+	if err := sharedsecurity.ValidateTrustedOutboundHTTPURL(value); err != nil {
+		return fmt.Errorf("invalid config: %s must be an http(s) URL without credentials; metadata and link-local targets are not allowed", label)
+	}
+	return nil
+}
+
 func validatePublicURL(raw string, label string) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed == nil || parsed.Host == "" || parsed.Scheme != "https" {
@@ -796,6 +942,13 @@ func envOr(envKey string, yamlVal string, defaultVal string) string {
 	return defaultVal
 }
 
+func valueOrDefault(value string, defaultValue string) string {
+	if normalized := strings.TrimSpace(value); normalized != "" {
+		return normalized
+	}
+	return defaultValue
+}
+
 func envOrNonEmpty(envKey string, yamlVal string, defaultVal string) string {
 	if v, ok := os.LookupEnv(envKey); ok && strings.TrimSpace(v) != "" {
 		return v
@@ -828,6 +981,61 @@ func normalizeDatabaseDriver(value string) string {
 	}
 }
 
+func normalizePostgresDSN(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return trimmed
+	}
+	if strings.Contains(trimmed, "://") {
+		parsed, err := url.Parse(trimmed)
+		if err != nil || parsed == nil || parsed.RawQuery == "" {
+			return trimmed
+		}
+		parts := strings.Split(parsed.RawQuery, "&")
+		changed := false
+		for index, part := range parts {
+			key, rawValue, ok := strings.Cut(part, "=")
+			if !ok {
+				continue
+			}
+			decodedKey, keyErr := url.QueryUnescape(key)
+			if keyErr != nil || !strings.EqualFold(decodedKey, "timezone") || !strings.Contains(rawValue, "%") {
+				continue
+			}
+			decodedValue, valueErr := url.QueryUnescape(rawValue)
+			if valueErr != nil || strings.TrimSpace(decodedValue) == "" || decodedValue == rawValue {
+				continue
+			}
+			parts[index] = key + "=" + decodedValue
+			changed = true
+		}
+		if !changed {
+			return trimmed
+		}
+		parsed.RawQuery = strings.Join(parts, "&")
+		return parsed.String()
+	}
+
+	parts := strings.Fields(trimmed)
+	changed := false
+	for index, part := range parts {
+		key, rawValue, ok := strings.Cut(part, "=")
+		if !ok || !strings.EqualFold(key, "timezone") || !strings.Contains(rawValue, "%") {
+			continue
+		}
+		decodedValue, err := url.QueryUnescape(rawValue)
+		if err != nil || strings.TrimSpace(decodedValue) == "" || decodedValue == rawValue {
+			continue
+		}
+		parts[index] = key + "=" + decodedValue
+		changed = true
+	}
+	if !changed {
+		return trimmed
+	}
+	return strings.Join(parts, " ")
+}
+
 func normalizeCacheDriver(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "redis":
@@ -836,6 +1044,15 @@ func normalizeCacheDriver(value string) string {
 		return "memory"
 	default:
 		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func normalizeOTelExporterOTLPProtocol(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "http", "http/protobuf":
+		return "http"
+	default:
+		return "grpc"
 	}
 }
 
@@ -938,7 +1155,36 @@ func envOrBoolPtr(envKey string, yamlVal *bool, defaultVal bool) bool {
 
 // TrustedProxyList 返回受信代理列表，支持逗号分隔。
 func (c Config) TrustedProxyList() []string {
-	raw := strings.TrimSpace(c.TrustedProxies)
+	return splitCommaSeparated(c.TrustedProxies)
+}
+
+// TrustedOutboundPolicy 返回部署级集成和可信私网重定向使用的全局 SSRF 白名单策略。
+// 管理员保存的模型、MCP、Embedding 和身份源 endpoint 由对应适配器按精确 origin 局部授权；
+// 只有跨 origin 的私网重定向目标需要显式进入全局白名单。
+// 非法白名单在 Config.Validate 阶段阻止启动；此处保守回退为无白名单严格策略。
+func (c Config) TrustedOutboundPolicy() sharedsecurity.OutboundPolicy {
+	policy, err := sharedsecurity.NewOutboundPolicy(
+		c.ssrfProtectionEnforced(),
+		splitCommaSeparated(c.SSRFAllowedHosts),
+		splitCommaSeparated(c.SSRFAllowedCIDRs),
+	)
+	if err != nil {
+		return sharedsecurity.NewStrictOutboundPolicy(c.ssrfProtectionEnforced())
+	}
+	return policy
+}
+
+// StrictOutboundPolicy 返回不继承私网白名单的 SSRF 策略，用于外部内容和固定公网请求。
+func (c Config) StrictOutboundPolicy() sharedsecurity.OutboundPolicy {
+	return sharedsecurity.NewStrictOutboundPolicy(c.ssrfProtectionEnforced())
+}
+
+func (c Config) ssrfProtectionEnforced() bool {
+	return normalizeEnv(c.Env) == "prod" && c.SSRFProtectionEnabled
+}
+
+func splitCommaSeparated(raw string) []string {
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil
 	}

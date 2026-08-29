@@ -1,235 +1,105 @@
 "use client";
 
-import * as React from "react";
 import { useTranslations } from "next-intl";
+import * as React from "react";
 import { toast } from "sonner";
-
-import type { ChatAreaMessage, ImageLoadingAspectRatio } from "@/features/chat/types/messages";
+import { useChatExchangeSync } from "@/features/chat/hooks/use-chat-exchange-sync";
+import { useChatHiddenRuns } from "@/features/chat/hooks/use-chat-hidden-runs";
+import { useChatMessageActions } from "@/features/chat/hooks/use-chat-message-actions";
+import { useChatQueueDispatch } from "@/features/chat/hooks/use-chat-queue-dispatch";
+import { useChatRunStream } from "@/features/chat/hooks/use-chat-run-stream";
+import { useChatStopMessage } from "@/features/chat/hooks/use-chat-stop-message";
+import { useChatSubmissionQueue } from "@/features/chat/hooks/use-chat-submission-queue";
+import { toBranchKey } from "@/features/chat/model/chat-thread";
+import {
+  conversationTitleFromFirstUserMessage,
+  isPlaceholderConversationTitle,
+  refreshGeneratedConversationMetadata,
+  shouldPollGeneratedConversationMetadata,
+} from "@/features/chat/model/conversation-metadata-refresh";
+import { sanitizeConversationOptions } from "@/features/chat/model/conversation-options";
+import {
+  resolveDefaultSubmissionParentMessage,
+  resolvePersistedPublicID,
+} from "@/features/chat/model/message-submit";
+import {
+  type ActiveStream,
+  type BranchScope,
+  branchRunIsVisible,
+  branchScopeID,
+  branchScopeIsVisible,
+  branchScopesEqual,
+  buildBranchScopePath,
+  clearCancelSettlementTimer,
+  createClientRunID,
+  findLastVisibleActiveStream,
+  findVisibleActiveStreamByRunID,
+  MAX_CONCURRENT_RUNS,
+  type QueuedChatSubmission,
+  replaceCompletedBranchSelection,
+} from "@/features/chat/model/message-submit-branching";
+import {
+  abortPendingExchange,
+  createInitialPendingExchange,
+  failPendingExchange,
+} from "@/features/chat/model/message-submit-exchange";
+import { resolveSubmitBlockDescription } from "@/features/chat/model/message-submit-media";
+import { planChatSubmission } from "@/features/chat/model/message-submit-plan";
 import type {
   ChatModelOption,
   PendingAttachment,
   PendingExchange,
+  PendingExchangeMap,
 } from "@/features/chat/types/chat-runtime";
-import type { ChatSubmitBlockReason } from "@/features/chat/model/chat-task";
-import { resolveChatSubmitDecision } from "@/features/chat/model/chat-task";
-import {
-  resolveDefaultSubmissionParentMessage,
-  resolvePersistedPublicID,
-  toPendingAttachments,
-  toPendingProcessTrace,
-} from "@/features/chat/model/message-submit";
+import type { ChatAreaMessage } from "@/features/chat/types/messages";
 import {
   resolveErrorDetails,
   resolveErrorMessage,
   resolveErrorSummary,
-  toConversationPatch,
 } from "@/features/chat/utils/chat-runtime";
-import {
-  applyBranchSelectionPath,
-  buildChildrenIndex,
-  resolveBranchSelectionPath,
-  toBranchKey,
-} from "@/features/chat/model/chat-thread";
-import { sanitizeConversationOptions } from "@/features/chat/model/conversation-options";
-import { buildMediaImagePreviewMarkdown } from "@/features/chat/model/media-image-preview";
-import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
-import { notifyResponseCompletion } from "@/shared/lib/browser-notifications";
-import {
-  cancelMessageGeneration,
-  getConversation,
-  streamImageEdit,
-  streamImageGeneration,
-  streamMessage as streamConversationMessage,
-  updateMessage,
-  type ConversationStreamOptions,
-} from "@/shared/api/conversation";
+import { getConversation } from "@/shared/api/conversation";
 import type {
   ConversationDTO,
   ConversationOptions,
-  MediaImageRequest,
   MessageDTO,
-  SendMessageRequest,
   SendMessageResult,
   StreamMessageEvent,
 } from "@/shared/api/conversation.types";
 import { ApiError } from "@/shared/api/http-client";
-
-const CONVERSATION_METADATA_REFRESH_MAX_WAIT_MS = 45_000;
-const CONVERSATION_METADATA_REFRESH_INITIAL_DELAY_MS = 800;
-const CONVERSATION_METADATA_REFRESH_MAX_DELAY_MS = 5_000;
-const CONVERSATION_METADATA_REFRESH_BACKOFF = 1.5;
-
-function resolveSubmitBlockDescription(
-  reason: ChatSubmitBlockReason,
-  t: (key: string) => string,
-): string {
-  return t(`mediaInputBlocked.${reason}`);
-}
-
-function resolveImageLoadingAspectRatio(options: ConversationOptions): ImageLoadingAspectRatio {
-  const rawSize = typeof options.size === "string" ? options.size.trim() : "";
-  const match = rawSize.match(/^(\d+)\s*x\s*(\d+)$/i);
-  if (!match) {
-    return "wide";
-  }
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    return "wide";
-  }
-  if (width > height) {
-    return "wide";
-  }
-  if (height > width) {
-    return "portrait";
-  }
-  return "square";
-}
-
-function streamEventErrorToApiError(
-  event: Extract<StreamMessageEvent, { type: "error" }>,
-  fallback: string,
-): ApiError {
-  return new ApiError(event.message || fallback, 502, event.debug, event.errorCode);
-}
-
-function resolveInputSideUsageValue(...values: Array<number | null | undefined>): number {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      return value;
-    }
-  }
-  return 0;
-}
-
-function resolveMediaStatusLabel(
-  status: string,
-  fallbackMessage: string,
-  t: ReturnType<typeof useTranslations>,
-): string {
-  switch (status.trim()) {
-    case "queued":
-      return t("mediaStatus.queued");
-    case "running":
-      return t("mediaStatus.running");
-    case "saving_artifact":
-      return t("mediaStatus.savingArtifact");
-    default:
-      return fallbackMessage.trim() || status.trim();
-  }
-}
-
-type ActiveStream = {
-  controller: AbortController;
-  runID: string;
-  accessToken: string | null;
-};
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-function createClientRunID(): string {
-  const randomID =
-    typeof window.crypto?.randomUUID === "function"
-      ? window.crypto.randomUUID().replaceAll("-", "")
-      : Math.random().toString(36).slice(2) + Date.now().toString(36);
-  return `run_${randomID}`.slice(0, 64);
-}
-
-function buildContinueGenerationPrompt(t: ReturnType<typeof useTranslations>): string {
-  return t("continueGenerationPrompt");
-}
-
-function normalizeLabelsJSON(value: string | null | undefined): string {
-  const normalized = value?.trim();
-  return normalized && normalized !== "null" ? normalized : "[]";
-}
-
-function isPlaceholderConversationTitle(title: string): boolean {
-  const value = title.trim().toLowerCase();
-  return ["", "new conversation", "new chat", "untitled", "新会话", "新对话", "新的对话"].includes(value);
-}
-
-function hasPendingGeneratedConversationMetadata(item: ConversationDTO | null): boolean {
-  return (
-    !item ||
-    isPlaceholderConversationTitle(item.title) ||
-    normalizeLabelsJSON(item.labelsJSON) === "[]"
-  );
-}
-
-function hasGeneratedConversationMetadataChanged(
-  previous: ConversationDTO | null,
-  next: ConversationDTO,
-): boolean {
-  const previousTitle = previous?.title?.trim() ?? "";
-  const nextTitle = next.title.trim();
-  if (nextTitle && nextTitle !== previousTitle && !isPlaceholderConversationTitle(nextTitle)) {
-    return true;
-  }
-  return normalizeLabelsJSON(next.labelsJSON) !== normalizeLabelsJSON(previous?.labelsJSON);
-}
-
-async function refreshGeneratedConversationMetadata(
-  accessToken: string,
-  conversationPublicID: string,
-  previous: ConversationDTO | null,
-  touchByPublicID: (publicID: string, patch?: Partial<ConversationDTO>) => void,
-): Promise<void> {
-  let elapsedMS = 0;
-  let delayMS = CONVERSATION_METADATA_REFRESH_INITIAL_DELAY_MS;
-
-  while (elapsedMS < CONVERSATION_METADATA_REFRESH_MAX_WAIT_MS) {
-    const nextDelayMS = Math.min(delayMS, CONVERSATION_METADATA_REFRESH_MAX_WAIT_MS - elapsedMS);
-    await sleep(nextDelayMS);
-    elapsedMS += nextDelayMS;
-
-    let latest: ConversationDTO;
-    try {
-      latest = await getConversation(accessToken, conversationPublicID);
-    } catch {
-      continue;
-    }
-    if (hasGeneratedConversationMetadataChanged(previous, latest)) {
-      touchByPublicID(conversationPublicID, latest);
-      return;
-    }
-
-    delayMS = Math.min(
-      Math.round(delayMS * CONVERSATION_METADATA_REFRESH_BACKOFF),
-      CONVERSATION_METADATA_REFRESH_MAX_DELAY_MS,
-    );
-  }
-}
+import type { SkillSummaryDTO } from "@/shared/api/skills.types";
+import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
+import { notifyResponseCompletion } from "@/shared/lib/browser-notifications";
 
 export function useChatMessageSubmit({
   conversationID,
-  resetToken,
+  conversationScopeKey,
   activeConversation,
   selectedPlatformModelName,
   modelOptions,
   selectedToolIDs,
+  selectedSkills,
+  selectedKnowledgeBaseIDs,
   htmlVisualPromptEnabled,
-  htmlVisualColorMode,
   options,
   draft,
   attachments,
   maxFilesPerMessage,
   uploading,
   restoreDraftOnFailure,
+  autoGenerateLabels,
   prependNewConversation,
   onConversationCreated,
+  onConversationForked,
   touchByPublicID,
   reload,
   replaceMessage,
   setDraft,
   setAttachments,
   releaseAttachments,
-  pendingExchange,
-  setPendingExchange,
+  transferAttachments,
+  getPendingExchanges,
+  pendingExchanges,
+  setPendingExchanges,
   setBranchSelections,
   showConversationLayout,
   setShowConversationLayout,
@@ -238,37 +108,50 @@ export function useChatMessageSubmit({
   visibleMessages,
   combinedMessages,
   serverMessagePublicIDs,
+  enqueueUpstreamThinkDelta,
   enqueueStreamText,
   flushStreamTextNow,
+  flushUpstreamThinkNow,
   resetStreamBuffer,
+  setStreamTextSnapshot,
   startStream,
   activeGenerationRunsRef,
-  failedGenerationRunsRef,
+  activeGenerationRunsRevision,
+  onActiveGenerationRunsChange,
+  onConversationRunDetached,
+  onConversationRunFinished,
+  onConversationRunStarted,
+  resumeGenerationActive = false,
 }: {
   conversationID: string | null;
-  resetToken: number;
+  conversationScopeKey: string;
   activeConversation: ConversationDTO | null;
   selectedPlatformModelName: string;
   modelOptions: ChatModelOption[];
   selectedToolIDs: number[];
+  selectedSkills: SkillSummaryDTO[];
+  selectedKnowledgeBaseIDs: string[];
   htmlVisualPromptEnabled: boolean;
-  htmlVisualColorMode: "light" | "dark";
   options: ConversationOptions;
   draft: string;
   attachments: PendingAttachment[];
   maxFilesPerMessage: number;
   uploading: boolean;
   restoreDraftOnFailure: boolean;
+  autoGenerateLabels: boolean;
   prependNewConversation: (platformModelName: string) => Promise<ConversationDTO | null | undefined>;
   onConversationCreated?: (conversationPublicID: string) => void;
-  touchByPublicID: (publicID: string, patch?: Partial<ConversationDTO>) => void;
+  onConversationForked?: (conversation: ConversationDTO) => Promise<void> | void;
+  touchByPublicID: (publicID: string, patch: Partial<ConversationDTO>) => void;
   reload: () => void;
   replaceMessage: (message: MessageDTO) => void;
   setDraft: React.Dispatch<React.SetStateAction<string>>;
   setAttachments: React.Dispatch<React.SetStateAction<PendingAttachment[]>>;
   releaseAttachments: (items: PendingAttachment[]) => void;
-  pendingExchange: PendingExchange | null;
-  setPendingExchange: React.Dispatch<React.SetStateAction<PendingExchange | null>>;
+  transferAttachments: (items: PendingAttachment[]) => void;
+  getPendingExchanges: () => PendingExchangeMap;
+  pendingExchanges: PendingExchangeMap;
+  setPendingExchanges: React.Dispatch<React.SetStateAction<PendingExchangeMap>>;
   setBranchSelections: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   showConversationLayout: boolean;
   setShowConversationLayout: React.Dispatch<React.SetStateAction<boolean>>;
@@ -277,92 +160,120 @@ export function useChatMessageSubmit({
   visibleMessages: ChatAreaMessage[];
   combinedMessages: ChatAreaMessage[];
   serverMessagePublicIDs: Set<string>;
-  enqueueStreamText: (delta: string) => void;
-  flushStreamTextNow: () => void;
-  resetStreamBuffer: () => void;
-  startStream: (exchangeKey: string) => void;
+  enqueueUpstreamThinkDelta: (exchangeKey: string, event: Extract<StreamMessageEvent, { type: "upstream_think_delta" }>) => void;
+  enqueueStreamText: (exchangeKey: string, delta: string) => void;
+  flushStreamTextNow: (exchangeKey: string) => void;
+  flushUpstreamThinkNow: (exchangeKey: string) => void;
+  resetStreamBuffer: (exchangeKey?: string) => void;
+  setStreamTextSnapshot: (exchangeKey: string, content: string) => void;
+  startStream: (exchangeKey: string, runID?: string) => void;
   activeGenerationRunsRef?: React.RefObject<Set<string>>;
-  failedGenerationRunsRef?: React.RefObject<Set<string>>;
+  activeGenerationRunsRevision: number;
+  onActiveGenerationRunsChange?: () => void;
+  onConversationRunDetached?: (runID: string) => void;
+  onConversationRunFinished?: (runID: string) => void;
+  onConversationRunStarted?: (runID: string, conversationPublicID: string) => void;
+  resumeGenerationActive?: boolean;
 }) {
   const t = useTranslations("chat.submit");
-  const [sending, setSending] = React.useState(false);
-  const activeStreamRef = React.useRef<ActiveStream | null>(null);
-  const activeGenerationRunsRefRef = React.useRef(activeGenerationRunsRef);
-  const previousResetTokenRef = React.useRef(resetToken);
+  const activeStreamsRef = React.useRef(new Map<string, ActiveStream>());
+  const conversationIDRef = React.useRef(conversationID);
+  const conversationScopeKeyRef = React.useRef(conversationScopeKey);
+  const activeConversationRef = React.useRef(activeConversation);
+  const nextModelRunSequenceRef = React.useRef(new Map<string, number>());
+  const latestCompletedModelRunSequenceRef = React.useRef(new Map<string, number>());
+  const optimisticMessageCountsRef = React.useRef(new Map<string, number>());
+  const {
+    queuedSubmissions,
+    setQueuedSubmissions,
+    queuedSubmissionsRef,
+    sendQueuedAfterCurrentRef,
+    dispatchingQueuedSubmissionIDsRef,
+    settledQueuedSubmissionIDsRef,
+    onDeleteQueuedMessage,
+    onEditQueuedMessage,
+    onGuideQueuedMessage,
+  } = useChatSubmissionQueue({ releaseAttachments });
+  const isRunActive = React.useCallback((runID: string) => activeStreamsRef.current.has(runID), []);
+  const {
+    getStatus: getHiddenParentRunStatus,
+    revision: hiddenParentRunStatusRevision,
+  } = useChatHiddenRuns({
+    queuedParents: queuedSubmissions,
+    getPendingExchanges,
+    isRunActive,
+  });
+  const visibleBranchScopePath = React.useMemo(
+    () => buildBranchScopePath(visibleMessages),
+    [visibleMessages],
+  );
+  const visibleBranchScopePathRef = React.useRef(visibleBranchScopePath);
+  const visibleMessagesRef = React.useRef(visibleMessages);
+  visibleBranchScopePathRef.current = visibleBranchScopePath;
+  visibleMessagesRef.current = visibleMessages;
+  const sending = React.useMemo(
+    () =>
+      Array.from(activeStreamsRef.current.values()).some((active) =>
+        branchRunIsVisible(
+          active,
+          active.runID,
+          conversationScopeKey,
+          visibleBranchScopePath,
+          visibleMessages,
+        ),
+      ),
+    [activeGenerationRunsRevision, conversationScopeKey, visibleBranchScopePath, visibleMessages],
+  );
+
+  const syncActiveRuns = React.useCallback(() => {
+    onActiveGenerationRunsChange?.();
+  }, [onActiveGenerationRunsChange]);
+
+  const updatePendingExchange = React.useCallback(
+    (exchangeKey: string, update: (current: PendingExchange) => PendingExchange) => {
+      setPendingExchanges((current) => {
+        const exchange = current[exchangeKey];
+        if (!exchange) {
+          return current;
+        }
+        const nextExchange = update(exchange);
+        return nextExchange === exchange ? current : { ...current, [exchangeKey]: nextExchange };
+      });
+    },
+    [setPendingExchanges],
+  );
 
   React.useEffect(() => {
-    activeGenerationRunsRefRef.current = activeGenerationRunsRef;
-  }, [activeGenerationRunsRef]);
+    conversationIDRef.current = conversationID;
+  }, [conversationID]);
 
   React.useEffect(() => {
-    if (previousResetTokenRef.current === resetToken) {
-      return;
-    }
-    previousResetTokenRef.current = resetToken;
-
-    const active = activeStreamRef.current;
-    if (active) {
-      // A new chat navigation should detach this view from the active stream without
-      // canceling the server-side run. Reopening the conversation can resume it.
-      active.controller.abort();
-      activeGenerationRunsRefRef.current?.current.delete(active.runID);
-      activeStreamRef.current = null;
-    }
-
-    resetStreamBuffer();
-    setPendingExchange(null);
-    setSending(false);
-  }, [resetStreamBuffer, resetToken, setPendingExchange]);
+    conversationScopeKeyRef.current = conversationScopeKey;
+  }, [conversationScopeKey]);
 
   React.useEffect(() => {
-    if (!pendingExchange) {
-      return;
-    }
-    const userPublicID = pendingExchange.userPublicID || pendingExchange.tempUserPublicID;
-    const assistantPublicID = pendingExchange.assistantPublicID || pendingExchange.tempAssistantPublicID;
-    if (serverMessagePublicIDs.has(userPublicID) && serverMessagePublicIDs.has(assistantPublicID)) {
-      const serverPath = resolveBranchSelectionPath(combinedMessages, assistantPublicID);
-      if (serverPath.length > 0) {
-        setBranchSelections((prev) =>
-          applyBranchSelectionPath(
-            prev,
-            serverPath,
-            [pendingExchange.tempUserPublicID, pendingExchange.tempAssistantPublicID],
-          ),
-        );
-      }
-      setPendingExchange(null);
-      return;
-    }
+    activeConversationRef.current = activeConversation;
+  }, [activeConversation]);
 
-    const pendingRunID = pendingExchange.runID?.trim();
-    if (!pendingRunID || pendingExchange.assistantPending) {
-      return;
-    }
-    const serverAssistant = combinedMessages.find(
-      (item) =>
-        item.role === "assistant" &&
-        item.runID === pendingRunID &&
-        serverMessagePublicIDs.has(item.publicID) &&
-        resolvePersistedPublicID(item.publicID) &&
-        !item.isPending &&
-        !item.isStreaming &&
-        item.status !== "pending",
-    );
-    if (serverAssistant) {
-      const serverPath = resolveBranchSelectionPath(combinedMessages, serverAssistant.publicID);
-      if (serverPath.length > 0) {
-        setBranchSelections((prev) =>
-          applyBranchSelectionPath(
-            prev,
-            serverPath,
-            [pendingExchange.tempUserPublicID, pendingExchange.tempAssistantPublicID],
-          ),
-        );
-      }
-      setPendingExchange(null);
-    }
-  }, [combinedMessages, pendingExchange, serverMessagePublicIDs, setBranchSelections, setPendingExchange]);
+  useChatExchangeSync({
+    conversationScopeKey,
+    pendingExchanges,
+    setPendingExchanges,
+    serverMessagePublicIDs,
+    combinedMessages,
+    setBranchSelections,
+  });
+
+  const { runStream } = useChatRunStream({
+    updatePendingExchange,
+    enqueueUpstreamThinkDelta,
+    enqueueStreamText,
+    flushStreamTextNow,
+    flushUpstreamThinkNow,
+    resetStreamBuffer,
+    setStreamTextSnapshot,
+    onConversationRunFinished,
+  });
 
   const submitMessage = React.useCallback(
     async ({
@@ -372,6 +283,7 @@ export function useChatMessageSubmit({
       parentMessagePublicID,
       sourceMessagePublicID,
       branchReason,
+      queuedSubmission,
     }: {
       content: string;
       currentAttachments: PendingAttachment[];
@@ -379,93 +291,108 @@ export function useChatMessageSubmit({
       parentMessagePublicID?: string | null;
       sourceMessagePublicID?: string | null;
       branchReason?: "default" | "retry" | "edit";
+      queuedSubmission?: QueuedChatSubmission;
     }) => {
-      const payloadContent = content || t("attachmentOnlyContent");
-      const requestPlatformModelName = selectedPlatformModelName.trim();
-      const selectedModel = modelOptions.find((item) => item.platformModelName === requestPlatformModelName) ?? null;
-      if ((!content && currentAttachments.length === 0) || sending || uploading || activeStreamRef.current) {
-        return false;
-      }
-      const effectiveAttachments =
-        maxFilesPerMessage > 0 && currentAttachments.length > maxFilesPerMessage
-          ? currentAttachments.slice(0, maxFilesPerMessage)
-          : currentAttachments;
-      if (effectiveAttachments.length < currentAttachments.length) {
+      const planResult = planChatSubmission({
+        content,
+        currentAttachments,
+        parentMessagePublicID,
+        sourceMessagePublicID,
+        branchReason,
+        queuedSubmission,
+        attachmentFallbackContent: t("attachmentOnlyContent"),
+        uploading,
+        maxFilesPerMessage,
+        modelOptions,
+        selectedPlatformModelName,
+        options,
+        selectedToolIDs,
+        selectedSkills,
+        selectedKnowledgeBaseIDs,
+        htmlVisualPromptEnabled,
+        visibleConversationScopeKey: conversationScopeKeyRef.current,
+        visibleBranchScopePath: visibleBranchScopePathRef.current,
+        visibleMessages: visibleMessagesRef.current,
+        combinedMessages,
+        activeStreams: Array.from(activeStreamsRef.current.values()),
+      });
+      if (planResult.attachmentsTruncated) {
         toast(t("attachmentsTruncated"), {
           description: t("attachmentsTruncatedDescription", { count: maxFilesPerMessage }),
         });
       }
-      const submitDecision = resolveChatSubmitDecision(selectedModel, effectiveAttachments);
-      if (submitDecision.blockedReason) {
-        toast.error(t("mediaInputUnsupported"), {
-          description: resolveSubmitBlockDescription(submitDecision.blockedReason, t),
-        });
+      if (!planResult.ok) {
+        const { block } = planResult;
+        if (block.kind === "concurrent_limit") {
+          toast.error(t("concurrentGenerationLimit", { count: MAX_CONCURRENT_RUNS }));
+        } else if (block.kind === "media_unsupported") {
+          toast.error(t("mediaInputUnsupported"), {
+            description: resolveSubmitBlockDescription(block.reason, t),
+          });
+        } else if (block.kind === "no_model") {
+          toast.error(t("noModel"), { description: t("selectModelFirst") });
+        }
         return false;
       }
-      const submitTask = submitDecision.task;
-      if (!requestPlatformModelName) {
-        toast.error(t("noModel"), { description: t("selectModelFirst") });
-        return false;
-      }
-
+      const { plan } = planResult;
+      const {
+        payloadContent,
+        platformModelName,
+        clientRunID,
+        exchangeKey,
+        shouldFollowSubmittedBranch,
+        effectiveAttachments,
+        resolvedParentPublicID,
+        assistantOnlyBranch,
+        tempUserPublicID,
+        tempAssistantPublicID,
+        pendingUserPublicID,
+      } = plan;
+      let targetConversationScopeKey = plan.targetConversationScopeKey;
+      let targetBranchScope = plan.targetBranchScope;
       const wasConversationMode = showConversationLayout || visibleMessageCount > 0;
-      const exchangeKey = `local-exchange-${Date.now()}`;
-      const resolvedParentPublicID = resolvePersistedPublicID(parentMessagePublicID);
-      const resolvedSourcePublicID = resolvePersistedPublicID(sourceMessagePublicID);
-      const resolvedBranchReason = branchReason ?? "default";
-      const tempUserPublicID = `${exchangeKey}-user`;
-      const tempAssistantPublicID = `${exchangeKey}-assistant`;
       const createdAt = new Date().toISOString();
       let sentSuccessfully = false;
       let shouldKeepConversationLayout = false;
       const streamAbortController = new AbortController();
-      const clientRunID = createClientRunID();
-      const sanitizedOptions = sanitizeConversationOptions(options);
-      const assistantImageAspectRatio =
-        submitTask === "chat" ? undefined : resolveImageLoadingAspectRatio(sanitizedOptions);
-      let targetConversationID = conversationID;
-      let targetConversation = activeConversation;
+      let targetConversationID = queuedSubmission?.conversationPublicID ?? conversationIDRef.current;
+      let targetConversation = queuedSubmission?.conversation ?? activeConversationRef.current;
+      let metadataRefreshInFlight = false;
+      let modelRunSequence = 0;
 
       activeGenerationRunsRef?.current.add(clientRunID);
-      setShowConversationLayout(true);
-      setSending(true);
-      activeStreamRef.current = {
+      if (shouldFollowSubmittedBranch) {
+        setShowConversationLayout(true);
+      }
+      activeStreamsRef.current.set(clientRunID, {
         controller: streamAbortController,
         runID: clientRunID,
+        ...targetBranchScope,
         accessToken: null,
-      };
+        cancelRequested: false,
+        cancelSettlementTimer: null,
+      });
+      if (targetConversationID) {
+        onConversationRunStarted?.(clientRunID, targetConversationID);
+      }
+      syncActiveRuns();
       if (resetComposer) {
         setDraft("");
+        transferAttachments(currentAttachments);
         setAttachments([]);
       }
-      startStream(exchangeKey);
-      setPendingExchange({
-        key: exchangeKey,
-        conversationPublicID: conversationID?.trim() || null,
-        tempUserPublicID,
-        tempAssistantPublicID,
-        runID: clientRunID,
-        platformModelName: requestPlatformModelName,
-        parentPublicID: resolvedParentPublicID,
-        sourcePublicID: resolvedSourcePublicID,
-        branchReason: resolvedBranchReason,
-        userContent: payloadContent,
-        userAttachments: effectiveAttachments.length > 0 ? effectiveAttachments : undefined,
-        userCreatedAt: createdAt,
-        assistantText: "",
-        assistantPending: true,
-        assistantStreaming: true,
-        assistantContentType: submitTask === "chat" ? "markdown" : "image",
-        assistantImageAspectRatio,
-        assistantInlineAlert: undefined,
-        assistantCreatedAt: createdAt,
-        assistantProcessTrace: undefined,
-      });
-      setBranchSelections((prev) => ({
-        ...prev,
-        [toBranchKey(resolvedParentPublicID)]: tempUserPublicID,
-        [tempUserPublicID]: tempAssistantPublicID,
+      startStream(exchangeKey, clientRunID);
+      setPendingExchanges((current) => ({
+        ...current,
+        [exchangeKey]: createInitialPendingExchange(plan, targetConversationID?.trim() || null, createdAt),
       }));
+      if (shouldFollowSubmittedBranch) {
+        setBranchSelections((prev) => ({
+          ...prev,
+          ...(assistantOnlyBranch ? {} : { [toBranchKey(resolvedParentPublicID)]: pendingUserPublicID }),
+          [pendingUserPublicID]: tempAssistantPublicID,
+        }));
+      }
 
       try {
         const token = await resolveAccessToken();
@@ -475,398 +402,515 @@ export function useChatMessageSubmit({
         if (!token) {
           throw new Error(t("signInRequired"));
         }
-        if (activeStreamRef.current?.controller === streamAbortController) {
-          activeStreamRef.current = {
-            controller: streamAbortController,
-            runID: clientRunID,
-            accessToken: token,
-          };
+        const activeStream = activeStreamsRef.current.get(clientRunID);
+        if (activeStream?.controller === streamAbortController) {
+          activeStream.accessToken = token;
         }
+        let metadataFallbackTitle = "";
+        const startMetadataRefresh = (result?: SendMessageResult | null) => {
+          if (
+            !targetConversationID ||
+            metadataRefreshInFlight ||
+            !shouldPollGeneratedConversationMetadata(
+              targetConversation,
+              result,
+              autoGenerateLabels,
+              metadataFallbackTitle,
+            )
+          ) {
+            return;
+          }
+          metadataRefreshInFlight = true;
+          void refreshGeneratedConversationMetadata(
+            token,
+            targetConversationID,
+            targetConversation,
+            autoGenerateLabels,
+            metadataFallbackTitle,
+            touchByPublicID,
+          )
+            .catch(() => {
+              // Metadata refresh failure does not affect this turn; the next list load will fetch server state.
+            })
+            .finally(() => {
+              metadataRefreshInFlight = false;
+            });
+        };
 
         if (!targetConversationID) {
-          const created = await prependNewConversation(requestPlatformModelName);
+          const created = await prependNewConversation(platformModelName);
           if (streamAbortController.signal.aborted) {
             throw new DOMException("Aborted", "AbortError");
           }
           if (!created?.publicID) {
             throw new Error(t("createConversationFailed"));
           }
+          const previousTargetBranchScope = targetBranchScope;
+          const previousConversationScopeKey = previousTargetBranchScope.conversationScopeKey;
+          targetConversationScopeKey = `conversation:${created.publicID}`;
+          targetBranchScope = {
+            ...previousTargetBranchScope,
+            conversationScopeKey: targetConversationScopeKey,
+          };
           targetConversationID = created.publicID;
           targetConversation = created;
-          setPendingExchange((prev) =>
-            prev && prev.key === exchangeKey
-              ? {
-                  ...prev,
-                  conversationPublicID: created.publicID,
-                }
-              : prev,
-          );
-          // Update the URL without triggering Next.js RSC navigation, which can interrupt an active stream.
-          window.history.replaceState(null, "", `/chat?conversation_id=${created.publicID}`);
-          onConversationCreated?.(created.publicID);
-        }
-        const shouldRefreshConversationMetadata = hasPendingGeneratedConversationMetadata(targetConversation);
-
-        const commonStreamPayload = {
-          model: requestPlatformModelName,
-          options: Object.keys(sanitizedOptions).length > 0 ? sanitizedOptions : undefined,
-          clientRunID: clientRunID,
-          fileIDs: effectiveAttachments.length > 0 ? effectiveAttachments.map((item) => item.fileID) : undefined,
-          parentMessagePublicID: resolvedParentPublicID || undefined,
-          sourceMessagePublicID: resolvedSourcePublicID || undefined,
-          branchReason: resolvedBranchReason,
-        };
-        let terminalStreamError: Extract<StreamMessageEvent, { type: "error" }> | null = null;
-        const streamOptions: ConversationStreamOptions = {
-          signal: streamAbortController.signal,
-          onInterrupted: (event) => {
-            terminalStreamError = event;
-          },
-          onFileProc: (message) => {
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey
-                ? { ...prev, assistantFileProc: true, assistantActivityLabel: message.trim() || t("processingAttachments") }
-                : prev,
-            );
-          },
-          onRagSearch: (message) => {
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey
-                ? { ...prev, assistantFileProc: true, assistantActivityLabel: message.trim() || t("retrievingContent") }
-                : prev,
-            );
-          },
-          onMediaStatus: (event) => {
-            const activityLabel = resolveMediaStatusLabel(event.status, event.message, t);
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey
-                ? { ...prev, assistantFileProc: true, assistantActivityLabel: activityLabel }
-                : prev,
-            );
-          },
-          onMediaImageDelta: (event) => {
-            const previewMarkdown = buildMediaImagePreviewMarkdown(event, t("imagePreviewAlt"));
-            if (!previewMarkdown) {
-              return;
-            }
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey
-                ? {
-                    ...prev,
-                    assistantPending: false,
-                    assistantStreaming: true,
-                    assistantFileProc: false,
-                    assistantActivityLabel: undefined,
-                    assistantText: previewMarkdown,
-                  }
-                : prev,
-            );
-          },
-          onCompactDone: (event) => {
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey
-                ? { ...prev, compactDone: { method: event.method, freed_tokens: event.freed_tokens, summary_preview: event.summary_preview } }
-                : prev,
-            );
-          },
-          onProcessUpdate: (event) => {
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey
-                ? {
-                    ...prev,
-                    assistantFileProc: false,
-                    assistantActivityLabel: undefined,
-                    assistantProcessTrace: event.trace ? toPendingProcessTrace(event.trace) : prev.assistantProcessTrace,
-                  }
-                : prev,
-            );
-          },
-          onUpstreamThinkDelta: (event) => {
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey
-                ? {
-                    ...prev,
-                    assistantProcessTrace: event.trace ? toPendingProcessTrace(event.trace) : prev.assistantProcessTrace,
-                  }
-                : prev,
-            );
-          },
-          onDelta: (delta) => {
-            // Always clear assistantFileProc so batched React updates cannot keep the file_proc spinner alive.
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey && prev.assistantFileProc
-                ? { ...prev, assistantFileProc: false, assistantActivityLabel: undefined }
-                : prev,
-            );
-            enqueueStreamText(delta);
-          },
-          onUsage: (event) => {
-            setPendingExchange((prev) =>
-              prev && prev.key === exchangeKey
-                ? {
-                    ...prev,
-                    assistantInputTokens: event.input_tokens > 0 ? event.input_tokens : prev.assistantInputTokens,
-                    assistantOutputTokens: event.output_tokens > 0 ? event.output_tokens : prev.assistantOutputTokens,
-                    assistantCacheReadTokens:
-                      event.cache_read_tokens > 0 ? event.cache_read_tokens : prev.assistantCacheReadTokens,
-                    assistantCacheWriteTokens:
-                      event.cache_write_tokens > 0 ? event.cache_write_tokens : prev.assistantCacheWriteTokens,
-                    assistantReasoningTokens:
-                      event.reasoning_tokens > 0 ? event.reasoning_tokens : prev.assistantReasoningTokens,
-                  }
-                : prev,
-            );
-          },
-        };
-        let completed: SendMessageResult;
-        if (submitTask === "chat") {
-          const chatPayload: SendMessageRequest = {
-            ...commonStreamPayload,
-            contentType: effectiveAttachments.length > 0 ? "mixed" : "text",
-            content: payloadContent,
-            selectedToolIDs: selectedToolIDs.length > 0 ? selectedToolIDs : undefined,
-            htmlVisualPrompt: htmlVisualPromptEnabled || undefined,
-            htmlVisualColorMode: htmlVisualPromptEnabled ? htmlVisualColorMode : undefined,
-          };
-          completed = await streamConversationMessage(token, targetConversationID, chatPayload, streamOptions);
-        } else {
-          const mediaPayload: MediaImageRequest = {
-            ...commonStreamPayload,
-            prompt: payloadContent,
-          };
-          completed =
-            submitTask === "image_generation"
-              ? await streamImageGeneration(token, targetConversationID, mediaPayload, streamOptions)
-              : await streamImageEdit(token, targetConversationID, mediaPayload, streamOptions);
-        }
-
-        failedGenerationRunsRef?.current.delete(clientRunID);
-        sentSuccessfully = true;
-        flushStreamTextNow();
-        resetStreamBuffer();
-        const assistantMessageStatus = completed.assistantMessage.status || "success";
-        const assistantMessageSucceeded = assistantMessageStatus === "success";
-        setPendingExchange((prev) => {
-          if (!prev || prev.key !== exchangeKey) {
-            return prev;
+          onConversationRunStarted?.(clientRunID, created.publicID);
+          const createdActiveStream = activeStreamsRef.current.get(clientRunID);
+          if (createdActiveStream) {
+            createdActiveStream.conversationScopeKey = targetConversationScopeKey;
           }
-          const streamedText = prev.assistantText;
-          const terminalErrorMessage = terminalStreamError
-            ? resolveErrorMessage(streamEventErrorToApiError(terminalStreamError, t("retryLater")), terminalStreamError.message || t("retryLater"))
-            : "";
-          const completedErrorMessage = completed.assistantMessage.errorCode
-            ? resolveErrorMessage(
-                new ApiError(
-                  completed.assistantMessage.errorMessage || t("retryLater"),
-                  502,
-                  terminalStreamError?.debug,
-                  completed.assistantMessage.errorCode,
-                ),
-                completed.assistantMessage.errorMessage || t("retryLater"),
-              )
-            : completed.assistantMessage.errorMessage;
-          return {
-            ...prev,
-            userPublicID: completed.userMessage.publicID,
-            assistantPublicID: completed.assistantMessage.publicID,
-            platformModelName: completed.assistantMessage.platformModelName?.trim() || prev.platformModelName,
-            userContent: completed.userMessage.content,
-            userServerMessageID: completed.userMessage.id,
-            userCreatedAt: completed.userMessage.createdAt,
-            assistantPending: false,
-            assistantStreaming: false,
-            assistantFileProc: false,
-            assistantActivityLabel: undefined,
-            assistantServerMessageID: completed.assistantMessage.id,
-            assistantCreatedAt: completed.assistantMessage.createdAt,
-            assistantUpdatedAt: completed.assistantMessage.updatedAt,
-            assistantContentType: completed.assistantMessage.contentType || prev.assistantContentType,
-            assistantInputTokens: resolveInputSideUsageValue(
-              completed.assistantMessage.inputTokens,
-              completed.userMessage.inputTokens,
-              prev.assistantInputTokens,
-            ),
-            assistantOutputTokens: completed.assistantMessage.outputTokens,
-            assistantCacheReadTokens: resolveInputSideUsageValue(
-              completed.assistantMessage.cacheReadTokens,
-              completed.userMessage.cacheReadTokens,
-              prev.assistantCacheReadTokens,
-            ),
-            assistantCacheWriteTokens: resolveInputSideUsageValue(
-              completed.assistantMessage.cacheWriteTokens,
-              completed.userMessage.cacheWriteTokens,
-              prev.assistantCacheWriteTokens,
-            ),
-            assistantReasoningTokens: completed.assistantMessage.reasoningTokens,
-            assistantLatencyMS: completed.assistantMessage.latencyMS,
-            assistantProcessTrace: toPendingProcessTrace(completed.assistantMessage.processTrace),
-            assistantStatus: assistantMessageStatus,
-            assistantErrorCode: completed.assistantMessage.errorCode,
-            assistantErrorMessage: completed.assistantMessage.errorMessage,
-            assistantInlineAlert:
-              completed.assistantMessage.status === "error" || completed.assistantMessage.status === "interrupted"
+          const migratedBranchScopes: BranchScope[] = [
+            previousTargetBranchScope,
+            ...queuedSubmissionsRef.current
+              .filter((item) => item.conversationScopeKey === previousConversationScopeKey)
+              .map((item) => item),
+          ];
+          for (const branchScope of migratedBranchScopes) {
+            if (sendQueuedAfterCurrentRef.current.delete(branchScopeID(branchScope))) {
+              sendQueuedAfterCurrentRef.current.add(
+                branchScopeID({
+                  ...branchScope,
+                  conversationScopeKey: targetConversationScopeKey,
+                }),
+              );
+            }
+          }
+          setQueuedSubmissions((current) =>
+            current.map((item) =>
+              item.conversationScopeKey === previousConversationScopeKey
                 ? {
-                    title: t("generationInterrupted"),
-                    message: terminalErrorMessage || completedErrorMessage || t("retryLater"),
-                    details: terminalStreamError?.debug,
+                    ...item,
+                    conversationScopeKey: targetConversationScopeKey,
+                    conversationPublicID: created.publicID,
+                    conversation: created,
                   }
-                : undefined,
-            assistantText:
-              streamedText === completed.assistantMessage.content
-                ? prev.assistantText
-                : completed.assistantMessage.content,
-          };
+                : item,
+            ),
+          );
+          updatePendingExchange(exchangeKey, (current) => ({
+            ...current,
+            conversationScopeKey: targetConversationScopeKey,
+            conversationPublicID: created.publicID,
+          }));
+          if (
+            branchRunIsVisible(
+              previousTargetBranchScope,
+              clientRunID,
+              conversationScopeKeyRef.current,
+              visibleBranchScopePathRef.current,
+              visibleMessagesRef.current,
+            )
+          ) {
+            conversationIDRef.current = created.publicID;
+            conversationScopeKeyRef.current = targetConversationScopeKey;
+            activeConversationRef.current = created;
+            // Update the URL without triggering Next.js RSC navigation, which can interrupt an active stream.
+            window.history.replaceState(null, "", `/chat?conversation_id=${created.publicID}`);
+            onConversationCreated?.(created.publicID);
+          }
+          syncActiveRuns();
+        }
+        metadataFallbackTitle = conversationTitleFromFirstUserMessage(payloadContent);
+        const optimisticTitle = metadataFallbackTitle;
+        if (
+          targetConversationID &&
+          optimisticTitle &&
+          (!targetConversation || isPlaceholderConversationTitle(targetConversation.title))
+        ) {
+          if (targetConversation) {
+            targetConversation = {
+              ...targetConversation,
+              title: optimisticTitle,
+            };
+            if (conversationScopeKeyRef.current === targetConversationScopeKey) {
+              activeConversationRef.current = targetConversation;
+            }
+          }
+          touchByPublicID(targetConversationID, { title: optimisticTitle });
+        }
+        modelRunSequence = (nextModelRunSequenceRef.current.get(targetConversationScopeKey) ?? 0) + 1;
+        nextModelRunSequenceRef.current.set(targetConversationScopeKey, modelRunSequence);
+        const completed = await runStream({
+          token,
+          conversationID: targetConversationID,
+          submitTask: plan.submitTask,
+          exchangeKey,
+          clientRunID,
+          content: payloadContent,
+          options: plan.sanitizedOptions,
+          effectiveAttachments,
+          platformModelName,
+          selectedToolIDs: plan.selectedToolIDs,
+          selectedSkills: plan.selectedSkills,
+          selectedKnowledgeBaseIDs: plan.selectedKnowledgeBaseIDs,
+          htmlVisualPromptEnabled: plan.htmlVisualPromptEnabled,
+          parentMessagePublicID: resolvedParentPublicID,
+          sourceMessagePublicID: plan.resolvedSourcePublicID,
+          branchReason: plan.branchReason,
+          assistantOnlyBranch,
+          signal: streamAbortController.signal,
         });
-        setBranchSelections((prev) =>
-          applyBranchSelectionPath(
-            prev,
-            [
+
+        sentSuccessfully = true;
+        const assistantMessageSucceeded = (completed.assistantMessage.status || "success") === "success";
+        const completedBranchScope: BranchScope = {
+          conversationScopeKey: targetConversationScopeKey,
+          branchScopePath: assistantOnlyBranch
+            ? [...targetBranchScope.branchScopePath, completed.assistantMessage.publicID]
+            : [
+                ...targetBranchScope.branchScopePath,
+                completed.userMessage.publicID,
+                completed.assistantMessage.publicID,
+              ],
+          branchScopeRunID: clientRunID,
+        };
+        if (conversationScopeKeyRef.current === targetConversationScopeKey) {
+          setBranchSelections((current) =>
+            replaceCompletedBranchSelection(
+              current,
               {
-                parentPublicID: completed.userMessage.parentPublicID || resolvedParentPublicID,
-                publicID: completed.userMessage.publicID,
+                parentPublicID: resolvedParentPublicID,
+                tempUserPublicID,
+                tempAssistantPublicID,
+                reuseUserMessage: assistantOnlyBranch,
               },
-              {
-                parentPublicID: completed.userMessage.publicID,
-                publicID: completed.assistantMessage.publicID,
-              },
-            ],
-            [tempUserPublicID, tempAssistantPublicID],
-          ),
-        );
-        touchByPublicID(
-          targetConversationID,
-          toConversationPatch(targetConversation, requestPlatformModelName),
-        );
-        if (assistantMessageSucceeded && shouldRefreshConversationMetadata) {
-          void refreshGeneratedConversationMetadata(
-            token,
-            targetConversationID,
-            targetConversation,
-            touchByPublicID,
-          ).catch(() => {
-            // Metadata refresh failure does not affect this turn; the next list load will fetch server state.
+              completed.userMessage.publicID,
+              completed.assistantMessage.publicID,
+            ),
+          );
+        }
+        const currentConversation =
+          activeConversationRef.current?.publicID === targetConversationID
+            ? activeConversationRef.current
+            : targetConversation;
+        const shouldUpdateConversationModel =
+          modelRunSequence > (latestCompletedModelRunSequenceRef.current.get(targetConversationScopeKey) ?? 0);
+        if (shouldUpdateConversationModel) {
+          latestCompletedModelRunSequenceRef.current.set(targetConversationScopeKey, modelRunSequence);
+        }
+        const optimisticMessageCount =
+          Math.max(
+            currentConversation?.messageCount ?? 0,
+            optimisticMessageCountsRef.current.get(targetConversationScopeKey) ?? 0,
+          ) + (assistantOnlyBranch ? 1 : 2);
+        optimisticMessageCountsRef.current.set(targetConversationScopeKey, optimisticMessageCount);
+        const conversationPatch: Partial<ConversationDTO> = {
+          ...(shouldUpdateConversationModel ? { model: platformModelName } : {}),
+          updatedAt: new Date().toISOString(),
+          messageCount: optimisticMessageCount,
+        };
+        const updatedConversation = currentConversation
+          ? { ...currentConversation, ...conversationPatch }
+          : null;
+        if (updatedConversation && conversationScopeKeyRef.current === targetConversationScopeKey) {
+          activeConversationRef.current = updatedConversation;
+        }
+        if (sendQueuedAfterCurrentRef.current.delete(branchScopeID(targetBranchScope))) {
+          sendQueuedAfterCurrentRef.current.add(branchScopeID(completedBranchScope));
+        }
+        setQueuedSubmissions((current) => {
+          if (!current.some((item) => item.conversationScopeKey === targetConversationScopeKey)) {
+            return current;
+          }
+          return current.map((item) => {
+            if (item.conversationScopeKey !== targetConversationScopeKey) {
+              return item;
+            }
+            const sameBranch = branchScopesEqual(item, targetBranchScope);
+            const isDirectChild = item.parentRunID === clientRunID;
+            return {
+              ...item,
+              ...(updatedConversation ? { conversation: updatedConversation } : {}),
+              ...(sameBranch
+                ? {
+                    branchScopePath: completedBranchScope.branchScopePath,
+                    branchScopeRunID: completedBranchScope.branchScopeRunID,
+                  }
+                : {}),
+              ...(isDirectChild
+                ? {
+                    parentRunID: null,
+                    parentMessagePublicID: completed.assistantMessage.publicID,
+                  }
+                : {}),
+            };
+          });
+        });
+        if (conversationScopeKeyRef.current !== targetConversationScopeKey) {
+          setPendingExchanges((current) => {
+            if (!current[exchangeKey]) {
+              return current;
+            }
+            const next = { ...current };
+            delete next[exchangeKey];
+            return next;
           });
         }
-        releaseAttachments(effectiveAttachments);
+        touchByPublicID(targetConversationID, conversationPatch);
+        if (assistantMessageSucceeded || completed.metadataRefreshHint?.trim() === "pending") {
+          startMetadataRefresh(completed);
+        }
+        releaseAttachments(currentAttachments);
         if (assistantMessageSucceeded) {
           notifyResponseCompletion({
             content: completed.assistantMessage.content,
             conversationPublicID: targetConversationID,
-            conversationTitle: targetConversation?.title || "DEEIX Chat",
+            conversationTitle: targetConversation?.title,
           });
         }
-        reload();
+        if (conversationScopeKeyRef.current === targetConversationScopeKey) {
+          reload();
+        }
       } catch (error) {
-        flushStreamTextNow();
-        resetStreamBuffer();
+        flushStreamTextNow(exchangeKey);
+        flushUpstreamThinkNow(exchangeKey);
+        resetStreamBuffer(exchangeKey);
         if (streamAbortController.signal.aborted) {
           shouldKeepConversationLayout = true;
-          releaseAttachments(effectiveAttachments);
-          setPendingExchange((prev) =>
-            prev && prev.key === exchangeKey
-              ? {
-                  ...prev,
-                  assistantPending: false,
-                  assistantStreaming: false,
-                  assistantFileProc: false,
-                  assistantActivityLabel: undefined,
-                  assistantInlineAlert: undefined,
-                }
-              : prev,
-          );
+          releaseAttachments(currentAttachments);
+          updatePendingExchange(exchangeKey, (current) => abortPendingExchange(current, clientRunID));
+          return false;
+        }
+        if (error instanceof ApiError && error.errorCode === "content_moderation.blocked") {
+          // UI already updated via onModerationBlocked; settle as a soft block with retry.
+          shouldKeepConversationLayout = true;
+          releaseAttachments(currentAttachments);
+          if (conversationScopeKeyRef.current === targetConversationScopeKey) {
+            reload();
+          }
           return false;
         }
         const errorMessage = resolveErrorMessage(error, t("retryLater"));
         const errorDetails = resolveErrorDetails(error);
         const errorSummary = resolveErrorSummary(error, t("retryLater"));
-        failedGenerationRunsRef?.current.add(clientRunID);
         shouldKeepConversationLayout = true;
-        if (resetComposer && restoreDraftOnFailure) {
+        const shouldRestoreAttachments =
+          resetComposer &&
+          restoreDraftOnFailure &&
+          branchRunIsVisible(
+            targetBranchScope,
+            clientRunID,
+            conversationScopeKeyRef.current,
+            visibleBranchScopePathRef.current,
+            visibleMessagesRef.current,
+          );
+        if (shouldRestoreAttachments) {
           setDraft(content);
           setAttachments(currentAttachments);
+        } else {
+          releaseAttachments(currentAttachments);
         }
-        setPendingExchange((prev) =>
-          prev && prev.key === exchangeKey
-            ? {
-                ...prev,
-                assistantPending: false,
-                assistantStreaming: false,
-                assistantFileProc: false,
-                assistantActivityLabel: undefined,
-                assistantStatus: "error",
-                assistantErrorMessage: errorMessage,
-                assistantInlineAlert: {
-                  title: t("generationInterrupted"),
-                  message: errorMessage,
-                  details: errorDetails,
-                },
-              }
-            : prev,
+        updatePendingExchange(exchangeKey, (current) =>
+          failPendingExchange(current, {
+            clientRunID,
+            title: t("generationInterrupted"),
+            errorMessage,
+            errorDetails,
+          }),
         );
         toast.error(t("sendFailed"), { description: errorSummary });
         if (targetConversationID) {
+          const failedConversationID = targetConversationID;
+          void resolveAccessToken()
+            .then((latestToken) =>
+              latestToken ? getConversation(latestToken, failedConversationID) : null,
+            )
+            .then((latestConversation) => {
+              if (latestConversation) {
+                touchByPublicID(failedConversationID, latestConversation);
+              }
+            })
+            .catch(() => {
+              // The next conversation list load will reconcile a failed refresh.
+            });
+        }
+        if (targetConversationID && conversationScopeKeyRef.current === targetConversationScopeKey) {
           reload();
         }
         return false;
       } finally {
-        if (activeStreamRef.current?.controller === streamAbortController) {
-          activeStreamRef.current = null;
+        const activeStream = activeStreamsRef.current.get(clientRunID);
+        if (activeStream?.controller === streamAbortController) {
+          clearCancelSettlementTimer(activeStream);
+          activeStreamsRef.current.delete(clientRunID);
         }
         activeGenerationRunsRef?.current.delete(clientRunID);
-        if (!sentSuccessfully && !wasConversationMode && !shouldKeepConversationLayout) {
+        onConversationRunDetached?.(clientRunID);
+        if (
+          branchRunIsVisible(
+            targetBranchScope,
+            clientRunID,
+            conversationScopeKeyRef.current,
+            visibleBranchScopePathRef.current,
+            visibleMessagesRef.current,
+          ) &&
+          !sentSuccessfully &&
+          !wasConversationMode &&
+          !shouldKeepConversationLayout
+        ) {
           setShowConversationLayout(false);
         }
-        setSending(false);
+        syncActiveRuns();
       }
       return true;
     },
     [
-      activeConversation,
       activeGenerationRunsRef,
-      failedGenerationRunsRef,
-      conversationID,
-      enqueueStreamText,
+      autoGenerateLabels,
+      combinedMessages,
       flushStreamTextNow,
-      options,
+      flushUpstreamThinkNow,
+      htmlVisualPromptEnabled,
+      maxFilesPerMessage,
+      modelOptions,
       onConversationCreated,
+      onConversationRunDetached,
+      onConversationRunStarted,
+      options,
       prependNewConversation,
       releaseAttachments,
       reload,
       resetStreamBuffer,
       restoreDraftOnFailure,
-      modelOptions,
-      selectedToolIDs,
-      htmlVisualPromptEnabled,
-      htmlVisualColorMode,
+      runStream,
+      selectedKnowledgeBaseIDs,
       selectedPlatformModelName,
-      sending,
+      selectedSkills,
+      selectedToolIDs,
+      sendQueuedAfterCurrentRef,
       setAttachments,
       setBranchSelections,
       setDraft,
-      setPendingExchange,
+      setPendingExchanges,
+      setQueuedSubmissions,
       setShowConversationLayout,
       showConversationLayout,
       startStream,
-      touchByPublicID,
-      uploading,
-      maxFilesPerMessage,
+      syncActiveRuns,
       t,
+      touchByPublicID,
+      transferAttachments,
+      updatePendingExchange,
+      uploading,
       visibleMessageCount,
+      queuedSubmissionsRef,
     ],
   );
 
-  const onStopMessage = React.useCallback(() => {
-    const active = activeStreamRef.current;
-    if (!active) {
-      return;
+  const enqueueSubmission = React.useCallback(() => {
+    const content = draft.trim();
+    const currentAttachments = attachments.slice();
+    if ((!content && currentAttachments.length === 0) || uploading) {
+      return false;
     }
-    if (active.accessToken) {
-      void cancelMessageGeneration(active.accessToken, active.runID).catch(() => undefined);
+    const parentMessagePublicID =
+      resolvePersistedPublicID(currentLeafMessage?.publicID) ??
+      resolveDefaultSubmissionParentMessage(visibleMessages)?.publicID ??
+      null;
+    const targetConversationScopeKey = conversationScopeKeyRef.current;
+    const targetConversationPublicID = conversationIDRef.current;
+    const targetConversation = activeConversationRef.current;
+    const currentBranchScopePath = visibleBranchScopePathRef.current;
+    const visibleRunID = currentLeafMessage?.runID?.trim() || "";
+    const visibleRunPending = Boolean(
+      visibleRunID &&
+        (currentLeafMessage?.isPending ||
+          currentLeafMessage?.isStreaming ||
+          currentLeafMessage?.status?.trim().toLowerCase() === "pending"),
+    );
+    const visibleActive =
+      findVisibleActiveStreamByRunID(
+        activeStreamsRef.current,
+        visibleRunID,
+        targetConversationScopeKey,
+        currentBranchScopePath,
+        visibleMessagesRef.current,
+      ) ??
+      findLastVisibleActiveStream(
+        activeStreamsRef.current,
+        targetConversationScopeKey,
+        currentBranchScopePath,
+        visibleMessagesRef.current,
+      );
+    const targetBranchScopePath = visibleActive?.branchScopePath.slice() ?? currentBranchScopePath.slice();
+    const targetBranchScopeRunID = visibleActive?.branchScopeRunID ?? visibleRunID;
+    if (!targetBranchScopeRunID) {
+      return false;
     }
-    active.controller.abort();
-  }, []);
+    const targetBranchScope: BranchScope = {
+      conversationScopeKey: targetConversationScopeKey,
+      branchScopePath: targetBranchScopePath,
+      branchScopeRunID: targetBranchScopeRunID,
+    };
+    const clientRunID = createClientRunID();
+    setQueuedSubmissions((current) => {
+      const previousQueuedSubmission = current
+        .filter((item) => branchScopesEqual(item, targetBranchScope))
+        .at(-1);
+      return [
+        ...current,
+        {
+          id: clientRunID.replace("run_", "queue_"),
+          clientRunID,
+          parentRunID:
+            previousQueuedSubmission?.clientRunID ??
+            (visibleRunPending ? visibleRunID : visibleActive?.runID) ??
+            null,
+          ...targetBranchScope,
+          conversationPublicID: targetConversationPublicID,
+          conversation: targetConversation,
+          parentMessagePublicID,
+          content,
+          attachments: currentAttachments,
+          platformModelName: selectedPlatformModelName,
+          options: sanitizeConversationOptions(options),
+          selectedToolIDs: selectedToolIDs.slice(),
+          selectedSkills: selectedSkills.slice(),
+          selectedKnowledgeBaseIDs: selectedKnowledgeBaseIDs.slice(),
+          htmlVisualPromptEnabled,
+        },
+      ];
+    });
+    setDraft("");
+    transferAttachments(currentAttachments);
+    setAttachments([]);
+    return true;
+  }, [
+    attachments,
+    currentLeafMessage?.publicID,
+    currentLeafMessage?.isPending,
+    currentLeafMessage?.isStreaming,
+    currentLeafMessage?.runID,
+    currentLeafMessage?.status,
+    draft,
+    htmlVisualPromptEnabled,
+    options,
+    selectedPlatformModelName,
+    selectedSkills,
+    selectedKnowledgeBaseIDs,
+    selectedToolIDs,
+    setAttachments,
+    setDraft,
+    transferAttachments,
+    uploading,
+    visibleMessages,
+    setQueuedSubmissions,
+  ]);
+
+  const onStopMessage = useChatStopMessage({
+    activeStreamsRef,
+    currentLeafMessage,
+    conversationScopeKeyRef,
+    visibleBranchScopePathRef,
+    visibleMessagesRef,
+    reload,
+  });
 
   const onSendMessage = React.useCallback(async () => {
+    if (sending || resumeGenerationActive) {
+      enqueueSubmission();
+      return;
+    }
     const content = draft.trim();
     const parentMessagePublicID =
       resolvePersistedPublicID(currentLeafMessage?.publicID) ??
@@ -879,150 +923,70 @@ export function useChatMessageSubmit({
       parentMessagePublicID,
       branchReason: "default",
     });
-  }, [attachments, currentLeafMessage?.publicID, draft, submitMessage, visibleMessages]);
+  }, [attachments, currentLeafMessage?.publicID, draft, enqueueSubmission, resumeGenerationActive, sending, submitMessage, visibleMessages]);
 
-  const onRetryUserMessage = React.useCallback(
-    async (message: ChatAreaMessage) => {
-      const sourceMessagePublicID = resolvePersistedPublicID(message.publicID);
-      if (!sourceMessagePublicID) {
-        toast.error(t("retryReplyFailed"), { description: t("continueReplyUnavailable") });
-        return;
-      }
-      await submitMessage({
-        content: message.content.trim(),
-        currentAttachments: toPendingAttachments(message),
-        resetComposer: false,
-        parentMessagePublicID: message.parentPublicID,
-        sourceMessagePublicID,
-        branchReason: "retry",
-      });
-    },
-    [submitMessage, t],
-  );
+  useChatQueueDispatch({
+    queuedSubmissions,
+    setQueuedSubmissions,
+    sendQueuedAfterCurrentRef,
+    dispatchingQueuedSubmissionIDsRef,
+    settledQueuedSubmissionIDsRef,
+    activeStreamsRef,
+    getPendingExchanges,
+    pendingExchanges,
+    combinedMessages,
+    visibleMessages,
+    visibleBranchScopePath,
+    conversationScopeKey,
+    currentLeafMessage,
+    getHiddenParentRunStatus,
+    hiddenParentRunStatusRevision,
+    resumeGenerationActive,
+    activeGenerationRunsRevision,
+    releaseAttachments,
+    submitMessage,
+  });
 
-  const onRetryAssistantMessage = React.useCallback(
-    async (message: ChatAreaMessage) => {
-      const parentUser = combinedMessages.find((item) => item.publicID === message.parentPublicID && item.role === "user");
-      if (!parentUser) {
-        toast.error(t("retryReplyFailed"), { description: t("retryReplyMissingUser") });
-        return;
-      }
-      const sourceMessagePublicID = resolvePersistedPublicID(parentUser.publicID);
-      if (!sourceMessagePublicID) {
-        toast.error(t("retryReplyFailed"), { description: t("continueReplyUnavailable") });
-        return;
-      }
-      await submitMessage({
-        content: parentUser.content.trim(),
-        currentAttachments: toPendingAttachments(parentUser),
-        resetComposer: false,
-        parentMessagePublicID: parentUser.parentPublicID,
-        sourceMessagePublicID,
-        branchReason: "retry",
-      });
-    },
-    [combinedMessages, submitMessage, t],
-  );
-
-  const onContinueAssistantMessage = React.useCallback(
-    async (message: ChatAreaMessage) => {
-      const parentPublicID = resolvePersistedPublicID(message.publicID);
-      const status = message.status?.trim().toLowerCase();
-      if (!parentPublicID || message.role !== "assistant" || status !== "interrupted") {
-        toast.error(t("continueReplyFailed"), { description: t("continueReplyUnavailable") });
-        return;
-      }
-      await submitMessage({
-        content: buildContinueGenerationPrompt(t),
-        currentAttachments: [],
-        resetComposer: false,
-        parentMessagePublicID: parentPublicID,
-        branchReason: "default",
-      });
-    },
-    [submitMessage, t],
-  );
-
-  const onEditUserMessage = React.useCallback(
-    async (message: ChatAreaMessage, content: string) => {
-      const sourceMessagePublicID = resolvePersistedPublicID(message.publicID);
-      if (!sourceMessagePublicID) {
-        toast.error(t("retryReplyFailed"), { description: t("continueReplyUnavailable") });
-        return false;
-      }
-      const ok = await submitMessage({
-        content: content.trim(),
-        currentAttachments: toPendingAttachments(message),
-        resetComposer: false,
-        parentMessagePublicID: message.parentPublicID,
-        sourceMessagePublicID,
-        branchReason: "edit",
-      });
-      return ok;
-    },
-    [submitMessage, t],
-  );
-
-  const onEditAssistantMessage = React.useCallback(
-    async (message: ChatAreaMessage, content: string) => {
-      const messagePublicID = resolvePersistedPublicID(message.publicID);
-      const nextContent = content.trim();
-      if (!messagePublicID || !nextContent) {
-        toast.error(t("editReplyFailed"), { description: t("continueReplyUnavailable") });
-        return false;
-      }
-      const token = await resolveAccessToken();
-      if (!token) {
-        toast.error(t("editReplyFailed"), { description: t("signInRequired") });
-        return false;
-      }
-      try {
-        const updated = await updateMessage(token, messagePublicID, { content: nextContent });
-        replaceMessage(updated);
-        return true;
-      } catch {
-        toast.error(t("editReplyFailed"), { description: t("retryLater") });
-        return false;
-      }
-    },
-    [replaceMessage, t],
-  );
-
-  const onCycleMessageBranch = React.useCallback(
-    (parentPublicID: string | null, direction: "previous" | "next") => {
-      const siblings = buildChildrenIndex(combinedMessages).get(toBranchKey(parentPublicID)) ?? [];
-      if (siblings.length <= 1) {
-        return;
-      }
-      setBranchSelections((prev) => {
-        const parentKey = toBranchKey(parentPublicID);
-        const selectedPublicID = prev[parentKey] || siblings[siblings.length - 1]?.publicID;
-        const currentIndex = siblings.findIndex((item) => item.publicID === selectedPublicID);
-        if (currentIndex < 0) {
-          return prev;
-        }
-        const nextIndex = direction === "previous" ? currentIndex - 1 : currentIndex + 1;
-        if (nextIndex < 0 || nextIndex >= siblings.length) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [parentKey]: siblings[nextIndex].publicID,
-        };
-      });
-    },
-    [combinedMessages, setBranchSelections],
-  );
+  const {
+    onRetryUserMessage,
+    onRetryAssistantMessage,
+    onContinueAssistantMessage,
+    onEditUserMessage,
+    onEditAssistantMessage,
+    onForkMessage,
+    onCycleMessageBranch,
+  } = useChatMessageActions({
+    submitMessage,
+    combinedMessages,
+    replaceMessage,
+    onConversationForked,
+    conversationIDRef,
+    setBranchSelections,
+  });
 
   return {
     onCycleMessageBranch,
     onEditAssistantMessage,
     onEditUserMessage,
     onContinueAssistantMessage,
+    onForkMessage,
     onRetryAssistantMessage,
     onRetryUserMessage,
     onSendMessage,
     onStopMessage,
+    onDeleteQueuedMessage,
+    onEditQueuedMessage,
+    onGuideQueuedMessage,
+    queuedMessages: queuedSubmissions
+      .filter(
+        (item) =>
+          branchScopeIsVisible(item, conversationScopeKey, visibleMessages),
+      )
+      .map((item) => ({
+        id: item.id,
+        content: item.content,
+        attachmentCount: item.attachments.length,
+      })),
     sending,
   };
 }

@@ -4,6 +4,7 @@ import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 import type { TooltipValueType } from "recharts"
 
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // Format: { THEME_NAME: CSS_SELECTOR }
@@ -25,6 +26,13 @@ export type ChartConfig = Record<
 
 type ChartContextProps = {
   config: ChartConfig
+}
+
+type ChartInteractiveLegendItem = {
+  id: string
+  label: string
+  title?: string
+  color: string
 }
 
 const ChartContext = React.createContext<ChartContextProps | null>(null)
@@ -90,12 +98,9 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null
   }
 
-  return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
+  const stylesheet = Object.entries(THEMES)
+    .map(
+      ([theme, prefix]) => `
 ${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
@@ -107,11 +112,10 @@ ${colorConfig
   .join("\n")}
 }
 `
-          )
-          .join("\n"),
-      }}
-    />
-  )
+    )
+    .join("\n")
+
+  return <style>{stylesheet}</style>
 }
 
 const ChartTooltip = RechartsPrimitive.Tooltip
@@ -327,6 +331,76 @@ function ChartLegendContent({
   )
 }
 
+function ChartInteractiveLegend({
+  items,
+  hiddenSeries,
+  onToggle,
+}: {
+  items: ChartInteractiveLegendItem[]
+  hiddenSeries: ReadonlySet<string>
+  onToggle: (id: string) => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-2">
+      {items.map((item) => {
+        const visible = !hiddenSeries.has(item.id)
+        return (
+          <Button
+            key={item.id}
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-pressed={visible}
+            title={item.title ?? item.label}
+            className="h-6 min-w-0 gap-1.5 px-1.5 text-[11px] font-normal text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground aria-pressed:text-foreground aria-pressed:opacity-100 [&:not([aria-pressed=true])]:opacity-40"
+            onClick={() => onToggle(item.id)}
+          >
+            <span
+              className="size-2 shrink-0 rounded-[2px]"
+              style={{ backgroundColor: item.color }}
+            />
+            <span className="max-w-48 truncate">{item.label}</span>
+          </Button>
+        )
+      })}
+    </div>
+  )
+}
+
+const STACKED_BAR_TOP_RADIUS: [number, number, number, number] = [4, 4, 0, 0]
+// Minimum rendered height of the column-top segment; slightly above the 4px
+// corner radius so the rounded cap stays visible for near-zero values.
+const STACKED_BAR_TOP_MIN_HEIGHT = 5
+
+// Rounds the top corners of the segment that is currently the visible top of
+// its own stacked column. A static per-series `radius` leaves square tops on
+// columns where the globally topmost series has no value.
+function createStackedBarTopRoundedShape(
+  isColumnTopSegment: (payload: unknown) => boolean
+): (props: RechartsPrimitive.BarShapeProps) => React.JSX.Element {
+  return (props) => {
+    if (!isColumnTopSegment(props.payload)) {
+      return <RechartsPrimitive.Rectangle {...props} radius={0} />
+    }
+    // A tiny top segment cannot fit the corner radius, so it would still look
+    // square. Keep its top edge in place and extend it downward over the
+    // segment below (the top segment paints last, so it wins), clamped to the
+    // stack baseline so the total column height never changes.
+    const maxHeight = Math.max(props.stackedBarStart - props.y, props.height)
+    const height = Math.min(
+      Math.max(props.height, STACKED_BAR_TOP_MIN_HEIGHT),
+      maxHeight
+    )
+    return (
+      <RechartsPrimitive.Rectangle
+        {...props}
+        height={height}
+        radius={STACKED_BAR_TOP_RADIUS}
+      />
+    )
+  }
+}
+
 // Helper to extract item config from a payload.
 function getPayloadConfigFromPayload(
   config: ChartConfig,
@@ -370,5 +444,8 @@ export {
   ChartTooltipContent,
   ChartLegend,
   ChartLegendContent,
+  ChartInteractiveLegend,
   ChartStyle,
+  createStackedBarTopRoundedShape,
 }
+export type { ChartInteractiveLegendItem }

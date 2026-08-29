@@ -204,6 +204,41 @@ func TestValidateTurnstileRegistrationEnabledRequiresBool(t *testing.T) {
 	}
 }
 
+func TestValidatePasswordResetRequiresEmailVerification(t *testing.T) {
+	repo := &testSettingsRepo{byNamespace: map[string][]domainsettings.SystemSetting{
+		"auth": {
+			{Namespace: "auth", Key: "username_login_enabled", Value: "true"},
+			{Namespace: "auth", Key: "email_login_enabled", Value: "true"},
+			{Namespace: "auth", Key: "third_party_login_enabled", Value: "true"},
+			{Namespace: "auth", Key: "email_verification_enabled", Value: "false"},
+			{Namespace: "auth", Key: "password_reset_enabled", Value: "false"},
+		},
+	}}
+	service := NewService(repo, "test-data-encryption-key")
+
+	if _, err := service.applyAuthSettingDependencies(context.Background(), []PatchItem{
+		{Namespace: "auth", Key: "password_reset_enabled", Value: "true"},
+	}); err == nil {
+		t.Fatal("expected password reset to require email verification")
+	}
+}
+
+func TestRuntimeSettingsNormalizeConfigDisablesPasswordReset(t *testing.T) {
+	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
+	cfg := config.Config{
+		UsernameLoginEnabled:     true,
+		EmailLoginEnabled:        true,
+		EmailVerificationEnabled: false,
+		PasswordResetEnabled:     true,
+	}
+
+	runtimeSettings.normalizeConfig(&cfg)
+
+	if cfg.PasswordResetEnabled {
+		t.Fatal("expected password reset disabled when email verification is disabled")
+	}
+}
+
 func TestValidateModelOptionPolicySettings(t *testing.T) {
 	if err := validatePatchItem(PatchItem{Namespace: "chat", Key: "model_option_policy_mode", Value: "allowlist"}); err != nil {
 		t.Fatalf("expected allowlist mode to pass, got %v", err)
@@ -225,6 +260,38 @@ func TestValidateModelOptionPolicySettings(t *testing.T) {
 	}
 }
 
+func TestValidateBillingDisplayCurrencySetting(t *testing.T) {
+	for _, currency := range []string{"USD", "CNY"} {
+		if err := validatePatchItem(PatchItem{Namespace: "billing", Key: "display_currency", Value: currency}); err != nil {
+			t.Fatalf("expected %s to pass, got %v", currency, err)
+		}
+	}
+	if err := validatePatchItem(PatchItem{Namespace: "billing", Key: "display_currency", Value: "EUR"}); err == nil {
+		t.Fatal("expected unsupported display currency to fail")
+	}
+}
+
+func TestValidateEPayGatewaySetting(t *testing.T) {
+	for _, gateway := range []string{
+		"https://pay.example.com",
+		"https://pay.example.com/epay/",
+		"https://pay.example.com/epay",
+		"https://pay.example.com/epay/submit.php",
+	} {
+		if err := validatePatchItem(PatchItem{Namespace: "billing", Key: "epay_gateway_url", Value: gateway}); err != nil {
+			t.Fatalf("expected %q to pass, got %v", gateway, err)
+		}
+	}
+	for _, gateway := range []string{
+		"https://user:secret@pay.example.com/",
+		"https://pay.example.com/?token=secret",
+	} {
+		if err := validatePatchItem(PatchItem{Namespace: "billing", Key: "epay_gateway_url", Value: gateway}); err == nil {
+			t.Fatalf("expected %q to fail", gateway)
+		}
+	}
+}
+
 func TestValidateMCPSelectedToolsSetting(t *testing.T) {
 	if err := validatePatchItem(PatchItem{Namespace: "mcp", Key: "mcp_max_selected_tools_per_message", Value: "32"}); err != nil {
 		t.Fatalf("expected selected tool limit to pass, got %v", err)
@@ -234,6 +301,162 @@ func TestValidateMCPSelectedToolsSetting(t *testing.T) {
 	}
 	if err := validatePatchItem(PatchItem{Namespace: "mcp", Key: "mcp_max_selected_tools_per_message", Value: "129"}); err == nil {
 		t.Fatal("expected selected tool limit above safe maximum to fail")
+	}
+}
+
+func TestValidateCustomPromptSettings(t *testing.T) {
+	for _, item := range []PatchItem{
+		{Namespace: "mcp", Key: "mcp_tool_prompt", Value: "Use MCP tools carefully."},
+		{Namespace: "chat", Key: "skills_prompt", Value: "Use selected skills only when relevant."},
+	} {
+		if err := validatePatchItem(item); err != nil {
+			t.Fatalf("expected %s:%s to pass, got %v", item.Namespace, item.Key, err)
+		}
+	}
+}
+
+func TestRuntimeSettingsAppliesCustomPromptSettings(t *testing.T) {
+	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
+	cfg := config.Config{}
+
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "mcp", Key: "mcp_tool_prompt", Value: "Use MCP tools carefully."})
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "chat", Key: "skills_prompt", Value: "Use selected skills only when relevant."})
+
+	if cfg.MCPToolPrompt != "Use MCP tools carefully." {
+		t.Fatalf("expected MCP tool prompt to be applied, got %q", cfg.MCPToolPrompt)
+	}
+	if cfg.SkillsPrompt != "Use selected skills only when relevant." {
+		t.Fatalf("expected skills prompt to be applied, got %q", cfg.SkillsPrompt)
+	}
+}
+
+func TestRuntimeSettingsAppliesConversationDefaultModel(t *testing.T) {
+	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
+	cfg := config.Config{}
+
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "chat", Key: "conversation_default_model", Value: " gpt-5-mini "})
+
+	if cfg.ConversationDefaultModel != "gpt-5-mini" {
+		t.Fatalf("expected conversation default model to be applied, got %q", cfg.ConversationDefaultModel)
+	}
+}
+
+func TestContextBudgetSettingsValidationAndRuntimeApplication(t *testing.T) {
+	valid := []PatchItem{
+		{Namespace: "chat", Key: "context_window_fallback_tokens", Value: "256000"},
+		{Namespace: "chat", Key: "context_compact_trigger_percent", Value: "80"},
+		{Namespace: "chat", Key: "context_compact_trigger_percent", Value: "0"},
+	}
+	for _, item := range valid {
+		if err := validatePatchItem(item); err != nil {
+			t.Fatalf("expected %s=%s to pass, got %v", item.Key, item.Value, err)
+		}
+	}
+
+	invalid := []PatchItem{
+		{Namespace: "chat", Key: "context_window_fallback_tokens", Value: "4096"},
+		{Namespace: "chat", Key: "context_window_fallback_tokens", Value: "16000001"},
+		{Namespace: "chat", Key: "context_compact_trigger_percent", Value: "9"},
+		{Namespace: "chat", Key: "context_compact_trigger_percent", Value: "96"},
+	}
+	for _, item := range invalid {
+		if err := validatePatchItem(item); err == nil {
+			t.Fatalf("expected %s=%s to fail", item.Key, item.Value)
+		}
+	}
+
+	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
+	cfg := config.Config{}
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "chat", Key: "context_window_fallback_tokens", Value: "256000"})
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "chat", Key: "context_compact_trigger_percent", Value: "75"})
+	if cfg.ContextWindowFallbackTokens != 256_000 || cfg.ContextCompactTriggerPercent != 75 {
+		t.Fatalf("unexpected runtime context settings: fallback=%d percent=%d", cfg.ContextWindowFallbackTokens, cfg.ContextCompactTriggerPercent)
+	}
+}
+
+func TestValidateMinerUFileTypesSetting(t *testing.T) {
+	if err := validatePatchItem(PatchItem{Namespace: "extract", Key: "mineru_file_types", Value: "pdf,word,presentation,excel"}); err != nil {
+		t.Fatalf("expected mineru file types to pass, got %v", err)
+	}
+	if err := validatePatchItem(PatchItem{Namespace: "extract", Key: "mineru_file_types", Value: "pdf,slides"}); err == nil {
+		t.Fatal("expected unsupported mineru file type to fail")
+	}
+}
+
+func TestRuntimeSettingsAppliesMinerUFileTypes(t *testing.T) {
+	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
+	cfg := config.Config{ExtractMinerUFileTypes: "pdf,word,presentation"}
+
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "extract", Key: "mineru_file_types", Value: "pdf,excel"})
+
+	if cfg.ExtractMinerUFileTypes != "pdf,excel" {
+		t.Fatalf("expected mineru file types to apply, got %q", cfg.ExtractMinerUFileTypes)
+	}
+}
+
+func TestMistralOCRSettings(t *testing.T) {
+	for _, item := range []PatchItem{
+		{Namespace: "extract", Key: "ocr_engine", Value: "mistral"},
+		{Namespace: "extract", Key: "mistral_ocr_base_url", Value: "https://api.mistral.ai/v1/ocr"},
+		{Namespace: "extract", Key: "mistral_ocr_timeout_seconds", Value: "60"},
+	} {
+		if err := validatePatchItem(item); err != nil {
+			t.Fatalf("expected %s:%s to pass, got %v", item.Namespace, item.Key, err)
+		}
+	}
+	if err := validatePatchItem(PatchItem{Namespace: "extract", Key: "mistral_ocr_timeout_seconds", Value: "601"}); err == nil {
+		t.Fatal("expected Mistral OCR timeout above maximum to fail")
+	}
+
+	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
+	cfg := config.Config{}
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "extract", Key: "mistral_ocr_base_url", Value: "https://mistral.example/v1/ocr"})
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "extract", Key: "mistral_ocr_auth_token", Value: "test-api-key"})
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "extract", Key: "mistral_ocr_model", Value: "mistral-ocr-latest"})
+	runtimeSettings.applyItem(&cfg, domainsettings.SystemSetting{Namespace: "extract", Key: "mistral_ocr_timeout_seconds", Value: "90"})
+	if cfg.ExtractMistralOCRBaseURL != "https://mistral.example/v1/ocr" || cfg.ExtractMistralOCRAuthToken != "test-api-key" || cfg.ExtractMistralOCRModel != "mistral-ocr-latest" || cfg.ExtractMistralOCRTimeoutSeconds != 90 {
+		t.Fatalf("Mistral OCR runtime config = %+v", cfg)
+	}
+}
+
+func TestValidateFileProcessingSettingsRequiresMistralOCRConfiguration(t *testing.T) {
+	baseSettings := []domainsettings.SystemSetting{
+		{Namespace: "extract", Key: "image_ocr_enabled", Value: "true"},
+		{Namespace: "extract", Key: "pdf_ocr_fallback_enabled", Value: "false"},
+		{Namespace: "extract", Key: "ocr_engine", Value: "mistral"},
+		{Namespace: "extract", Key: "mistral_ocr_base_url", Value: "https://api.mistral.ai/v1/ocr"},
+		{Namespace: "extract", Key: "mistral_ocr_auth_token", Value: "stored-token"},
+		{Namespace: "extract", Key: "mistral_ocr_model", Value: "mistral-ocr-latest"},
+	}
+	repo := &testSettingsRepo{byNamespace: map[string][]domainsettings.SystemSetting{"extract": baseSettings, "file": {}}}
+	service := NewService(repo, "test-data-encryption-key")
+	if err := service.validateFileProcessingSettings(context.Background(), []PatchItem{{Namespace: "extract", Key: "mistral_ocr_auth_token", Value: ""}}); err != nil {
+		t.Fatalf("expected an empty sensitive patch to preserve configured Mistral token, got %v", err)
+	}
+
+	for _, item := range []PatchItem{
+		{Namespace: "extract", Key: "mistral_ocr_base_url", Value: ""},
+		{Namespace: "extract", Key: "mistral_ocr_auth_token", Value: "", Clear: true},
+		{Namespace: "extract", Key: "mistral_ocr_model", Value: ""},
+	} {
+		if err := service.validateFileProcessingSettings(context.Background(), []PatchItem{item}); err == nil {
+			t.Fatalf("expected missing Mistral setting %s to fail", item.Key)
+		}
+	}
+}
+
+func TestMistralOCRAuthTokenIsSensitive(t *testing.T) {
+	service := NewService(&testSettingsRepo{}, "test-data-encryption-key")
+	item, err := service.encryptSettingForStorage(domainsettings.SystemSetting{Namespace: "extract", Key: "mistral_ocr_auth_token", Value: "test-api-key"})
+	if err != nil {
+		t.Fatalf("encrypt Mistral OCR token: %v", err)
+	}
+	if item.Value == "test-api-key" {
+		t.Fatal("Mistral OCR token must be encrypted at rest")
+	}
+	response := service.settingResponse(item)
+	if !response.Sensitive || !response.Configured || response.Value != "" {
+		t.Fatalf("sensitive Mistral OCR response = %+v", response)
 	}
 }
 
@@ -311,8 +534,8 @@ func TestRuntimeSettingsDisablesFullContextLimits(t *testing.T) {
 	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
 	cfg := config.Config{
 		FileFullContextLimitEnabled: true,
-		FileFullContextMaxBytes:     51200,
-		FileFullContextMaxTokens:    12000,
+		FileFullContextMaxBytes:     65536,
+		FileFullContextMaxTokens:    65536,
 		FileFullContextPDFMaxPages:  20,
 	}
 
@@ -336,8 +559,8 @@ func TestRuntimeSettingsTreatsEmptyFullContextLimitsAsUnlimited(t *testing.T) {
 	runtimeSettings := NewRuntimeSettings(nil, nil, "test-data-encryption-key")
 	cfg := config.Config{
 		FileFullContextLimitEnabled: true,
-		FileFullContextMaxBytes:     51200,
-		FileFullContextMaxTokens:    12000,
+		FileFullContextMaxBytes:     65536,
+		FileFullContextMaxTokens:    65536,
 		FileFullContextPDFMaxPages:  20,
 	}
 
@@ -352,5 +575,25 @@ func TestRuntimeSettingsTreatsEmptyFullContextLimitsAsUnlimited(t *testing.T) {
 			cfg.FileFullContextMaxTokens,
 			cfg.FileFullContextPDFMaxPages,
 		)
+	}
+}
+
+func TestValidatePatchItemRejectsUnsafeRAGSettings(t *testing.T) {
+	tests := []PatchItem{
+		{Namespace: "file", Key: "rag_top_k", Value: "0"},
+		{Namespace: "chat", Key: "rag_min_similarity", Value: "1.1"},
+		{Namespace: "chat", Key: "rag_token_budget", Value: "64"},
+		{Namespace: "chat", Key: "rag_fetch_multiplier", Value: "100"},
+		{Namespace: "chat", Key: "rag_query_history_turns", Value: "-1"},
+		{Namespace: "chat", Key: "rag_retrieval_cache_ttl_seconds", Value: "86401"},
+		{Namespace: "chat", Key: "rag_hybrid_enabled", Value: "sometimes"},
+	}
+	for _, item := range tests {
+		item := item
+		t.Run(item.Namespace+":"+item.Key, func(t *testing.T) {
+			if err := validatePatchItem(item); err == nil {
+				t.Fatalf("validatePatchItem(%#v) expected an error", item)
+			}
+		})
 	}
 }

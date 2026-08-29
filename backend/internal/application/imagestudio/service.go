@@ -10,7 +10,7 @@ import (
 	appupload "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/upload"
 	domainimagestudio "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/imagestudio"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 	"go.uber.org/zap"
 )
@@ -27,16 +27,30 @@ type routeResolver interface {
 	MarkRouteSuccess(ctx context.Context, route *channel.ResolvedRoute)
 }
 
+type llmGateway interface {
+	Generate(ctx context.Context, route llm.RouteConfig, input llm.GenerateInput) (*llm.GenerateOutput, error)
+	GenerateStream(ctx context.Context, route llm.RouteConfig, input llm.GenerateInput, onEvent func(llm.GenerateStreamEvent) error) (*llm.GenerateOutput, error)
+}
+
+type generatedMediaDownloader interface {
+	DownloadImage(ctx context.Context, sourceURL string, trustedProviderEndpoint string, maxBytes int64) ([]byte, string, error)
+}
+
+type mediaArtifactResponseTooLarge interface {
+	MediaArtifactResponseTooLarge()
+}
+
 // Service owns Image Studio task execution and cloud history.
 type Service struct {
-	cfg           *config.Runtime
-	repo          repository.ImageStudioRepository
-	uploadSvc     *appupload.Service
-	routeResolver routeResolver
-	llmClient     *llm.Client
-	billingSvc    *appbilling.Service
-	storeProvider appstorage.Provider
-	logger        *zap.Logger
+	cfg             *config.Runtime
+	repo            repository.ImageStudioRepository
+	uploadSvc       *appupload.Service
+	routeResolver   routeResolver
+	llmClient       llmGateway
+	mediaDownloader generatedMediaDownloader
+	billingSvc      *appbilling.Service
+	storeProvider   appstorage.Provider
+	logger          *zap.Logger
 }
 
 // NewServiceWithRuntime creates an Image Studio service.
@@ -45,19 +59,21 @@ func NewServiceWithRuntime(
 	repo repository.ImageStudioRepository,
 	uploadSvc *appupload.Service,
 	routeResolver routeResolver,
-	llmClient *llm.Client,
+	llmClient llmGateway,
+	mediaDownloader generatedMediaDownloader,
 	billingSvc *appbilling.Service,
 	logger *zap.Logger,
 ) *Service {
 	return &Service{
-		cfg:           cfg,
-		repo:          repo,
-		uploadSvc:     uploadSvc,
-		routeResolver: routeResolver,
-		llmClient:     llmClient,
-		billingSvc:    billingSvc,
-		storeProvider: appstorage.NewRuntimeProvider(cfg, nil),
-		logger:        logger,
+		cfg:             cfg,
+		repo:            repo,
+		uploadSvc:       uploadSvc,
+		routeResolver:   routeResolver,
+		llmClient:       llmClient,
+		mediaDownloader: mediaDownloader,
+		billingSvc:      billingSvc,
+		storeProvider:   appstorage.NewRuntimeProvider(cfg, nil),
+		logger:          logger,
 	}
 }
 

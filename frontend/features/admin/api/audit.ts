@@ -1,8 +1,15 @@
+import type {
+  CleanupConversationRunsRequest,
+  CleanupConversationRunsResponse,
+  CleanupLogsRequest,
+  CleanupLogsResponse,
+} from "@deeix/api-contract";
 import { authedRequest } from "@/shared/api/authed-client";
 import type {
   AdminAuditLogDTO,
   AdminConversationEventDTO,
   AdminPaymentOrderDTO,
+  AdminRedemptionRecordDTO,
   AdminSystemEventDTO,
   AdminUsageLogDTO,
   AdminUserAuthEventDTO,
@@ -58,6 +65,16 @@ type ListAdminPaymentOrdersOptions = AdminPageOptions & {
   sort?: string;
 };
 
+type ListAdminRedemptionsOptions = AdminPageOptions & {
+  query?: string;
+  codeID?: number;
+  userID?: number;
+  rewardType?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  sort?: string;
+};
+
 type ListAdminConversationEventsOptions = AdminPageOptions & {
   query?: string;
   eventScope?: string;
@@ -69,6 +86,33 @@ type ListAdminConversationEventsOptions = AdminPageOptions & {
   createdTo?: string;
   sort?: string;
 };
+
+export type AdminLogCleanupType =
+  | "audit"
+  | "auth"
+  | "usage"
+  | "orders"
+  | "conversation"
+  | "system";
+
+export type AdminLogCleanupResult = Omit<CleanupLogsResponse, "type"> & {
+  type: AdminLogCleanupType;
+};
+
+export async function cleanupAdminLogs(
+  accessToken: string,
+  input: Omit<CleanupLogsRequest, "type"> & { type: AdminLogCleanupType },
+): Promise<AdminLogCleanupResult> {
+  return authedRequest<AdminLogCleanupResult>(
+    "/api/v1/admin/logs/cleanup",
+    {
+      accessToken,
+      method: "POST",
+      body: input,
+    },
+    true,
+  );
+}
 
 export async function listAdminUserAuthEvents(
   accessToken: string,
@@ -212,6 +256,31 @@ export async function listAdminPaymentOrders(
   return normalizeAdminPagePayload(data);
 }
 
+export async function listAdminRedemptions(
+  accessToken: string,
+  options: ListAdminRedemptionsOptions = {},
+): Promise<PagePayload<AdminRedemptionRecordDTO>> {
+  const { page, pageSize } = resolveAdminPage(options);
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  if (options.query?.trim()) params.set("query", options.query.trim());
+  if (options.codeID && options.codeID > 0) params.set("code_id", String(options.codeID));
+  if (options.userID && options.userID > 0) params.set("user_id", String(options.userID));
+  if (options.rewardType?.trim()) params.set("reward_type", options.rewardType.trim());
+  if (options.createdFrom?.trim()) params.set("created_from", options.createdFrom.trim());
+  if (options.createdTo?.trim()) params.set("created_to", options.createdTo.trim());
+  if (options.sort?.trim()) params.set("sort", options.sort.trim());
+
+  const data = await authedRequest<PagePayload<AdminRedemptionRecordDTO>>(
+    `/api/v1/admin/redemptions?${params.toString()}`,
+    { accessToken },
+    true,
+  );
+
+  return normalizeAdminPagePayload(data);
+}
+
 export async function listAdminConversationEvents(
   accessToken: string,
   options: ListAdminConversationEventsOptions = {},
@@ -237,4 +306,30 @@ export async function listAdminConversationEvents(
   );
 
   return normalizeAdminPagePayload(data);
+}
+
+export async function getAdminConversationEvent(
+  accessToken: string,
+  eventID: number,
+): Promise<AdminConversationEventDTO> {
+  return authedRequest<AdminConversationEventDTO>(
+    `/api/v1/admin/conversation-events/${eventID}`,
+    { accessToken },
+    true,
+  );
+}
+
+export async function cleanupAdminConversationRuns(
+  accessToken: string,
+  input: CleanupConversationRunsRequest,
+): Promise<CleanupConversationRunsResponse> {
+  return authedRequest<CleanupConversationRunsResponse>(
+    "/api/v1/admin/conversation-events/cleanup",
+    {
+      accessToken,
+      method: "POST",
+      body: input,
+    },
+    true,
+  );
 }

@@ -29,11 +29,13 @@ func NewHandler(service *appannouncement.Service) *Handler {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param include_dismissed query bool false "是否包含今日不再显示的公告"
 // @Success 200 {object} AnnouncementListResponseDoc
 // @Failure 500 {object} ErrorDoc
 // @Router /announcements [get]
 func (h *Handler) ListAnnouncements(c *gin.Context) {
-	items, err := h.service.ListActive(c.Request.Context(), middleware.MustUserID(c), time.Now())
+	includeDismissed, _ := strconv.ParseBool(c.Query("include_dismissed"))
+	items, err := h.service.ListActive(c.Request.Context(), middleware.MustUserID(c), time.Now(), includeDismissed)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "list announcements failed")
 		return
@@ -56,7 +58,7 @@ func (h *Handler) ListAnnouncements(c *gin.Context) {
 // @Failure 500 {object} ErrorDoc
 // @Router /announcements/{id}/dismiss-today [post]
 func (h *Handler) DismissAnnouncementToday(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid announcement id")
 		return
@@ -91,7 +93,7 @@ func (h *Handler) DismissAnnouncementToday(c *gin.Context) {
 // @Failure 500 {object} ErrorDoc
 // @Router /announcements/{id}/close [post]
 func (h *Handler) CloseAnnouncement(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid announcement id")
 		return
@@ -188,7 +190,7 @@ func (h *Handler) CreateAnnouncement(c *gin.Context) {
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/announcements/{id} [patch]
 func (h *Handler) PatchAnnouncement(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid announcement id")
 		return
@@ -231,7 +233,7 @@ func (h *Handler) PatchAnnouncement(c *gin.Context) {
 // @Failure 500 {object} ErrorDoc
 // @Router /admin/announcements/{id} [delete]
 func (h *Handler) DeleteAnnouncement(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid announcement id")
 		return
@@ -258,6 +260,7 @@ func writeAnnouncementError(c *gin.Context, err error) {
 func pageParams(c *gin.Context) (int, int) {
 	page := 1
 	pageSize := 20
+	const maxPageSize = 1000
 	if raw := c.Query("page"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			page = parsed
@@ -268,8 +271,8 @@ func pageParams(c *gin.Context) (int, int) {
 			pageSize = parsed
 		}
 	}
-	if pageSize > 200 {
-		pageSize = 200
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
 	}
 	return page, pageSize
 }

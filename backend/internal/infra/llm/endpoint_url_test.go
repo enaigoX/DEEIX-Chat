@@ -46,6 +46,18 @@ func TestBuildOpenAICompatibleURLsRespectVersionedBasePath(t *testing.T) {
 			want:     "https://api.x.ai/v1/images/generations",
 		},
 		{
+			name:     "xai video generations endpoint",
+			baseURL:  "https://api.x.ai/v1",
+			endpoint: EndpointVideoGenerations,
+			want:     "https://api.x.ai/v1/videos/generations",
+		},
+		{
+			name:     "xai video extensions endpoint",
+			baseURL:  "https://api.x.ai/v1",
+			endpoint: EndpointVideoExtensions,
+			want:     "https://api.x.ai/v1/videos/extensions",
+		},
+		{
 			name:     "xai proxy plain base gets v1 image endpoint",
 			baseURL:  "https://proxy.example.com",
 			endpoint: EndpointImageGenerations,
@@ -101,6 +113,18 @@ func TestBuildOpenAIModelsURLRespectsVersionedBasePath(t *testing.T) {
 		if got := buildOpenAIModelsURL(baseURL); got != want {
 			t.Fatalf("unexpected models url for %q: got %q, want %q", baseURL, got, want)
 		}
+	}
+}
+
+func TestOpenRouterChatCompletionsAdapterUsesChatEndpoint(t *testing.T) {
+	if got := DefaultEndpointForAdapter(AdapterOpenRouterChat); got != EndpointChatCompletions {
+		t.Fatalf("expected OpenRouter Chat Completions endpoint, got %q", got)
+	}
+	if !SupportsStreamingAdapter(AdapterOpenRouterChat) {
+		t.Fatal("expected OpenRouter Chat Completions to support streaming")
+	}
+	if !IsImplementedAdapter(AdapterOpenRouterChat) {
+		t.Fatal("expected OpenRouter Chat Completions adapter to be implemented")
 	}
 }
 

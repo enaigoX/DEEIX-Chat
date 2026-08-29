@@ -1,24 +1,33 @@
 "use client";
 
-import Link from "next/link";
+import { PanelLeft, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { PanelRight } from "@/components/animate-ui/icons/panel-right";
 import { Button } from "@/components/ui/button";
-import { PlusIcon } from "@/components/ui/plus";
-import { useSidebar } from "@/components/ui/sidebar";
+import { useSidebarActions } from "@/components/ui/sidebar";
+import { MobileHeaderActionSlot } from "@/features/layouts/context/mobile-header-action-context";
 import { AppLogo } from "@/shared/components/app-logo";
 
-export function MobileHeader() {
+export function MobileHeader({
+  onCreateConversation,
+}: {
+  onCreateConversation: () => void;
+}) {
   const t = useTranslations("common.navigation");
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar } = useSidebarActions();
 
   return (
-    <header className="grid h-12 shrink-0 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center px-3 md:hidden">
+    <header className="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center px-3 md:hidden">
       <div className="flex justify-start">
-        <Button variant="ghost" size="icon" className="size-6" onClick={toggleSidebar}>
-          <PanelRight size={18} strokeWidth={1.4} />
-          <span className="sr-only">{t("openSidebar")}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={t("openSidebar")}
+          onClick={toggleSidebar}
+        >
+          <PanelLeft aria-hidden className="size-[18px]" strokeWidth={1.4} />
         </Button>
       </div>
 
@@ -31,12 +40,17 @@ export function MobileHeader() {
         />
       </div>
 
-      <div className="flex justify-end">
-        <Button variant="ghost" size="icon" className="size-6" asChild>
-          <Link href="/chat">
-            <PlusIcon size={16} strokeWidth={1.6} />
-            <span className="sr-only">{t("newChat")}</span>
-          </Link>
+      <div className="flex items-center justify-end gap-1">
+        <MobileHeaderActionSlot />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={t("newChat")}
+          onClick={onCreateConversation}
+        >
+          <Plus aria-hidden className="size-4" strokeWidth={1.6} />
         </Button>
       </div>
     </header>

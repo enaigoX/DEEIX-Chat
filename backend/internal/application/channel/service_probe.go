@@ -11,7 +11,7 @@ import (
 	"time"
 
 	domainchannel "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/channel"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 )
 
@@ -352,9 +352,12 @@ func selectProbeAPIKey(cfg domainchannel.APIKeysConfig) (string, error) {
 func isLightweightModelProbeProtocol(protocol string) bool {
 	switch llm.NormalizeAdapter(protocol) {
 	case llm.AdapterOpenAIResponses,
+		llm.AdapterOpenRouterChat,
+		llm.AdapterOpenRouterResponses,
 		llm.AdapterOpenAIChatCompletions,
 		llm.AdapterAnthropicMessages,
 		llm.AdapterGoogleGenerateContent,
+		llm.AdapterGeminiInteractions,
 		llm.AdapterXAIResponses:
 		return true
 	default:

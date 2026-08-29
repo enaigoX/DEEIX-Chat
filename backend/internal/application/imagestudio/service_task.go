@@ -13,7 +13,7 @@ import (
 	domainbilling "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/billing"
 	domainconversation "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
 	domainimagestudio "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/imagestudio"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 )
 
 // StreamTaskInput is the application input for one streamed task.
@@ -68,25 +68,20 @@ func (s *Service) StreamTask(ctx context.Context, input StreamTaskInput) (*domai
 		return s.failTask(ctx, task, err)
 	}
 
-	if err := s.ensureBillingAccess(ctx, input.UserID, input.PlatformModelName); err != nil {
-		return s.failTask(ctx, task, err)
-	}
-	reservation, err := s.reserveUsage(ctx, input.UserID, input.PlatformModelName, task.TaskID)
+	authorization, err := s.authorizeUsage(ctx, input.UserID, input.PlatformModelName, task.TaskID)
 	if err != nil {
 		return s.failTask(ctx, task, err)
 	}
 
 	result, runErr := s.runUpstreamTask(ctx, task, input)
 	if runErr != nil {
-		_ = s.releaseUsage(ctx, reservation, "图片生成失败退回预扣")
+		_ = s.releaseUsage(ctx, authorization)
 		return s.failTask(ctx, task, runErr)
 	}
 
-	completed, err := s.completeTask(ctx, task, result, reservation)
+	completed, err := s.completeTask(ctx, task, result, authorization)
 	if err != nil {
-		if shouldReleaseReservationAfterBillingError(err) {
-			_ = s.releaseUsage(ctx, reservation, "计费失败退回预扣")
-		}
+		_ = s.markUsageForReconciliation(ctx, authorization, "image_studio_settlement")
 		return s.failTask(ctx, task, err)
 	}
 	emitEvent(input.OnEvent, "completed", map[string]interface{}{"data": completed})
@@ -206,7 +201,7 @@ func (s *Service) runUpstreamTask(ctx context.Context, task *domainimagestudio.T
 	uploadedAssets := make([]domainimagestudio.Asset, 0, len(output.GeneratedImages))
 	capturedAt := time.Now()
 	for i, image := range output.GeneratedImages {
-		file, uploadErr := s.uploadGeneratedImage(ctx, input.UserID, route.PlatformModelName, capturedAt, i, len(output.GeneratedImages), image)
+		file, uploadErr := s.uploadGeneratedImage(ctx, input.UserID, route.PlatformModelName, route.BaseURL, capturedAt, i, len(output.GeneratedImages), image)
 		if uploadErr != nil {
 			return nil, uploadErr
 		}
@@ -356,7 +351,7 @@ func (s *Service) readImageFilePart(ctx context.Context, userID uint, fileID str
 	}, nil
 }
 
-func (s *Service) completeTask(ctx context.Context, task *domainimagestudio.Task, result *upstreamTaskResult, reservation *domainbilling.UsageBalanceReservation) (*domainimagestudio.Task, error) {
+func (s *Service) completeTask(ctx context.Context, task *domainimagestudio.Task, result *upstreamTaskResult, authorization *domainbilling.UsageAuthorization) (*domainimagestudio.Task, error) {
 	usage := result.Output.Usage
 	usageJSON := marshalJSON(usageSnapshot(usage))
 	completedAt := time.Now()
@@ -373,7 +368,7 @@ func (s *Service) completeTask(ctx context.Context, task *domainimagestudio.Task
 		LatencyMS:         &result.LatencyMS,
 		CompletedAt:       &completedAtPtr,
 	}
-	usageLedger, err := s.recordUsage(ctx, task, result, reservation)
+	usageLedger, err := s.recordUsage(ctx, task, result, authorization)
 	if err != nil {
 		return nil, err
 	}
@@ -403,28 +398,28 @@ func (s *Service) failTask(ctx context.Context, task *domainimagestudio.Task, ca
 	return nil, cause
 }
 
-func (s *Service) ensureBillingAccess(ctx context.Context, userID uint, modelName string) error {
+func (s *Service) authorizeUsage(ctx context.Context, userID uint, modelName string, taskID string) (*domainbilling.UsageAuthorization, error) {
 	if s.billingSvc == nil {
+		return &domainbilling.UsageAuthorization{Mode: "self"}, nil
+	}
+	return s.billingSvc.AuthorizeUsage(ctx, userID, strings.TrimSpace(modelName), strings.TrimSpace(taskID))
+}
+
+func (s *Service) releaseUsage(ctx context.Context, authorization *domainbilling.UsageAuthorization) error {
+	if s.billingSvc == nil || authorization == nil {
 		return nil
 	}
-	return s.billingSvc.EnsureModelUsable(ctx, userID, strings.TrimSpace(modelName), time.Now())
+	return s.billingSvc.ReleaseUsageAuthorization(ctx, authorization)
 }
 
-func (s *Service) reserveUsage(ctx context.Context, userID uint, modelName string, taskID string) (*domainbilling.UsageBalanceReservation, error) {
-	if s.billingSvc == nil {
-		return nil, nil
-	}
-	return s.billingSvc.ReserveUsageBalance(ctx, userID, strings.TrimSpace(modelName), strings.TrimSpace(taskID))
-}
-
-func (s *Service) releaseUsage(ctx context.Context, reservation *domainbilling.UsageBalanceReservation, description string) error {
-	if s.billingSvc == nil || reservation == nil {
+func (s *Service) markUsageForReconciliation(ctx context.Context, authorization *domainbilling.UsageAuthorization, failureCode string) error {
+	if s.billingSvc == nil || authorization == nil {
 		return nil
 	}
-	return s.billingSvc.ReleaseUsageBalanceReservation(ctx, reservation, description)
+	return s.billingSvc.MarkUsageAuthorizationForReconciliation(ctx, authorization, failureCode)
 }
 
-func (s *Service) recordUsage(ctx context.Context, task *domainimagestudio.Task, result *upstreamTaskResult, reservation *domainbilling.UsageBalanceReservation) (*domainbilling.UsageLedger, error) {
+func (s *Service) recordUsage(ctx context.Context, task *domainimagestudio.Task, result *upstreamTaskResult, authorization *domainbilling.UsageAuthorization) (*domainbilling.UsageLedger, error) {
 	if s.billingSvc == nil || result == nil || result.Output == nil || result.Route == nil {
 		return nil, nil
 	}
@@ -454,14 +449,10 @@ func (s *Service) recordUsage(ctx context.Context, task *domainimagestudio.Task,
 	if err != nil || usageLedger == nil {
 		return usageLedger, err
 	}
-	if err = s.billingSvc.RecordUsageWithReservation(ctx, usageLedger, reservation); err != nil {
+	if err = s.billingSvc.RecordUsageWithAuthorization(ctx, usageLedger, authorization); err != nil {
 		return nil, err
 	}
 	return usageLedger, nil
-}
-
-func shouldReleaseReservationAfterBillingError(err error) bool {
-	return err != nil
 }
 
 func emitEvent(onEvent func(string, map[string]interface{}) error, eventType string, payload map[string]interface{}) {

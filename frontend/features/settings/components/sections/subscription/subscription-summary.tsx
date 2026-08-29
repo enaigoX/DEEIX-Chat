@@ -16,9 +16,9 @@ import {
   formatMediumDate,
   formatPlanCredit,
   formatPlanPrice,
+  formatProviderPaymentAmountFromUSD,
   formatShortDate,
   isCurrentBillingPlan,
-  isFreePlan,
   planRank,
   resolveDefaultPrice,
   resolveEPayTypeLabel,
@@ -27,7 +27,8 @@ import {
   resolvePlanActionLabel,
   resolvePlanButtonVariant,
   resolvePlanFeatures,
-} from "./subscription-format";
+} from "@/features/settings/model/subscription-format";
+import type { BillingDisplayOptions } from "@/shared/lib/billing-display";
 
 type BillingMode = "period" | "usage" | "self";
 type PaymentProvider = "stripe" | "epay";
@@ -125,10 +126,12 @@ function SubscriptionEntitlementQueue({
   items,
   labels,
   locale,
+  billingDisplay,
 }: {
   items: BillingSubscriptionEntitlementDTO[];
   labels: SubscriptionEntitlementQueueLabels;
   locale: string;
+  billingDisplay: BillingDisplayOptions;
 }) {
   if (items.length === 0) {
     return null;
@@ -154,7 +157,7 @@ function SubscriptionEntitlementQueue({
               {index > 0 ? <span className="text-muted-foreground/50">/</span> : null}
               <span
                 className={item.isCurrent ? "font-medium text-foreground" : undefined}
-                title={`${labels.range(start, end)} · ${labels.credit(formatPlanCredit(item.plan.periodCreditUSD))}`}
+                title={`${labels.range(start, end)} · ${labels.credit(formatPlanCredit(item.plan.periodCreditUSD, billingDisplay))}`}
               >
                 {item.plan.name || item.plan.code}
               </span>
@@ -199,6 +202,7 @@ type SubscriptionSummaryProps = {
   periodCredit: number;
   periodUsed: number;
   periodPercent: number;
+  billingDisplay: BillingDisplayOptions;
   onOpenRedemptionDialog: () => void;
   onOpenTopUpDialog: () => void;
   onPricingDialogOpenChange: (open: boolean) => void;
@@ -241,6 +245,7 @@ export function SubscriptionSummary({
   periodCredit,
   periodUsed,
   periodPercent,
+  billingDisplay,
   onOpenRedemptionDialog,
   onOpenTopUpDialog,
   onPricingDialogOpenChange,
@@ -277,6 +282,9 @@ export function SubscriptionSummary({
     : selectedPlanActionKind === "upgrade"
       ? t("payment.upgradeDescription")
       : null;
+  const selectedPaymentAmountUSD = selectedPrice ? (selectedPrice.amountCents || 0) / 100 : 0;
+  const stripePaymentAmount = selectedPrice ? formatProviderPaymentAmountFromUSD(selectedPaymentAmountUSD, "stripe", billingDisplay) : "";
+  const epayPaymentAmount = selectedPrice ? formatProviderPaymentAmountFromUSD(selectedPaymentAmountUSD, "epay", billingDisplay) : "";
 
   return (
     <>
@@ -288,7 +296,7 @@ export function SubscriptionSummary({
                 <p className="text-xs font-medium">{t("currentSubscription.title")}</p>
                 <p className="truncate text-sm font-semibold">{currentPlan?.name ?? t("currentSubscription.none")}</p>
                 <p className="text-xs text-muted-foreground">
-                  {currentPlan ? `${formatPlanPrice(currentPrice, intervalLabels)} · ${t("plans.features.monthlyCredit", { credit: formatPlanCredit(periodCredit) })}` : t("currentSubscription.empty")}
+                  {currentPlan ? `${formatPlanPrice(currentPrice, intervalLabels, billingDisplay)} · ${t("plans.features.monthlyCredit", { credit: formatPlanCredit(periodCredit, billingDisplay) })}` : t("currentSubscription.empty")}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -308,6 +316,7 @@ export function SubscriptionSummary({
             items={subscriptionEntitlements}
             labels={entitlementLabels}
             locale={locale}
+            billingDisplay={billingDisplay}
           />
 
           <Separator />
@@ -326,14 +335,25 @@ export function SubscriptionSummary({
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-4 text-xs">
-                <span className="text-muted-foreground">{t("periodUsage.used", { value: formatPlanCredit(periodUsed) })}</span>
-                <span className="text-muted-foreground">{t("periodUsage.total", { value: formatPlanCredit(periodCredit) })}</span>
+                <span className="text-muted-foreground">{t("periodUsage.used", { value: formatPlanCredit(periodUsed, billingDisplay) })}</span>
+                <span className="text-muted-foreground">{t("periodUsage.total", { value: formatPlanCredit(periodCredit, billingDisplay) })}</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
                 <div className="h-full rounded-full bg-foreground/70" style={{ width: `${periodPercent}%` }} />
               </div>
             </div>
           </div>
+
+          <ActionRow
+            title={t("periodOverage.title")}
+            value={t("periodOverage.balance", { value: formatAccountBalance(billingAccount?.balanceUSD ?? 0, billingDisplay) })}
+            action={
+              <Button type="button" variant="outline" disabled={billingLoading || topUpLoading || paymentDisabled} onClick={onOpenTopUpDialog}>
+                <Banknote className="size-3.5" />
+                {t("usageBilling.topUp")}
+              </Button>
+            }
+          />
         </section>
       ) : null}
 
@@ -341,7 +361,7 @@ export function SubscriptionSummary({
         <section className="space-y-6 px-0.5 md:space-y-7 xl:space-y-8 xl:px-1">
           <ActionRow
             title={t("usageBilling.title")}
-            value={t("usageBilling.balance", { value: formatAccountBalance(billingAccount?.balanceUSD ?? 0) })}
+            value={t("usageBilling.balance", { value: formatAccountBalance(billingAccount?.balanceUSD ?? 0, billingDisplay) })}
             action={
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" disabled={billingLoading || redemptionLoading} onClick={onOpenRedemptionDialog}>
@@ -404,7 +424,7 @@ export function SubscriptionSummary({
                     <div className="flex min-w-0 items-center gap-2">
                       <p className="truncate text-sm font-medium">{plan.name}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">{formatPlanPrice(price, intervalLabels)}</p>
+                    <p className="text-xs text-muted-foreground">{formatPlanPrice(price, intervalLabels, billingDisplay)}</p>
                   </div>
                   {actionButton}
                 </div>
@@ -419,7 +439,7 @@ export function SubscriptionSummary({
               const actionKind = resolvePlanActionKind(plan, price, isCurrent, currentPlan, protectedPaidPlanRank);
               const actionLabel = resolvePlanActionLabel(actionKind, planActionLabels);
               const disabled = billingLoading || actionKind === "current" || actionKind === "freeBlocked" || actionKind === "unavailable" || checkoutPriceID === price?.id;
-              const features = resolvePlanFeatures(plan, planFeatureLabels).slice(0, 6);
+              const features = resolvePlanFeatures(plan, planFeatureLabels, billingDisplay).slice(0, 6);
               const isSelected = selectedPlan?.id === plan.id;
               const isHighlighted = isCurrent || isSelected;
               const buttonVariant = resolvePlanButtonVariant(actionKind);
@@ -447,7 +467,7 @@ export function SubscriptionSummary({
                       <h3 className="truncate text-lg font-semibold">{plan.name}</h3>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-2xl font-semibold">{formatPlanPrice(price, intervalLabels)}</p>
+                      <p className="text-2xl font-semibold">{formatPlanPrice(price, intervalLabels, billingDisplay)}</p>
                     </div>
                   </div>
 
@@ -475,7 +495,7 @@ export function SubscriptionSummary({
             <DialogDescription>
               <span className="block">
                 {selectedPlan && selectedPrice
-                  ? `${selectedPlan.name} · ${formatPlanPrice(selectedPrice, intervalLabels)}`
+                  ? `${selectedPlan.name} · ${formatPlanPrice(selectedPrice, intervalLabels, billingDisplay)}`
                   : t("payment.description")}
               </span>
               {paymentImpactDescription ? <span className="mt-1 block">{paymentImpactDescription}</span> : null}
@@ -493,7 +513,7 @@ export function SubscriptionSummary({
               >
                 <span className="space-y-1">
                   <span className="block text-xs font-medium">Stripe</span>
-                  <span className="block text-xs text-muted-foreground">{t("payment.card")}</span>
+                  <span className="block text-xs text-muted-foreground">{stripePaymentAmount || t("payment.card")}</span>
                 </span>
                 {selectedPaymentProvider === "stripe" ? <Check className="size-4" /> : null}
               </button>
@@ -516,7 +536,7 @@ export function SubscriptionSummary({
                   >
                     <span className="space-y-1">
                       <span className="block text-xs font-medium">{item.name || resolveEPayTypeLabel(item.type, epayLabels)}</span>
-                      <span className="block text-xs text-muted-foreground">{resolvePaymentProviderLabel("epay", t("payment.disabled"))}</span>
+                      <span className="block text-xs text-muted-foreground">{epayPaymentAmount || resolvePaymentProviderLabel("epay", t("payment.disabled"))}</span>
                     </span>
                     {selected ? <Check className="size-4" /> : null}
                   </button>

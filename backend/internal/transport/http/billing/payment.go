@@ -1,18 +1,16 @@
 package billing
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
-	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,19 +20,18 @@ import (
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/response"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 const (
 	// Stripe Webhook 只需要验证事件摘要，限制请求体可避免异常回调占用过多内存。
 	stripeWebhookMaxBodyBytes = 1 << 20
-	stripeResponseMaxBytes    = 1 << 20
 )
-
-var stripeHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 type billingPaymentSettings struct {
 	Providers            []string
 	USDToCNYRate         float64
+	DisplayCurrency      string
 	StripePublishableKey string
 	StripeSecretKey      string
 	StripeWebhookSecret  string
@@ -42,6 +39,13 @@ type billingPaymentSettings struct {
 	EPayTypes            []PaymentTypeResponse
 	EPayPID              string
 	EPayKey              string
+}
+
+type paymentCheckoutPreparation struct {
+	successURL string
+	cancelURL  string
+	notifyURL  string
+	epayType   string
 }
 
 // CreateCheckout godoc
@@ -72,27 +76,34 @@ func (h *Handler) CreateCheckout(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "payment provider is unavailable")
 		return
 	}
+	preparation, err := h.preparePaymentCheckout(c, provider, settings, req)
+	if err != nil {
+		h.respondPaymentCheckoutError(c, provider, "validate", err)
+		return
+	}
 
 	userID := middleware.MustUserID(c)
 	orderType := resolveCheckoutOrderType(req)
 	var order *domainbilling.PaymentOrder
 	var plan *domainbilling.Plan
-	var price *domainbilling.Price
 	switch orderType {
 	case domainbilling.PaymentOrderTypeTopUp:
 		order, err = h.service.CreateTopUpPaymentOrder(c.Request.Context(), appbilling.TopUpPaymentOrderInput{
-			UserID:       userID,
-			AmountCents:  usdToCents(req.AmountUSD),
-			Provider:     provider,
-			USDToCNYRate: settings.USDToCNYRate,
+			UserID:               userID,
+			AmountMinorUnits:     req.AmountMinorUnits,
+			AmountCurrency:       settings.DisplayCurrency,
+			Provider:             provider,
+			USDToCNYRate:         settings.USDToCNYRate,
+			PreferredPayCurrency: settings.DisplayCurrency,
 		})
 	default:
-		order, plan, price, err = h.service.CreatePaymentOrder(c.Request.Context(), appbilling.PaymentOrderInput{
-			UserID:       userID,
-			PriceID:      req.PriceID,
-			Cycles:       req.Cycles,
-			Provider:     provider,
-			USDToCNYRate: settings.USDToCNYRate,
+		order, plan, _, err = h.service.CreatePaymentOrder(c.Request.Context(), appbilling.PaymentOrderInput{
+			UserID:               userID,
+			PriceID:              req.PriceID,
+			Cycles:               optionalIntValue(req.Cycles),
+			Provider:             provider,
+			USDToCNYRate:         settings.USDToCNYRate,
+			PreferredPayCurrency: settings.DisplayCurrency,
 		})
 	}
 	if err != nil {
@@ -104,17 +115,25 @@ func (h *Handler) CreateCheckout(c *gin.Context) {
 	checkoutURL := ""
 	switch provider {
 	case domainbilling.PaymentProviderStripe:
-		checkoutID, checkoutURL, err = h.createStripeCheckoutSession(c, settings, order, plan, price, req)
+		checkoutID, checkoutURL, err = h.createStripeCheckoutSession(c, settings, order, plan, preparation)
 	case domainbilling.PaymentProviderEPay:
-		checkoutURL, err = h.createEPayCheckoutURL(c, settings, order, plan, price, req)
+		checkoutURL, err = h.createEPayCheckoutURL(c, settings, order, plan, preparation)
 	default:
 		err = appbilling.ErrPaymentProviderUnavailable
 	}
 	if err != nil {
-		response.ErrorWithCode(c, http.StatusInternalServerError, "payment.checkout_failed", "create checkout failed")
+		h.respondPaymentCheckoutError(c, provider, "create", err)
 		return
 	}
 	if err = h.service.AttachPaymentCheckout(c.Request.Context(), order.OrderNo, checkoutID, checkoutURL); err != nil {
+		if h.logger != nil {
+			h.logger.Error("billing payment checkout persistence failed",
+				zap.String("request_id", middleware.MustRequestID(c)),
+				zap.String("provider", provider),
+				zap.String("order_no", order.OrderNo),
+				zap.Error(err),
+			)
+		}
 		response.Error(c, http.StatusInternalServerError, "save checkout failed")
 		return
 	}
@@ -228,7 +247,7 @@ func (h *Handler) EPayNotify(c *gin.Context) {
 		return
 	}
 	values := collectEPayNotifyValues(c)
-	if !verifyEPaySign(values, settings.EPayKey) {
+	if h.paymentCheckout == nil || !h.paymentCheckout.VerifyEPaySignature(values, settings.EPayKey) {
 		c.String(http.StatusBadRequest, "fail")
 		return
 	}
@@ -270,6 +289,7 @@ func (h *Handler) resolvePaymentSettings(ctx context.Context) (billingPaymentSet
 	return billingPaymentSettings{
 		Providers:            normalizePaymentProviders(values["payment_providers"]),
 		USDToCNYRate:         parsePositiveFloat(values["usd_to_cny_rate"], 7.2),
+		DisplayCurrency:      normalizePaymentDisplayCurrency(values["display_currency"]),
 		StripePublishableKey: values["stripe_publishable_key"],
 		StripeSecretKey:      values["stripe_secret_key"],
 		StripeWebhookSecret:  values["stripe_webhook_secret"],
@@ -278,6 +298,93 @@ func (h *Handler) resolvePaymentSettings(ctx context.Context) (billingPaymentSet
 		EPayPID:              values["epay_pid"],
 		EPayKey:              values["epay_key"],
 	}, nil
+}
+
+func (h *Handler) preparePaymentCheckout(
+	c *gin.Context,
+	provider string,
+	settings billingPaymentSettings,
+	req CreateCheckoutRequest,
+) (paymentCheckoutPreparation, error) {
+	preparation := paymentCheckoutPreparation{}
+	switch provider {
+	case domainbilling.PaymentProviderStripe:
+		if strings.TrimSpace(settings.StripeSecretKey) == "" {
+			return preparation, appbilling.ErrPaymentProviderUnavailable
+		}
+		var err error
+		preparation.successURL, err = h.paymentReturnURL(c, req.SuccessURL, "/settings?section=account&payment=success")
+		if err != nil {
+			return preparation, err
+		}
+		preparation.cancelURL, err = h.paymentReturnURL(c, req.CancelURL, "/settings?section=account&payment=cancel")
+		if err != nil {
+			return preparation, err
+		}
+	case domainbilling.PaymentProviderEPay:
+		if strings.TrimSpace(settings.EPayPID) == "" || strings.TrimSpace(settings.EPayKey) == "" {
+			return preparation, appbilling.ErrPaymentProviderUnavailable
+		}
+		if _, err := domainbilling.ResolveEPaySubmitURL(settings.EPayGatewayURL); err != nil {
+			return preparation, err
+		}
+		var err error
+		preparation.epayType, err = resolveEPayType(req.EPayType, settings.EPayTypes)
+		if err != nil {
+			return preparation, err
+		}
+		preparation.notifyURL, err = h.paymentNotifyURL(c, "/api/v1/billing/payments/epay/notify")
+		if err != nil {
+			return preparation, err
+		}
+		preparation.successURL, err = h.paymentReturnURL(c, req.SuccessURL, "/settings?section=account&payment=success")
+		if err != nil {
+			return preparation, err
+		}
+	default:
+		return preparation, appbilling.ErrPaymentProviderUnavailable
+	}
+	return preparation, nil
+}
+
+func (h *Handler) respondPaymentCheckoutError(c *gin.Context, provider string, stage string, err error) {
+	logger := h.logger
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	logFields := []zap.Field{
+		zap.String("request_id", middleware.MustRequestID(c)),
+		zap.String("provider", provider),
+		zap.String("stage", stage),
+		zap.Error(err),
+	}
+	if stage == "validate" {
+		logger.Warn("billing payment checkout validation failed", logFields...)
+	} else {
+		logger.Error("billing payment checkout creation failed", logFields...)
+	}
+
+	switch {
+	case errors.Is(err, domainbilling.ErrEPayGatewayInvalid):
+		response.ErrorWithCode(c, http.StatusServiceUnavailable, "payment.epay_gateway_invalid", "epay gateway url is invalid")
+	case errors.Is(err, appbilling.ErrPaymentProviderUnavailable):
+		response.ErrorWithCode(c, http.StatusServiceUnavailable, "payment.provider_unavailable", "payment provider is unavailable")
+	case errors.Is(err, appbilling.ErrEPayTypeUnsupported):
+		response.ErrorFrom(c, http.StatusBadRequest, err)
+	case strings.HasPrefix(err.Error(), "payment return url"):
+		response.ErrorFrom(c, http.StatusBadRequest, err)
+	case stage == "validate":
+		response.ErrorWithCode(c, http.StatusServiceUnavailable, "payment.provider_unavailable", "payment provider is unavailable")
+	default:
+		response.ErrorWithCode(c, http.StatusBadGateway, "payment.checkout_failed", "create checkout failed")
+	}
+}
+
+func normalizePaymentDisplayCurrency(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "CNY") {
+		return "CNY"
+	}
+	return "USD"
 }
 
 type stripeCheckoutSession struct {
@@ -297,68 +404,22 @@ func (h *Handler) createStripeCheckoutSession(
 	settings billingPaymentSettings,
 	order *domainbilling.PaymentOrder,
 	plan *domainbilling.Plan,
-	price *domainbilling.Price,
-	req CreateCheckoutRequest,
+	preparation paymentCheckoutPreparation,
 ) (string, string, error) {
-	_ = price
-	if strings.TrimSpace(settings.StripeSecretKey) == "" {
-		return "", "", fmt.Errorf("stripe secret key is not configured")
+	if h.paymentCheckout == nil {
+		return "", "", appbilling.ErrPaymentProviderUnavailable
 	}
-	successURL, err := h.paymentReturnURL(c, req.SuccessURL, "/settings?section=account&payment=success")
+	checkout, err := h.paymentCheckout.CreateStripeCheckoutSession(c.Request.Context(), appbilling.StripeCheckoutInput{
+		SecretKey:  settings.StripeSecretKey,
+		SuccessURL: preparation.successURL,
+		CancelURL:  preparation.cancelURL,
+		Order:      order,
+		Plan:       plan,
+	})
 	if err != nil {
 		return "", "", err
 	}
-	cancelURL, err := h.paymentReturnURL(c, req.CancelURL, "/settings?section=account&payment=cancel")
-	if err != nil {
-		return "", "", err
-	}
-	currency := strings.ToLower(firstNonEmpty(order.PayCurrency, order.BaseCurrency, "USD"))
-	form := url.Values{}
-	form.Set("mode", "payment")
-	form.Set("success_url", successURL)
-	form.Set("cancel_url", cancelURL)
-	form.Set("client_reference_id", order.OrderNo)
-	form.Set("metadata[order_no]", order.OrderNo)
-	form.Set("metadata[order_type]", order.OrderType)
-	form.Set("metadata[user_id]", strconv.FormatUint(uint64(order.UserID), 10))
-	form.Set("metadata[base_currency]", order.BaseCurrency)
-	form.Set("metadata[base_amount_cents]", strconv.FormatInt(order.BaseAmountCents, 10))
-	form.Set("metadata[pay_currency]", order.PayCurrency)
-	form.Set("metadata[pay_amount_cents]", strconv.FormatInt(order.PayAmountCents, 10))
-	form.Set("metadata[fx_rate]", order.FXRate)
-	form.Set("line_items[0][quantity]", "1")
-	form.Set("line_items[0][price_data][currency]", currency)
-	form.Set("line_items[0][price_data][unit_amount]", strconv.FormatInt(order.PayAmountCents, 10))
-	form.Set("line_items[0][price_data][product_data][name]", paymentProductName(order, plan))
-	form.Set("line_items[0][price_data][product_data][description]", paymentProductDescription(order, plan))
-
-	httpReq, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, "https://api.stripe.com/v1/checkout/sessions", strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", "", err
-	}
-	httpReq.SetBasicAuth(settings.StripeSecretKey, "")
-	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := stripeHTTPClient.Do(httpReq)
-	if err != nil {
-		return "", "", err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, stripeResponseMaxBytes+1))
-	if len(body) > stripeResponseMaxBytes {
-		return "", "", fmt.Errorf("stripe response is too large")
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("stripe checkout failed with status %d", resp.StatusCode)
-	}
-	var session stripeCheckoutSession
-	if err = json.Unmarshal(body, &session); err != nil {
-		return "", "", err
-	}
-	if strings.TrimSpace(session.URL) == "" {
-		return "", "", fmt.Errorf("stripe checkout url is missing")
-	}
-	return session.ID, session.URL, nil
+	return checkout.ID, checkout.URL, nil
 }
 
 func (h *Handler) createEPayCheckoutURL(
@@ -366,41 +427,25 @@ func (h *Handler) createEPayCheckoutURL(
 	settings billingPaymentSettings,
 	order *domainbilling.PaymentOrder,
 	plan *domainbilling.Plan,
-	price *domainbilling.Price,
-	req CreateCheckoutRequest,
+	preparation paymentCheckoutPreparation,
 ) (string, error) {
-	_ = price
-	gateway := strings.TrimRight(strings.TrimSpace(settings.EPayGatewayURL), "/")
-	if gateway == "" || strings.TrimSpace(settings.EPayPID) == "" || strings.TrimSpace(settings.EPayKey) == "" {
-		return "", fmt.Errorf("epay settings are incomplete")
+	if h.paymentCheckout == nil {
+		return "", appbilling.ErrPaymentProviderUnavailable
 	}
-	if !isHTTPURL(gateway) {
-		return "", fmt.Errorf("epay gateway url must be an http(s) url")
-	}
-	notifyURL, err := h.paymentNotifyURL(c, "/api/v1/billing/payments/epay/notify")
+	checkout, err := h.paymentCheckout.CreateEPayCheckout(c.Request.Context(), appbilling.EPayCheckoutInput{
+		GatewayURL:  settings.EPayGatewayURL,
+		MerchantID:  settings.EPayPID,
+		MerchantKey: settings.EPayKey,
+		PaymentType: preparation.epayType,
+		NotifyURL:   preparation.notifyURL,
+		ReturnURL:   preparation.successURL,
+		Order:       order,
+		Plan:        plan,
+	})
 	if err != nil {
 		return "", err
 	}
-	returnURL, err := h.paymentReturnURL(c, req.SuccessURL, "/settings?section=account&payment=success")
-	if err != nil {
-		return "", err
-	}
-
-	params := url.Values{}
-	params.Set("pid", settings.EPayPID)
-	epayType, err := resolveEPayType(req.EPayType, settings.EPayTypes)
-	if err != nil {
-		return "", err
-	}
-	params.Set("type", epayType)
-	params.Set("out_trade_no", order.OrderNo)
-	params.Set("notify_url", notifyURL)
-	params.Set("return_url", returnURL)
-	params.Set("name", paymentProductName(order, plan))
-	params.Set("money", fmt.Sprintf("%.2f", float64(order.PayAmountCents)/100))
-	params.Set("sign", signEPayValues(params, settings.EPayKey))
-	params.Set("sign_type", "MD5")
-	return gateway + "/submit.php?" + params.Encode(), nil
+	return checkout.URL, nil
 }
 
 func verifyStripeSignature(payload []byte, header string, secret string, tolerance time.Duration) bool {
@@ -464,38 +509,6 @@ func collectEPayNotifyValues(c *gin.Context) url.Values {
 	return values
 }
 
-func verifyEPaySign(values url.Values, key string) bool {
-	provided := strings.ToLower(strings.TrimSpace(values.Get("sign")))
-	if provided == "" {
-		return false
-	}
-	expected := signEPayValues(values, key)
-	return hmac.Equal([]byte(provided), []byte(expected))
-}
-
-func signEPayValues(values url.Values, key string) string {
-	keys := make([]string, 0, len(values))
-	for itemKey := range values {
-		if itemKey == "sign" || itemKey == "sign_type" || strings.TrimSpace(values.Get(itemKey)) == "" {
-			continue
-		}
-		keys = append(keys, itemKey)
-	}
-	sort.Strings(keys)
-	var buffer bytes.Buffer
-	for index, itemKey := range keys {
-		if index > 0 {
-			buffer.WriteByte('&')
-		}
-		buffer.WriteString(itemKey)
-		buffer.WriteByte('=')
-		buffer.WriteString(values.Get(itemKey))
-	}
-	buffer.WriteString(key)
-	sum := md5.Sum(buffer.Bytes())
-	return hex.EncodeToString(sum[:])
-}
-
 func (h *Handler) writePaymentAudit(c *gin.Context, order *domainbilling.PaymentOrder, activated bool, source string) {
 	if order == nil {
 		return
@@ -553,7 +566,7 @@ func validateEPayNotification(order *domainbilling.PaymentOrder, values url.Valu
 	if strings.ToUpper(strings.TrimSpace(order.PayCurrency)) != "CNY" {
 		return fmt.Errorf("currency mismatch")
 	}
-	expected := fmt.Sprintf("%.2f", float64(order.PayAmountCents)/100)
+	expected := domainbilling.FormatEPayAmount(order.PayAmountCents)
 	actual := strings.TrimSpace(values.Get("money"))
 	if actual != expected {
 		parsed, err := strconv.ParseFloat(actual, 64)
@@ -614,7 +627,7 @@ func resolveEPayType(requested string, enabledTypes []PaymentTypeResponse) (stri
 			return selected, nil
 		}
 	}
-	return "", fmt.Errorf("epay payment type is not supported")
+	return "", appbilling.ErrEPayTypeUnsupported
 }
 
 func normalizeEPayTypes(raw string) []PaymentTypeResponse {
@@ -684,31 +697,11 @@ func resolveCheckoutOrderType(req CreateCheckoutRequest) string {
 	case domainbilling.PaymentOrderTypeSubscription:
 		return domainbilling.PaymentOrderTypeSubscription
 	default:
-		if req.PriceID == 0 && req.AmountUSD > 0 {
+		if req.PriceID == 0 && req.AmountMinorUnits > 0 {
 			return domainbilling.PaymentOrderTypeTopUp
 		}
 		return domainbilling.PaymentOrderTypeSubscription
 	}
-}
-
-func paymentProductName(order *domainbilling.PaymentOrder, plan *domainbilling.Plan) string {
-	if order != nil && order.OrderType == domainbilling.PaymentOrderTypeTopUp {
-		return "按量余额充值"
-	}
-	if plan != nil {
-		return firstNonEmpty(plan.Name, plan.Code)
-	}
-	return "订阅方案"
-}
-
-func paymentProductDescription(order *domainbilling.PaymentOrder, plan *domainbilling.Plan) string {
-	if order != nil && order.OrderType == domainbilling.PaymentOrderTypeTopUp {
-		return fmt.Sprintf("充值 $%.2f 至按量余额", float64(order.BaseAmountCents)/100)
-	}
-	if plan != nil {
-		return firstNonEmpty(plan.Description, plan.Code)
-	}
-	return "订阅方案支付"
 }
 
 func requestBaseURL(c *gin.Context) string {

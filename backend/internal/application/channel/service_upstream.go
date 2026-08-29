@@ -32,6 +32,9 @@ type ListUpstreamsInput struct {
 func (s *Service) ListUpstreams(ctx context.Context, page int, pageSize int, input ListUpstreamsInput) ([]UpstreamView, int64, error) {
 	offset, limit := normalizePage(page, pageSize)
 	if strings.TrimSpace(input.Status) == "circuit" {
+		if s.cache == nil || !s.loadBreakerDefaults(ctx).Enabled {
+			return []UpstreamView{}, 0, nil
+		}
 		return s.listCircuitOpenUpstreams(ctx, offset, limit, input)
 	}
 	items, total, err := s.repo.ListUpstreams(ctx, repository.ListChannelUpstreamsInput{
@@ -45,7 +48,11 @@ func (s *Service) ListUpstreams(ctx context.Context, page int, pageSize int, inp
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.toUpstreamViews(ctx, items), total, nil
+	views, err := s.toUpstreamViews(ctx, items)
+	if err != nil {
+		return nil, 0, err
+	}
+	return views, total, nil
 }
 
 func (s *Service) listCircuitOpenUpstreams(ctx context.Context, offset int, limit int, input ListUpstreamsInput) ([]UpstreamView, int64, error) {
@@ -59,7 +66,10 @@ func (s *Service) listCircuitOpenUpstreams(ctx context.Context, offset int, limi
 	if err != nil {
 		return nil, 0, err
 	}
-	views := s.toUpstreamViews(ctx, items)
+	views, err := s.toUpstreamViews(ctx, items)
+	if err != nil {
+		return nil, 0, err
+	}
 	filtered := make([]UpstreamView, 0, len(views))
 	for _, item := range views {
 		if item.CircuitOpen {
@@ -77,16 +87,51 @@ func (s *Service) listCircuitOpenUpstreams(ctx context.Context, offset int, limi
 	return filtered[offset:end], total, nil
 }
 
-func (s *Service) toUpstreamViews(ctx context.Context, items []repository.ChannelUpstreamListRow) []UpstreamView {
+func (s *Service) toUpstreamViews(ctx context.Context, items []repository.ChannelUpstreamListRow) ([]UpstreamView, error) {
+	breakerEnabled := s.cache != nil && s.loadBreakerDefaults(ctx).Enabled
 	views := make([]UpstreamView, 0, len(items))
 	for _, item := range items {
 		v := toUpstreamView(item)
 		v.APIKeysMasked = s.maskAPIKeysEnc(item.APIKeysEnc)
 		v.APIKeyItems = s.maskAPIKeyViewsEnc(item.APIKeysEnc)
-		v.CircuitOpen, v.CircuitUntil = s.cache.QueryUpstreamCircuitStatus(ctx, item.ID)
+		if breakerEnabled && s.cache != nil {
+			v.CircuitOpen, v.CircuitUntil = s.cache.QueryUpstreamCircuitStatus(ctx, item.ID)
+		}
+		if err := s.normalizeUpstreamAvailability(ctx, &v, breakerEnabled); err != nil {
+			return nil, err
+		}
 		views = append(views, v)
 	}
-	return views
+	return views, nil
+}
+
+func (s *Service) normalizeUpstreamAvailability(ctx context.Context, view *UpstreamView, breakerEnabled bool) error {
+	if view == nil {
+		return nil
+	}
+	if view.Status != "active" || view.CircuitOpen {
+		view.ActiveModelsCount = 0
+		return nil
+	}
+	if !breakerEnabled || s.cache == nil || view.ModelsCount <= 0 || view.ActiveModelsCount <= 0 {
+		return nil
+	}
+	activeBindingCodes, err := s.repo.ListActiveRouteBindingCodesForUpstream(ctx, view.ID)
+	if err != nil {
+		return err
+	}
+	active := make(map[string]struct{}, view.ActiveModelsCount)
+	for _, bindingCode := range activeBindingCodes {
+		key := bindingCircuitKey(bindingCode)
+		if key == "" {
+			continue
+		}
+		if open, _ := s.cache.QueryModelCircuitStatus(ctx, view.ID, key); !open {
+			active[bindingCode] = struct{}{}
+		}
+	}
+	view.ActiveModelsCount = int64(len(active))
+	return nil
 }
 
 // CreateUpstream 创建上游。
@@ -263,10 +308,23 @@ func (s *Service) UpdateUpstream(ctx context.Context, upstreamID uint, input Upd
 	if err != nil {
 		return nil, err
 	}
-	view := toUpstreamView(repository.ChannelUpstreamListRow{Upstream: *item})
-	view.APIKeysMasked = s.maskAPIKeysEnc(item.APIKeysEnc)
-	view.APIKeyItems = s.maskAPIKeyViewsEnc(item.APIKeysEnc)
+	view, err := s.getUpstreamView(ctx, item.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &view, nil
+}
+
+func (s *Service) getUpstreamView(ctx context.Context, upstreamID uint) (UpstreamView, error) {
+	row, err := s.repo.GetUpstreamListRowByID(ctx, upstreamID)
+	if err != nil {
+		return UpstreamView{}, err
+	}
+	views, err := s.toUpstreamViews(ctx, []repository.ChannelUpstreamListRow{*row})
+	if err != nil {
+		return UpstreamView{}, err
+	}
+	return views[0], nil
 }
 
 // DeleteUpstream 删除上游及其所有路由绑定，保留模型目录。
@@ -314,14 +372,10 @@ func (s *Service) BatchDeleteUpstreams(ctx context.Context, upstreamIDs []uint) 
 }
 
 func (s *Service) validateUpstreamBaseURL(raw string) error {
-	env := ""
-	ssrfProtectionEnabled := false
-	if s != nil && s.cfg != nil {
-		cfg := s.cfg.Snapshot()
-		env = cfg.Env
-		ssrfProtectionEnabled = cfg.SSRFProtectionEnabled
+	if s == nil {
+		return ErrInvalidUpstreamBaseURL
 	}
-	if err := security.ValidateOutboundHTTPURL(raw, env, ssrfProtectionEnabled); err != nil {
+	if err := security.ValidateTrustedOutboundHTTPURL(raw); err != nil {
 		return ErrInvalidUpstreamBaseURL
 	}
 	return nil
@@ -336,6 +390,9 @@ func (s *Service) OpenUpstreamCircuit(ctx context.Context, upstreamID uint) erro
 	if _, err := s.repo.GetUpstreamByID(ctx, upstreamID); err != nil {
 		return err
 	}
+	if s.cache == nil || !s.loadBreakerDefaults(ctx).Enabled {
+		return ErrCircuitBreakerDisabled
+	}
 	return s.cache.OpenUpstreamCircuit(ctx, upstreamID)
 }
 
@@ -343,6 +400,9 @@ func (s *Service) OpenUpstreamCircuit(ctx context.Context, upstreamID uint) erro
 func (s *Service) ResetUpstreamCircuit(ctx context.Context, upstreamID uint) error {
 	if _, err := s.repo.GetUpstreamByID(ctx, upstreamID); err != nil {
 		return err
+	}
+	if s.cache == nil {
+		return nil
 	}
 	return s.cache.ResetUpstreamCircuit(ctx, upstreamID)
 }

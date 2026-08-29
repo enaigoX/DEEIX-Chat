@@ -103,7 +103,7 @@ func (c *Client) generateOpenAIImageGenerations(ctx context.Context, route Route
 	setOpenRouterAttributionHeaders(req, route)
 	setAdditionalHeaders(req, route.HeadersJSON)
 
-	resp, err := c.httpClientForRoute(route).Do(req)
+	resp, err := c.doRouteRequest(route, req)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func (c *Client) generateOpenAIImageGenerationsStream(
 	setOpenRouterAttributionHeaders(req, route)
 	setAdditionalHeaders(req, route.HeadersJSON)
 
-	resp, err := c.httpClientForRoute(route).Do(req)
+	resp, err := c.doRouteRequest(route, req)
 	firstByteTimer.Stop()
 	if err != nil {
 		return nil, err
@@ -243,7 +243,7 @@ func (c *Client) generateOpenAIImageEdits(ctx context.Context, route RouteConfig
 	setOpenRouterAttributionHeaders(req, route)
 	setAdditionalHeaders(req, route.HeadersJSON)
 
-	resp, err := c.httpClientForRoute(route).Do(req)
+	resp, err := c.doRouteRequest(route, req)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +301,7 @@ func (c *Client) generateOpenAIImageEditsStream(
 	setOpenRouterAttributionHeaders(req, route)
 	setAdditionalHeaders(req, route.HeadersJSON)
 
-	resp, err := c.httpClientForRoute(route).Do(req)
+	resp, err := c.doRouteRequest(route, req)
 	firstByteTimer.Stop()
 	if err != nil {
 		return nil, err
@@ -369,7 +369,7 @@ func buildOpenAIImageGenerationStreamRequestBody(model string, input GenerateInp
 	if err != nil {
 		return nil, err
 	}
-	if !openAIImageGenerationModelSupportsStream(model) {
+	if !SupportsImageGenerationStream(AdapterOpenAIImageGenerations, model) {
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedStream, AdapterOpenAIImageGenerations)
 	}
 	payload["stream"] = true
@@ -387,7 +387,7 @@ func buildOpenAIImageEditMultipartRequest(model string, input GenerateInput, str
 	if len(images) == 0 {
 		return nil, "", nil, fmt.Errorf("image edit input image required")
 	}
-	if stream && !openAIImageEditModelSupportsStream(model) {
+	if stream && !SupportsImageGenerationStream(AdapterOpenAIImageEdits, model) {
 		return nil, "", nil, fmt.Errorf("%w: %s", ErrUnsupportedStream, AdapterOpenAIImageEdits)
 	}
 
@@ -491,7 +491,7 @@ func writeOpenAIMultipartFile(writer *multipart.Writer, fieldName string, fileNa
 }
 
 func buildOpenAIImageEditDebugBody(fields map[string]string, imageCount int, hasMask bool) []byte {
-	payload := make(map[string]interface{}, len(fields)+2)
+	payload := make(map[string]interface{})
 	for key, value := range fields {
 		payload[key] = value
 	}
@@ -556,16 +556,8 @@ func applyOpenAIImageGenerationStreamParams(payload map[string]interface{}, opti
 	}
 }
 
-func openAIImageGenerationModelSupportsStream(model string) bool {
-	return openAIImageGenerationModelSupportsGPTImageParams(model)
-}
-
 func openAIImageGenerationModelSupportsGPTImageParams(model string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-")
-}
-
-func openAIImageEditModelSupportsStream(model string) bool {
-	return openAIImageEditModelSupportsGPTImageParams(model)
 }
 
 func openAIImageEditModelSupportsGPTImageParams(model string) bool {
@@ -855,10 +847,10 @@ func emitOpenAIImagePartial(
 	if !ok {
 		return nil
 	}
-	index := int(firstNonZero(
+	index := firstNonZero(
 		getInt64FromPath(parsed, "partial_image_index"),
 		getInt64FromPath(parsed, "index"),
-	))
+	)
 	return onEvent(GenerateStreamEvent{
 		GeneratedImage:        &image,
 		GeneratedImageIndex:   index,

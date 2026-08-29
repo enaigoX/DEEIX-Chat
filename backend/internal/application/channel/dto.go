@@ -10,6 +10,9 @@ const (
 	ImportUpstreamModelStatusCreated  = "created"
 	ImportUpstreamModelStatusExisting = "existing"
 	ImportUpstreamModelStatusFailed   = "failed"
+
+	ModelVendorDeleteReasonBuiltIn          = "built_in"
+	ModelVendorDeleteReasonReferencedModels = "referenced_models"
 )
 
 // BatchDeleteResultView 单个批量删除结果。
@@ -81,6 +84,7 @@ type ImportUpstreamModelsData struct {
 
 // ImportUpstreamModelResultView 单个导入结果（内部传输，不携带序列化标记）。
 type ImportUpstreamModelResultView struct {
+	PlatformModelID   uint
 	UpstreamModelName string
 	PlatformModelName string
 	BindingCode       string
@@ -131,23 +135,83 @@ type UpstreamAPIKeyView struct {
 
 // ModelView 模型展示数据（内部传输，不携带序列化标记）。
 type ModelView struct {
+	ID                 uint
+	PlatformModelName  string
+	Vendor             string
+	VendorName         string
+	VendorIcon         string
+	DisplayGroupID     *uint
+	DisplayGroupName   string
+	DisplayGroupIcon   string
+	KindsJSON          string
+	Icon               string
+	CapabilitiesJSON   string
+	ContextWindow      int
+	SystemPrompt       string
+	AccessScope        string
+	Status             string
+	Description        string
+	CbPolicyMode       string
+	CbFailureThreshold int
+	CbDurationMin      int
+	CbWindowMin        int
+	SortOrder          int
+	SourceCount        int64
+	ActiveSourceCount  int64
+	ProtocolsJSON      string
+	UpstreamNamesJSON  string
+	Pricing            *appbilling.PublicModelPricing
+	CreatedAt          string
+	UpdatedAt          string
+}
+
+// ModelVendorView 表示技术厂商目录展示数据。
+type ModelVendorView struct {
+	ID        uint
+	Key       string
+	Name      string
+	Icon      string
+	BuiltIn   bool
+	SortOrder int
+	CreatedAt string
+	UpdatedAt string
+}
+
+// ModelVendorReferenceView 描述阻止删除厂商的平台模型引用。
+type ModelVendorReferenceView struct {
 	ID                uint
 	PlatformModelName string
-	Vendor            string
-	KindsJSON         string
-	Icon              string
-	CapabilitiesJSON  string
-	SystemPrompt      string
-	AccessScope       string
-	Status            string
-	Description       string
-	SortOrder         int
-	SourceCount       int64
-	ActiveSourceCount int64
-	ProtocolsJSON     string
-	Pricing           *appbilling.PublicModelPricing
-	CreatedAt         string
-	UpdatedAt         string
+}
+
+// ModelVendorDeleteBlockedError 携带厂商删除被拒绝的稳定原因和引用预览。
+type ModelVendorDeleteBlockedError struct {
+	Reason         string
+	ReferenceCount int64
+	Models         []ModelVendorReferenceView
+}
+
+func (e *ModelVendorDeleteBlockedError) Error() string {
+	if e != nil && e.Reason == ModelVendorDeleteReasonBuiltIn {
+		return ErrBuiltInModelVendorDelete.Error()
+	}
+	return ErrModelVendorInUse.Error()
+}
+
+func (e *ModelVendorDeleteBlockedError) Unwrap() error {
+	if e != nil && e.Reason == ModelVendorDeleteReasonBuiltIn {
+		return ErrBuiltInModelVendorDelete
+	}
+	return ErrModelVendorInUse
+}
+
+// ModelDisplayGroupView 表示自定义模型展示分组数据。
+type ModelDisplayGroupView struct {
+	ID        uint
+	Name      string
+	Icon      string
+	SortOrder int
+	CreatedAt string
+	UpdatedAt string
 }
 
 // UpstreamModelView 上游模型路由绑定展示数据（内部传输，不携带序列化标记）。
@@ -187,6 +251,7 @@ type ModelUpstreamSourceView struct {
 	ID                     uint
 	UpstreamID             uint
 	UpstreamName           string
+	UpstreamStatus         string
 	BaseURL                string
 	BindingCode            string
 	UpstreamModelName      string
@@ -200,9 +265,13 @@ type ModelUpstreamSourceView struct {
 	Priority               int
 	Weight                 int
 	Source                 string
+	CbFailureThreshold     int
+	CbDurationMin          int
+	CbWindowMin            int
 	HeadersJSON            string
 	CircuitOpen            bool
 	CircuitUntil           string
+	CircuitScope           string
 	CreatedAt              string
 	UpdatedAt              string
 }

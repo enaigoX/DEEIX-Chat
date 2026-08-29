@@ -1,4 +1,5 @@
 import type { ChatFilePolicyDTO } from "@/shared/api/file.types";
+import { formatBytes } from "@/shared/lib/file-display";
 
 export type UploadCategory = "image" | "pdf" | "word" | "excel" | "text" | "unknown";
 
@@ -12,6 +13,17 @@ const TEXT_FILE_EXTENSIONS = [
   "go",
   "rs",
   "java",
+  "c",
+  "cpp",
+  "h",
+  "hpp",
+  "cs",
+  "php",
+  "rb",
+  "swift",
+  "kt",
+  "bash",
+  "zsh",
   "sql",
   "yaml",
   "yml",
@@ -24,17 +36,43 @@ const TEXT_FILE_EXTENSIONS = [
   "conf",
 ] as const;
 
+const ACTIVE_FILE_EXTENSIONS = new Set(["html", "htm", "css", "js", "jsx", "mjs", "ts", "tsx", "xml", "xhtml", "svg"]);
+
+const ACTIVE_UPLOAD_MIMES = new Set([
+  "text/html",
+  "text/css",
+  "text/javascript",
+  "text/xml",
+  "application/javascript",
+  "application/ecmascript",
+  "application/x-javascript",
+  "application/typescript",
+  "application/xml",
+  "application/xhtml+xml",
+  "image/svg+xml",
+]);
+
 function resolveFileExtension(fileName: string): string {
   const normalizedName = fileName.trim().toLowerCase();
   return normalizedName.includes(".") ? normalizedName.split(".").pop() || "" : "";
 }
 
-export function normalizeUploadMime(file: File): string {
-  const mime = file.type.trim().toLowerCase();
+function normalizeMimeValue(raw: string): string {
+  const value = raw.trim().toLowerCase();
+  const separatorIndex = value.indexOf(";");
+  return separatorIndex > 0 ? value.slice(0, separatorIndex).trim() : value;
+}
+
+function normalizeUploadMimeForPolicy(file: File): string {
+  const browserMime = normalizeMimeValue(file.type);
   const ext = resolveFileExtension(file.name);
 
-  if (mime.startsWith("image/")) {
-    return mime;
+  if (ACTIVE_FILE_EXTENSIONS.has(ext) || ACTIVE_UPLOAD_MIMES.has(browserMime)) {
+    return "text/plain";
+  }
+
+  if (browserMime.startsWith("image/")) {
+    return browserMime;
   }
 
   switch (ext) {
@@ -55,19 +93,22 @@ export function normalizeUploadMime(file: File): string {
       return "text/markdown";
     case "json":
       return "application/json";
-    case "xml":
-      return "application/xml";
-  }
-
-  if (mime) {
-    return mime;
+    case "yaml":
+    case "yml":
+      return "text/yaml";
+    case "toml":
+      return "application/toml";
   }
 
   if (TEXT_FILE_EXTENSIONS.includes(ext as (typeof TEXT_FILE_EXTENSIONS)[number])) {
     return "text/plain";
   }
 
-  return "";
+  return browserMime;
+}
+
+export function normalizeUploadMime(file: File): string {
+  return normalizeUploadMimeForPolicy(file);
 }
 
 export function isAllowedUploadMime(file: File, policy: ChatFilePolicyDTO | null): boolean {
@@ -75,13 +116,18 @@ export function isAllowedUploadMime(file: File, policy: ChatFilePolicyDTO | null
     return true;
   }
 
-  const mime = normalizeUploadMime(file);
-  return Boolean(mime && policy.allowedMIMETypes.includes(mime));
+  const allowed = new Set(policy.allowedMIMETypes.map((item) => item.trim().toLowerCase()).filter(Boolean));
+  const mime = normalizeUploadMimeForPolicy(file);
+  return Boolean(mime && allowed.has(mime));
 }
 
 export function inferUploadCategory(file: File): UploadCategory {
-  const mime = file.type.trim().toLowerCase();
+  const mime = normalizeMimeValue(file.type);
   const ext = resolveFileExtension(file.name);
+
+  if (ACTIVE_FILE_EXTENSIONS.has(ext) || ACTIVE_UPLOAD_MIMES.has(mime)) {
+    return "text";
+  }
 
   if (mime.startsWith("image/")) {
     return "image";
@@ -123,14 +169,14 @@ export function resolveEffectiveUploadLimit(policy: ChatFilePolicyDTO | null, ca
 
 type UploadPolicyRejectionLabels = {
   mimeNotAllowed: string;
-  fullContextLimitExceeded: (limitKB: number) => string;
-  sizeLimitExceeded: (limitKB: number) => string;
+  fullContextLimitExceeded: (limit: string) => string;
+  sizeLimitExceeded: (limit: string) => string;
 };
 
 const DEFAULT_UPLOAD_POLICY_REJECTION_LABELS: UploadPolicyRejectionLabels = {
   mimeNotAllowed: "This file type is not included in the admin MIME allowlist.",
-  fullContextLimitExceeded: (limitKB) => `Vector retrieval is disabled. Only small files that fit full-context injection can be uploaded, and this file exceeds the ${limitKB} KB limit.`,
-  sizeLimitExceeded: (limitKB) => `This file exceeds the ${limitKB} KB limit.`,
+  fullContextLimitExceeded: (limit) => `Vector retrieval is disabled. Only small files that fit full-context injection can be uploaded, and this file exceeds the ${limit} limit.`,
+  sizeLimitExceeded: (limit) => `This file exceeds the ${limit} limit.`,
 };
 
 export function resolveUploadPolicyRejection(
@@ -150,11 +196,11 @@ export function resolveUploadPolicyRejection(
 
   const limit = resolveEffectiveUploadLimit(policy, category);
   if (limit > 0 && file.size > limit) {
-    const limitKB = Math.round(limit / 1024);
+    const formattedLimit = formatBytes(limit);
     if (policy.capabilityMode === "full_context_only" && category !== "image") {
-      return labels.fullContextLimitExceeded(limitKB);
+      return labels.fullContextLimitExceeded(formattedLimit);
     }
-    return labels.sizeLimitExceeded(limitKB);
+    return labels.sizeLimitExceeded(formattedLimit);
   }
 
   return null;

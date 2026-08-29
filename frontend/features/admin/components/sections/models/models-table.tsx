@@ -1,7 +1,5 @@
 "use client";
 
-import * as React from "react";
-import { useLocale, useTranslations } from "next-intl";
 import {
   Activity,
   CheckCircle2,
@@ -11,8 +9,12 @@ import {
   MoreHorizontal,
   Pencil,
   RotateCcw,
+  ShieldAlert,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import * as React from "react";
 import { toast } from "sonner";
 
 import {
@@ -35,6 +37,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -43,35 +52,26 @@ import {
   TableEmptyRow,
   TableHead,
   TableHeader,
+  TableLoadingRow,
   TableRow,
-  TableSkeletonRows,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
-import { useProgressiveRows } from "@/hooks/use-progressive-rows";
+import { useVirtualTableRows, VirtualTablePaddingRow } from "@/components/ui/virtual-table";
 import {
   deleteAdminLLMUpstreamModel,
   listAdminLLMModelUpstreamSources,
   openAdminLLMUpstreamModelCircuit,
+  resetAdminLLMUpstreamCircuit,
   resetAdminLLMUpstreamModelCircuit,
   updateAdminLLMModelUpstreamSource,
 } from "@/features/admin/api";
-import { LobeHubIcon } from "@/shared/components/lobehub-icon";
-import { resolveLobeHubIconURL, resolveModelIdentity } from "@/shared/lib/model-identity";
 import type {
   AdminLLMModelAccessScope,
+  AdminLLMModelCbPolicyMode,
   AdminLLMModelDTO,
   AdminLLMModelUpstreamSourceDTO,
   AdminLLMStatus,
@@ -79,11 +79,21 @@ import type {
 import {
   ADAPTER_LABELS,
   formatDateTime,
-  resolveErrorMessage,
   resolveValue,
 } from "@/features/admin/types/llm";
+import { resolveAdminErrorMessage } from "@/features/admin/utils/admin-error";
 import { sortProtocolsForDisplay } from "@/features/admin/utils/llm-display";
+import { isAdminLLMSourceAvailable } from "@/features/admin/utils/llm-source-availability";
+import { cn } from "@/lib/utils";
+import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
+import { ModelIcon } from "@/shared/components/model-icon";
+import { useDialogSnapshot } from "@/shared/hooks/use-dialog-snapshot";
+import { resolveModelIconURL, resolveModelIdentity } from "@/shared/lib/model-identity";
 import { parseKindsJSON } from "@/shared/model/llm-schema";
+import {
+  ModelSourceCircuitDialog,
+  type ModelSourceCircuitPayload,
+} from "./models-source-circuit-dialog";
 
 const EXPANDED_ROW_ANIMATION_MS = 220;
 
@@ -166,7 +176,7 @@ function KindsBadges({ kindsJson }: { kindsJson: string | null | undefined }) {
     <div className="flex min-w-0 flex-nowrap items-center justify-start gap-1 overflow-hidden">
       {kinds.map((kind) => (
         <Badge key={kind} variant="secondary">
-          {["chat", "audio", "image_gen", "image_edit", "video_gen"].includes(kind)
+          {["chat", "audio", "image_gen", "image_edit", "video_gen", "video_extension"].includes(kind)
             ? t(`kinds.${kind}`)
             : kind}
         </Badge>
@@ -175,35 +185,96 @@ function KindsBadges({ kindsJson }: { kindsJson: string | null | undefined }) {
   );
 }
 
+type ModelAvailability = "available" | "notEnabled" | "noSource";
+
+function resolveModelAvailability(item: AdminLLMModelDTO): ModelAvailability {
+  if (item.sourceCount <= 0) {
+    return "noSource";
+  }
+  if (item.status !== "active") {
+    return "notEnabled";
+  }
+  return item.activeSourceCount > 0 ? "available" : "notEnabled";
+}
+
+function ModelAvailabilityBadge({ availability }: { availability: ModelAvailability }) {
+  const t = useTranslations("adminModels");
+  if (availability === "available") {
+    return null;
+  }
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "h-5 rounded-md px-1.5 py-0 text-[10px]",
+        "shrink-0",
+        availability === "noSource" && "border-border/70 text-muted-foreground",
+        availability === "notEnabled" && "border-border/50 text-muted-foreground/80",
+      )}
+    >
+      {availability === "noSource" ? t("availability.noSource") : t("availability.notEnabled")}
+    </Badge>
+  );
+}
+
 function SourceStatusText({
+  modelStatus,
   status,
+  upstreamStatus,
+  upstreamModelStatus,
   circuitOpen,
   circuitUntil,
+  circuitScope,
 }: {
+  modelStatus: AdminLLMStatus;
   status: AdminLLMStatus;
+  upstreamStatus: AdminLLMStatus;
+  upstreamModelStatus: AdminLLMStatus;
   circuitOpen: boolean;
   circuitUntil: string;
+  circuitScope: "upstream" | "source" | "";
 }) {
   const t = useTranslations("adminModels");
   const locale = useLocale();
+  const inactiveReason =
+    modelStatus === "inactive"
+      ? t("sources.platformModelInactive")
+      : upstreamStatus === "inactive"
+      ? t("sources.upstreamInactive")
+      : upstreamModelStatus === "inactive"
+        ? t("sources.upstreamModelInactive")
+        : t("status.inactive");
   if (circuitOpen) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="cursor-default text-xs text-destructive">{t("status.circuitOpen")}</span>
+          <ShieldAlert
+            className="size-4 text-destructive"
+            aria-label={t("status.circuitOpen")}
+          />
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          {t("sources.circuitUntil", { time: formatCircuitUntil(circuitUntil, locale) })}
+          <div className="space-y-1">
+            <div>{circuitScope === "upstream" ? t("sources.circuitScopeUpstream") : t("sources.circuitScopeSource")}</div>
+            <div>{t("sources.circuitUntil", { time: formatCircuitUntil(circuitUntil, locale) })}</div>
+          </div>
         </TooltipContent>
       </Tooltip>
     );
   }
-  if (status === "inactive") {
+  if (modelStatus === "inactive" || status === "inactive" || upstreamStatus === "inactive" || upstreamModelStatus === "inactive") {
     return (
-      <CircleX
-        className="size-4 text-muted-foreground"
-        aria-label={t("status.inactive")}
-      />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <CircleX
+            className="size-4 text-muted-foreground"
+            aria-label={inactiveReason}
+          />
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {inactiveReason}
+        </TooltipContent>
+      </Tooltip>
     );
   }
   return (
@@ -224,9 +295,16 @@ type InlineSourceDeleteTarget = {
   source: AdminLLMModelUpstreamSourceDTO;
 };
 
+type InlineSourceCircuitTarget = {
+  modelId: number;
+  policyMode: AdminLLMModelCbPolicyMode;
+  source: AdminLLMModelUpstreamSourceDTO;
+};
+
 type ModelsTableProps = {
   items: AdminLLMModelDTO[];
   loading: boolean;
+  circuitBreakerEnabled: boolean;
   selectedModelIDs: Set<number>;
   onSelectedModelIDsChange: React.Dispatch<React.SetStateAction<Set<number>>>;
   onEdit: (item: AdminLLMModelDTO) => void;
@@ -236,12 +314,14 @@ type ModelsTableProps = {
   onDelete: (item: AdminLLMModelDTO) => void;
   onTestModel?: (item: AdminLLMModelDTO) => void;
   onTestSource?: (source: AdminLLMModelUpstreamSourceDTO) => void;
-  onSourceStatusChange?: (modelID: number, previous: AdminLLMStatus, next: AdminLLMStatus) => void;
+  onRefreshModels?: () => void;
+  onSourceAvailabilityChange?: (modelID: number, previousAvailable: boolean, nextAvailable: boolean) => void;
   onSourceDeleteChange?: (modelID: number, source: AdminLLMModelUpstreamSourceDTO, deleted: boolean) => void;
 };
 
 type ModelTableRowProps = {
   item: AdminLLMModelDTO;
+  circuitBreakerEnabled: boolean;
   selected: boolean;
   expanded: boolean;
   opening: boolean;
@@ -258,6 +338,7 @@ type ModelTableRowProps = {
   onTestSource?: (source: AdminLLMModelUpstreamSourceDTO) => void;
   onInlineStatusToggle: (source: AdminLLMModelUpstreamSourceDTO, modelId: number) => void;
   onInlineCircuit: (source: AdminLLMModelUpstreamSourceDTO, modelId: number, action: "open" | "reset") => void;
+  onInlineCircuitSettings: (target: InlineSourceCircuitTarget) => void;
   onInlineSourceDeleteRequest: (target: InlineSourceDeleteTarget) => void;
 };
 
@@ -271,6 +352,7 @@ function resolveModelProtocols(item: AdminLLMModelDTO): string[] {
 
 const ModelTableRow = React.memo(function ModelTableRow({
   item,
+  circuitBreakerEnabled,
   selected,
   expanded,
   opening,
@@ -287,6 +369,7 @@ const ModelTableRow = React.memo(function ModelTableRow({
   onTestSource,
   onInlineStatusToggle,
   onInlineCircuit,
+  onInlineCircuitSettings,
   onInlineSourceDeleteRequest,
 }: ModelTableRowProps) {
   const t = useTranslations("adminModels");
@@ -296,23 +379,29 @@ const ModelTableRow = React.memo(function ModelTableRow({
     vendor: item.vendor,
     icon: item.icon,
   });
-  const iconURL = resolveLobeHubIconURL(identity.modelIcon);
-  const vendorIconURL = resolveLobeHubIconURL(identity.vendorIcon);
+  const iconURL = resolveModelIconURL(identity.modelIcon);
+  const vendorLabel = item.vendorName.trim() || item.vendor.trim();
+  const vendorIconURL = resolveModelIconURL(item.vendorIcon);
+  const showVendor = item.vendor.trim().toLowerCase() !== "unknown" && vendorLabel;
   const titleText = item.platformModelName.trim();
   const protocols = resolveModelProtocols(item);
+  const availability = resolveModelAvailability(item);
+  const muted = availability !== "available";
 
   return (
     <React.Fragment>
       <TableRow
-        className="cursor-pointer"
+        className={cn("cursor-pointer", muted && "text-muted-foreground")}
+        tone={muted ? "muted" : undefined}
         selected={selected}
         aria-expanded={expanded && !collapsing}
         onClick={() => onToggleRow(item)}
       >
         <TableCell className="w-[44px] py-1.5 whitespace-nowrap">
-          <div className="flex h-7 items-center justify-center" onClick={(event) => event.stopPropagation()}>
+          <div className="flex h-7 items-center justify-center">
             <Checkbox
               checked={selected}
+              onClick={(event) => event.stopPropagation()}
               onCheckedChange={(checked) => onSelectModel(item.id, checked === true)}
               aria-label={t("table.selectModel", { name: item.platformModelName })}
             />
@@ -321,12 +410,11 @@ const ModelTableRow = React.memo(function ModelTableRow({
 
         <TableCell className="py-1.5">
           <div className="flex min-w-0 items-center gap-2">
-            <LobeHubIcon iconUrl={iconURL} label={titleText} />
-            <div className="flex min-w-0 flex-1">
-              <span className="truncate text-xs font-medium leading-5 text-foreground">
-                {titleText}
-              </span>
-            </div>
+            <ModelAvailabilityBadge availability={availability} />
+            <ModelIcon iconUrl={iconURL} label={titleText} />
+            <span className={cn("min-w-0 flex-1 truncate text-xs font-medium leading-5", muted ? "text-muted-foreground" : "text-foreground")}>
+              {titleText}
+            </span>
           </div>
         </TableCell>
 
@@ -339,11 +427,11 @@ const ModelTableRow = React.memo(function ModelTableRow({
         </TableCell>
 
         <TableCell className="w-[120px] py-1.5">
-          {identity.vendorKey !== "unknown" ? (
+          {showVendor ? (
             <div className="flex min-w-0 items-center gap-1.5">
-              {vendorIconURL ? <LobeHubIcon iconUrl={vendorIconURL} label={identity.vendorLabel} size={14} /> : null}
+              {vendorIconURL ? <ModelIcon iconUrl={vendorIconURL} label={vendorLabel} size={14} /> : null}
               <span className="block max-w-[92px] truncate text-xs text-muted-foreground">
-                {identity.vendorLabel}
+                {vendorLabel}
               </span>
             </div>
           ) : (
@@ -352,7 +440,10 @@ const ModelTableRow = React.memo(function ModelTableRow({
         </TableCell>
 
         <TableCell className="whitespace-nowrap py-1.5 text-center">
-          <span className="text-xs text-muted-foreground">
+          <span className={cn(
+            "text-xs",
+            item.activeSourceCount > 0 ? "text-muted-foreground" : "text-muted-foreground/75",
+          )}>
             {item.activeSourceCount}/{item.sourceCount}
           </span>
         </TableCell>
@@ -472,7 +563,7 @@ const ModelTableRow = React.memo(function ModelTableRow({
                 vendor: source.upstreamModelVendor,
                 icon: source.upstreamModelIcon,
               });
-              const sourceVendorIconURL = resolveLobeHubIconURL(sourceIdentity.vendorIcon);
+              const sourceVendorIconURL = resolveModelIconURL(sourceIdentity.vendorIcon);
 
               return (
                 <TableRow key={source.id} tone="muted">
@@ -505,7 +596,7 @@ const ModelTableRow = React.memo(function ModelTableRow({
                   <CollapsibleTableCell opening={opening} closing={collapsing} className="w-[120px] py-1.5">
                     {sourceIdentity.vendorKey !== "unknown" ? (
                       <div className="flex min-w-0 items-center gap-1.5">
-                        {sourceVendorIconURL ? <LobeHubIcon iconUrl={sourceVendorIconURL} label={sourceIdentity.vendorLabel} size={14} /> : null}
+                        {sourceVendorIconURL ? <ModelIcon iconUrl={sourceVendorIconURL} label={sourceIdentity.vendorLabel} size={14} /> : null}
                         <span className="block max-w-[92px] truncate text-[11px] leading-4 text-muted-foreground">
                           {sourceIdentity.vendorLabel}
                         </span>
@@ -530,9 +621,13 @@ const ModelTableRow = React.memo(function ModelTableRow({
                   >
                     <div className="flex h-7 items-center justify-center">
                       <SourceStatusText
+                        modelStatus={item.status}
                         status={source.status}
-                        circuitOpen={source.circuitOpen}
+                        upstreamStatus={source.upstreamStatus}
+                        upstreamModelStatus={source.upstreamModelStatus}
+                        circuitOpen={circuitBreakerEnabled && source.circuitOpen}
                         circuitUntil={source.circuitUntil}
+                        circuitScope={source.circuitScope}
                       />
                     </div>
                   </CollapsibleTableCell>
@@ -576,6 +671,16 @@ const ModelTableRow = React.memo(function ModelTableRow({
                               {t("actions.test")}
                             </DropdownMenuItem>
                           ) : null}
+                          <DropdownMenuItem
+                            onSelect={() => onInlineCircuitSettings({
+                              modelId: item.id,
+                              policyMode: item.cbPolicyMode,
+                              source,
+                            })}
+                          >
+                            <SlidersHorizontal className="size-3.5 stroke-1" />
+                            {t("sources.circuitSettings")}
+                          </DropdownMenuItem>
                           {source.status === "active" ? (
                             <DropdownMenuItem onSelect={() => onInlineStatusToggle(source, item.id)}>
                               <CircleOff className="size-3.5 stroke-1" />
@@ -587,17 +692,19 @@ const ModelTableRow = React.memo(function ModelTableRow({
                               {t("sources.enableSource")}
                             </DropdownMenuItem>
                           )}
-                          {source.circuitOpen ? (
-                            <DropdownMenuItem onSelect={() => onInlineCircuit(source, item.id, "reset")}>
-                              <RotateCcw className="size-3.5 stroke-1" />
-                              {t("sources.resetCircuit")}
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onSelect={() => onInlineCircuit(source, item.id, "open")}>
-                              <CircleOff className="size-3.5 stroke-1" />
-                              {t("sources.openCircuit")}
-                            </DropdownMenuItem>
-                          )}
+                          {circuitBreakerEnabled ? (
+                            source.circuitOpen ? (
+                              <DropdownMenuItem onSelect={() => onInlineCircuit(source, item.id, "reset")}>
+                                <RotateCcw className="size-3.5 stroke-1" />
+                                {t("sources.resetCircuit")}
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onSelect={() => onInlineCircuit(source, item.id, "open")}>
+                                <CircleOff className="size-3.5 stroke-1" />
+                                {t("sources.openCircuit")}
+                              </DropdownMenuItem>
+                            )
+                          ) : null}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             variant="destructive"
@@ -634,6 +741,7 @@ const ModelTableRow = React.memo(function ModelTableRow({
 export function ModelsTable({
   items,
   loading,
+  circuitBreakerEnabled,
   selectedModelIDs,
   onSelectedModelIDsChange,
   onEdit,
@@ -643,7 +751,8 @@ export function ModelsTable({
   onDelete,
   onTestModel,
   onTestSource,
-  onSourceStatusChange,
+  onRefreshModels,
+  onSourceAvailabilityChange,
   onSourceDeleteChange,
 }: ModelsTableProps) {
   const t = useTranslations("adminModels");
@@ -654,14 +763,18 @@ export function ModelsTable({
   const [inlineSources, setInlineSources] = React.useState<Record<number, InlineSourceEntry>>({});
   const [deleteSourceTarget, setDeleteSourceTarget] = React.useState<InlineSourceDeleteTarget | null>(null);
   const [deleteSourcePending, setDeleteSourcePending] = React.useState(false);
+  const stableDeleteSourceTarget = useDialogSnapshot(deleteSourceTarget);
+  const [circuitTarget, setCircuitTarget] = React.useState<InlineSourceCircuitTarget | null>(null);
+  const [circuitPending, setCircuitPending] = React.useState(false);
   const inlineSourcesRef = React.useRef(inlineSources);
   const collapseTimersRef = React.useRef<Record<number, number>>({});
   const openFramesRef = React.useRef<Record<number, number>>({});
-  const { visibleRows: renderedItems } = useProgressiveRows(items, {
-    initialCount: 12,
-    step: 14,
-    disabled: loading,
+  const virtualRows = useVirtualTableRows(items, {
+    enabled: items.length > 100,
+    estimateSize: 40,
   });
+  const initialLoading = loading && items.length === 0;
+  const showRows = items.length > 0;
 
   const allModelsSelected = items.length > 0 && items.every((item) => selectedModelIDs.has(item.id));
   const someModelsSelected = items.some((item) => selectedModelIDs.has(item.id));
@@ -669,6 +782,26 @@ export function ModelsTable({
   React.useEffect(() => {
     inlineSourcesRef.current = inlineSources;
   }, [inlineSources]);
+
+  React.useEffect(() => {
+    if (circuitBreakerEnabled) return;
+    setInlineSources((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([modelID, entry]) => [
+          modelID,
+          {
+            ...entry,
+            items: entry.items.map((source) => ({
+              ...source,
+              circuitOpen: false,
+              circuitUntil: "",
+              circuitScope: "" as const,
+            })),
+          },
+        ]),
+      ),
+    );
+  }, [circuitBreakerEnabled]);
 
   const clearCollapseTimer = React.useCallback((id: number) => {
     const timer = collapseTimersRef.current[id];
@@ -688,8 +821,12 @@ export function ModelsTable({
     const timers = collapseTimersRef.current;
     const frames = openFramesRef.current;
     return () => {
-      Object.values(timers).forEach((timer) => window.clearTimeout(timer));
-      Object.values(frames).forEach((frame) => window.cancelAnimationFrame(frame));
+      Object.values(timers).forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+      Object.values(frames).forEach((frame) => {
+        window.cancelAnimationFrame(frame);
+      });
     };
   }, []);
 
@@ -790,7 +927,7 @@ export function ModelsTable({
       });
 
       if (!inlineSourcesRef.current[item.id]) {
-        const loadingEntry = { items: [], loading: true };
+        const loadingEntry: InlineSourceEntry = { items: [], loading: true };
         inlineSourcesRef.current = {
           ...inlineSourcesRef.current,
           [item.id]: loadingEntry,
@@ -802,7 +939,7 @@ export function ModelsTable({
         try {
           await refreshInlineSources(item.id);
         } catch {
-          const failedEntry = { items: [], loading: false };
+          const failedEntry: InlineSourceEntry = { items: [], loading: false };
           inlineSourcesRef.current = {
             ...inlineSourcesRef.current,
             [item.id]: failedEntry,
@@ -831,8 +968,12 @@ export function ModelsTable({
               ...source,
               circuitOpen: true,
               circuitUntil: String(Math.floor(Date.now() / 1000) + 24 * 60 * 60),
+              circuitScope: "source" as const,
             }
-          : { ...source, circuitOpen: false, circuitUntil: "" };
+          : { ...source, circuitOpen: false, circuitUntil: "", circuitScope: "" as const };
+      const modelStatus = items.find((item) => item.id === modelId)?.status ?? "inactive";
+      const previousAvailable = isAdminLLMSourceAvailable(source, modelStatus);
+      const nextAvailable = isAdminLLMSourceAvailable(nextSource, modelStatus);
       setInlineSources((prev) => ({
         ...prev,
         [modelId]: {
@@ -840,14 +981,19 @@ export function ModelsTable({
           items: (prev[modelId]?.items ?? []).map((item) => (item.id === source.id ? nextSource : item)),
         },
       }));
+      onSourceAvailabilityChange?.(modelId, previousAvailable, nextAvailable);
       try {
         if (action === "open") {
           await openAdminLLMUpstreamModelCircuit(token, source.upstreamID, source.id);
           toast.success(t("toast.circuitOpened"));
+        } else if (source.circuitScope === "upstream") {
+          await resetAdminLLMUpstreamCircuit(token, source.upstreamID);
+          toast.success(t("toast.circuitReset"));
         } else {
           await resetAdminLLMUpstreamModelCircuit(token, source.upstreamID, source.id);
           toast.success(t("toast.circuitReset"));
         }
+        onRefreshModels?.();
       } catch (error) {
         setInlineSources((prev) => ({
           ...prev,
@@ -856,10 +1002,11 @@ export function ModelsTable({
             items: (prev[modelId]?.items ?? []).map((item) => (item.id === source.id ? source : item)),
           },
         }));
-        toast.error(t("toast.operationFailed"), { description: resolveErrorMessage(error) });
+        onSourceAvailabilityChange?.(modelId, nextAvailable, previousAvailable);
+        toast.error(t("toast.operationFailed"), { description: resolveAdminErrorMessage(error) });
       }
     },
-    [t],
+    [items, onRefreshModels, onSourceAvailabilityChange, t],
   );
 
   const handleInlineStatusToggle = React.useCallback(
@@ -867,17 +1014,21 @@ export function ModelsTable({
       const token = await resolveAccessToken();
       if (!token) return;
 
-      const nextStatus = source.status === "active" ? "inactive" : "active";
+      const nextStatus: AdminLLMStatus = source.status === "active" ? "inactive" : "active";
+      const modelStatus = items.find((item) => item.id === modelId)?.status ?? "inactive";
+      const nextSource = { ...source, status: nextStatus };
+      const previousAvailable = isAdminLLMSourceAvailable(source, modelStatus);
+      const nextAvailable = isAdminLLMSourceAvailable(nextSource, modelStatus);
       setInlineSources((prev) => ({
         ...prev,
         [modelId]: {
           ...(prev[modelId] ?? { items: [], loading: false }),
           items: (prev[modelId]?.items ?? []).map((item) =>
-            item.id === source.id ? { ...item, status: nextStatus } : item,
+            item.id === source.id ? nextSource : item,
           ),
         },
       }));
-      onSourceStatusChange?.(modelId, source.status, nextStatus);
+      onSourceAvailabilityChange?.(modelId, previousAvailable, nextAvailable);
       try {
         const data = await updateAdminLLMModelUpstreamSource(token, modelId, source.id, {
           status: nextStatus,
@@ -898,12 +1049,43 @@ export function ModelsTable({
             items: (prev[modelId]?.items ?? []).map((item) => (item.id === source.id ? source : item)),
           },
         }));
-        onSourceStatusChange?.(modelId, nextStatus, source.status);
-        toast.error(t("toast.operationFailed"), { description: resolveErrorMessage(error) });
+        onSourceAvailabilityChange?.(modelId, nextAvailable, previousAvailable);
+        toast.error(t("toast.operationFailed"), { description: resolveAdminErrorMessage(error) });
       }
     },
-    [onSourceStatusChange, t],
+    [items, onSourceAvailabilityChange, t],
   );
+
+  const handleInlineCircuitSettingsSave = React.useCallback(async (payload: ModelSourceCircuitPayload) => {
+    if (!circuitTarget || circuitPending) {
+      return;
+    }
+
+    const token = await resolveAccessToken();
+    if (!token) {
+      toast.error(t("toast.sessionExpired"), { description: t("toast.signInAgain") });
+      return;
+    }
+
+    const { modelId, source } = circuitTarget;
+    setCircuitPending(true);
+    try {
+      const data = await updateAdminLLMModelUpstreamSource(token, modelId, source.id, payload);
+      setInlineSources((prev) => ({
+        ...prev,
+        [modelId]: {
+          ...(prev[modelId] ?? { items: [], loading: false }),
+          items: (prev[modelId]?.items ?? []).map((item) => (item.id === source.id ? data.source : item)),
+        },
+      }));
+      toast.success(t("sources.circuitUpdated"));
+      setCircuitTarget(null);
+    } catch (error) {
+      toast.error(t("toast.routeUpdateFailed"), { description: resolveAdminErrorMessage(error) });
+    } finally {
+      setCircuitPending(false);
+    }
+  }, [circuitPending, circuitTarget, t]);
 
   const handleInlineSourceDelete = React.useCallback(async () => {
     if (!deleteSourceTarget || deleteSourcePending) {
@@ -938,7 +1120,7 @@ export function ModelsTable({
         [modelId]: previousEntry,
       }));
       onSourceDeleteChange?.(modelId, source, false);
-      toast.error(t("toast.sourceDeleteFailed"), { description: resolveErrorMessage(error) });
+      toast.error(t("toast.sourceDeleteFailed"), { description: resolveAdminErrorMessage(error) });
     } finally {
       setDeleteSourcePending(false);
     }
@@ -946,7 +1128,11 @@ export function ModelsTable({
 
   return (
     <>
-    <Table>
+    <Table
+      viewportRef={virtualRows.viewportRef}
+      viewportClassName={virtualRows.viewportClassName}
+      viewportStyle={virtualRows.viewportStyle}
+    >
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead className="w-[44px] py-1.5 text-center">
@@ -971,37 +1157,43 @@ export function ModelsTable({
       </TableHeader>
 
       <TableBody>
-        {loading && items.length === 0 ? (
-          <TableSkeletonRows colSpan={10} rowCount={10} />
+        {initialLoading ? (
+          <TableLoadingRow colSpan={10} />
         ) : null}
 
         {items.length === 0 && !loading ? (
           <TableEmptyRow colSpan={10}>{t("table.empty")}</TableEmptyRow>
         ) : null}
 
-        {renderedItems.map((item) => (
-          <ModelTableRow
-            key={item.id}
-            item={item}
-            selected={selectedModelIDs.has(item.id)}
-            expanded={expandedRows.has(item.id) || collapsingRows.has(item.id)}
-            opening={openingRows.has(item.id)}
-            collapsing={collapsingRows.has(item.id)}
-            inlineData={inlineSources[item.id]}
-            onSelectModel={handleSelectModel}
-            onToggleRow={handleToggleRow}
-            onEdit={onEdit}
-            onViewSources={onViewSources}
-            onToggleStatus={onToggleStatus}
-            onToggleAccessScope={onToggleAccessScope}
-            onDelete={onDelete}
-            onTestModel={onTestModel}
-            onTestSource={onTestSource}
-            onInlineStatusToggle={handleInlineStatusToggle}
-            onInlineCircuit={handleInlineCircuit}
-            onInlineSourceDeleteRequest={setDeleteSourceTarget}
-          />
-        ))}
+        {showRows ? <VirtualTablePaddingRow colSpan={10} height={virtualRows.paddingTop} /> : null}
+        {showRows
+          ? virtualRows.rows.map(({ item }) => (
+              <ModelTableRow
+                key={item.id}
+                item={item}
+                circuitBreakerEnabled={circuitBreakerEnabled}
+                selected={selectedModelIDs.has(item.id)}
+                expanded={expandedRows.has(item.id) || collapsingRows.has(item.id)}
+                opening={openingRows.has(item.id)}
+                collapsing={collapsingRows.has(item.id)}
+                inlineData={inlineSources[item.id]}
+                onSelectModel={handleSelectModel}
+                onToggleRow={handleToggleRow}
+                onEdit={onEdit}
+                onViewSources={onViewSources}
+                onToggleStatus={onToggleStatus}
+                onToggleAccessScope={onToggleAccessScope}
+                onDelete={onDelete}
+                onTestModel={onTestModel}
+                onTestSource={onTestSource}
+                onInlineStatusToggle={handleInlineStatusToggle}
+                onInlineCircuit={handleInlineCircuit}
+                onInlineCircuitSettings={setCircuitTarget}
+                onInlineSourceDeleteRequest={setDeleteSourceTarget}
+              />
+            ))
+          : null}
+        {showRows ? <VirtualTablePaddingRow colSpan={10} height={virtualRows.paddingBottom} /> : null}
       </TableBody>
     </Table>
     <AlertDialog
@@ -1017,7 +1209,7 @@ export function ModelsTable({
           <AlertDialogTitle>{t("sources.deleteTitle")}</AlertDialogTitle>
           <AlertDialogDescription>
             {t("sources.deleteDescription", {
-              name: deleteSourceTarget?.source.upstreamModelName ?? "",
+              name: stableDeleteSourceTarget?.source.upstreamModelName ?? "",
             })}
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -1038,6 +1230,13 @@ export function ModelsTable({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+    <ModelSourceCircuitDialog
+      source={circuitTarget?.source ?? null}
+      policyMode={circuitTarget?.policyMode}
+      pending={circuitPending}
+      onClose={() => setCircuitTarget(null)}
+      onSave={handleInlineCircuitSettingsSave}
+    />
     </>
   );
 }

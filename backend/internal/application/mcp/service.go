@@ -11,31 +11,51 @@ import (
 	systemeventapp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/systemevent"
 	domainmcp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/mcp"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
-	inframcp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/mcp"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/pkg/secretbox"
+	portmcp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/mcp"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/security"
 )
 
 var (
-	ErrInvalidServerName    = errors.New("invalid mcp server name")
-	ErrInvalidServerBaseURL = errors.New("invalid mcp server base url")
-	ErrInvalidServerStatus  = errors.New("invalid mcp server status")
-	ErrInvalidServerHeaders = errors.New("invalid mcp server headers json")
-	ErrInvalidToolStatus    = errors.New("invalid mcp tool status")
-	ErrInvalidToolName      = errors.New("invalid mcp tool display name")
-	ErrInvalidToolDesc      = errors.New("invalid mcp tool description")
-	ErrInvalidToolSelection = errors.New("invalid mcp tool selection")
-	ErrMCPClientUnavailable = errors.New("mcp client unavailable")
+	ErrInvalidServerName           = errors.New("invalid mcp server name")
+	ErrInvalidServerBaseURL        = errors.New("invalid mcp server base url")
+	ErrInvalidServerStatus         = errors.New("invalid mcp server status")
+	ErrInvalidServerHeaders        = errors.New("invalid mcp server headers json")
+	ErrInvalidToolStatus           = errors.New("invalid mcp tool status")
+	ErrInvalidToolName             = errors.New("invalid mcp tool display name")
+	ErrInvalidToolDesc             = errors.New("invalid mcp tool description")
+	ErrInvalidToolAttachmentConfig = errors.New("invalid mcp tool attachment configuration")
+	ErrInvalidToolSelection        = errors.New("invalid mcp tool selection")
+	ErrInvalidToolPrice            = errors.New("invalid mcp tool price")
+	ErrMCPClientUnavailable        = errors.New("mcp client unavailable")
+	// ErrServerLimitExceeded MCP 服务数量超限。
+	ErrServerLimitExceeded = repository.ErrMCPServerLimitExceeded
 )
 
 const mcpServerToolListTimeoutMS = 10000
 
 type Service struct {
-	cfg               *config.Runtime
-	repo              repository.MCPRepository
-	client            *inframcp.Client
-	systemEventWriter systemEventWriter
+	cfg                 *config.Runtime
+	repo                repository.MCPRepository
+	client              toolLister
+	systemEventWriter   systemEventWriter
+	billingModeProvider billingModeProvider
+}
+
+// toolLister 列出远端 MCP 服务暴露的工具。
+type toolLister interface {
+	ListTools(ctx context.Context, cfg portmcp.CallConfig) ([]portmcp.Tool, error)
+}
+
+// billingModeProvider 查询当前计费模式，用于决定用户侧是否下发工具价格。
+type billingModeProvider interface {
+	GetBillingMode(ctx context.Context) (string, error)
+}
+
+type ReorderServerInput struct {
+	ServerID uint
+	ToolIDs  []uint
 }
 
 type systemEventWriter interface {
@@ -51,25 +71,37 @@ type ServerInput struct {
 }
 
 type ToolInput struct {
-	DisplayName *string
-	Description *string
-	Status      *string
+	DisplayName              *string
+	Description              *string
+	AttachmentInputMode      *string
+	AttachmentArgument       *string
+	AttachmentEncoding       *string
+	AttachmentPromptArgument *string
+	// PriceNanousd 单次调用价格（nano USD），0 表示不单独计费。
+	PriceNanousd *int64
+	Status       *string
 }
 
 // SyncServerToolsInput 描述一次 MCP 工具同步请求。
 type SyncServerToolsInput struct {
-	ServerID  uint
-	RequestID string
+	ServerID                    uint
+	RequestID                   string
+	OverwriteCustomizedMetadata bool
 }
 
 // NewServiceWithRuntime 创建 MCP 应用服务。
-func NewServiceWithRuntime(cfg *config.Runtime, repo repository.MCPRepository, client *inframcp.Client) *Service {
+func NewServiceWithRuntime(cfg *config.Runtime, repo repository.MCPRepository, client toolLister) *Service {
 	return &Service{cfg: cfg, repo: repo, client: client}
 }
 
 // SetSystemEventWriter 注入系统事件写入器。
 func (s *Service) SetSystemEventWriter(writer systemEventWriter) {
 	s.systemEventWriter = writer
+}
+
+// SetBillingModeProvider 注入计费模式查询器。
+func (s *Service) SetBillingModeProvider(provider billingModeProvider) {
+	s.billingModeProvider = provider
 }
 
 func (s *Service) ListServers(ctx context.Context) ([]domainmcp.Server, error) {
@@ -151,7 +183,7 @@ func (s *Service) SyncServerTools(ctx context.Context, input SyncServerToolsInpu
 	if err != nil {
 		return fail(err)
 	}
-	tools, err := s.client.ListTools(ctx, inframcp.CallConfig{
+	tools, err := s.client.ListTools(ctx, portmcp.CallConfig{
 		BaseURL:   server.BaseURL,
 		AuthToken: token,
 		TimeoutMS: mcpServerToolListTimeoutMS,
@@ -161,6 +193,14 @@ func (s *Service) SyncServerTools(ctx context.Context, input SyncServerToolsInpu
 		message := err.Error()
 		_, _ = s.repo.UpdateServer(ctx, serverID, repository.UpdateMCPServerInput{LastError: &message})
 		return fail(err)
+	}
+	existingTools, err := s.repo.ListTools(ctx, serverID, false)
+	if err != nil {
+		return fail(err)
+	}
+	existingToolsByName := make(map[string]domainmcp.Tool, len(existingTools))
+	for _, tool := range existingTools {
+		existingToolsByName[tool.Name] = tool
 	}
 	items := make([]domainmcp.Tool, 0, len(tools))
 	for _, tool := range tools {
@@ -176,16 +216,21 @@ func (s *Service) SyncServerTools(ctx context.Context, input SyncServerToolsInpu
 		if displayName == "" {
 			displayName = name
 		}
-		items = append(items, domainmcp.Tool{
-			ServerID:        serverID,
-			Name:            name,
-			DisplayName:     displayName,
-			Description:     strings.TrimSpace(tool.Description),
-			InputSchemaJSON: schema,
-			Status:          "active",
-		})
+		item := domainmcp.Tool{
+			ServerID:            serverID,
+			Name:                name,
+			DisplayName:         displayName,
+			Description:         strings.TrimSpace(tool.Description),
+			InputSchemaJSON:     schema,
+			AttachmentInputMode: domainmcp.AttachmentInputModeNone,
+			Status:              "active",
+		}
+		if existing, ok := existingToolsByName[name]; ok {
+			preserveCompatibleToolAttachmentConfig(&item, existing)
+		}
+		items = append(items, item)
 	}
-	if err = s.repo.ReplaceServerTools(ctx, serverID, items); err != nil {
+	if err = s.repo.ReplaceServerTools(ctx, serverID, items, input.OverwriteCustomizedMetadata); err != nil {
 		return fail(err)
 	}
 	result, err := s.repo.ListTools(ctx, serverID, false)
@@ -193,10 +238,30 @@ func (s *Service) SyncServerTools(ctx context.Context, input SyncServerToolsInpu
 		return fail(err)
 	}
 	s.writeToolSyncEvent(ctx, input.RequestID, "info", "mcp.tools_synced", serverID, "MCP 工具已同步", map[string]interface{}{
-		"server_id":  serverID,
-		"tool_count": len(result),
+		"server_id":                     serverID,
+		"tool_count":                    len(result),
+		"overwrite_customized_metadata": input.OverwriteCustomizedMetadata,
 	})
 	return result, nil
+}
+
+func preserveCompatibleToolAttachmentConfig(discovered *domainmcp.Tool, existing domainmcp.Tool) {
+	if discovered == nil {
+		return
+	}
+	config := toolAttachmentConfig{
+		Mode:           strings.TrimSpace(existing.AttachmentInputMode),
+		Argument:       strings.TrimSpace(existing.AttachmentArgument),
+		Encoding:       strings.TrimSpace(existing.AttachmentEncoding),
+		PromptArgument: strings.TrimSpace(existing.AttachmentPromptArgument),
+	}
+	if validateToolAttachmentConfig(config, discovered.InputSchemaJSON) != nil {
+		return
+	}
+	discovered.AttachmentInputMode = config.Mode
+	discovered.AttachmentArgument = config.Argument
+	discovered.AttachmentEncoding = config.Encoding
+	discovered.AttachmentPromptArgument = config.PromptArgument
 }
 
 func (s *Service) writeToolSyncEvent(ctx context.Context, requestID string, level string, event string, serverID uint, message string, detail interface{}) {
@@ -223,6 +288,10 @@ func (s *Service) ListAvailableTools(ctx context.Context) ([]domainmcp.Tool, err
 	if !s.cfg.Snapshot().MCPEnable {
 		return []domainmcp.Tool{}, nil
 	}
+	hideToolPrice, err := s.shouldHideToolPrice(ctx)
+	if err != nil {
+		return nil, err
+	}
 	servers, err := s.repo.ListServers(ctx)
 	if err != nil {
 		return nil, err
@@ -238,16 +307,50 @@ func (s *Service) ListAvailableTools(ctx context.Context) ([]domainmcp.Tool, err
 		}
 		for _, tool := range tools {
 			tool.ServerName = server.Name
+			if hideToolPrice {
+				tool.PriceNanousd = 0
+			}
 			result = append(result, tool)
 		}
 	}
 	return result, nil
 }
 
+// shouldHideToolPrice 判断用户侧工具列表是否隐藏价格；自用模式只记录用量，与模型列表保持一致不下发定价。
+func (s *Service) shouldHideToolPrice(ctx context.Context) (bool, error) {
+	if s.billingModeProvider == nil {
+		return false, nil
+	}
+	mode, err := s.billingModeProvider.GetBillingMode(ctx)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(mode) == "self", nil
+}
+
 func (s *Service) UpdateTool(ctx context.Context, toolID uint, input ToolInput) (*domainmcp.Tool, error) {
 	update, err := normalizeToolInput(input)
 	if err != nil {
 		return nil, err
+	}
+	if toolAttachmentConfigChanged(input) {
+		tools, listErr := s.repo.ListToolsByIDs(ctx, []uint{toolID})
+		if listErr != nil {
+			return nil, listErr
+		}
+		if len(tools) != 1 || tools[0].ID != toolID {
+			return nil, repository.ErrNotFound
+		}
+		config := mergedToolAttachmentConfig(tools[0], update)
+		if validationErr := validateToolAttachmentConfig(config, tools[0].InputSchemaJSON); validationErr != nil {
+			return nil, validationErr
+		}
+		if config.Mode == domainmcp.AttachmentInputModeNone {
+			empty := ""
+			update.AttachmentArgument = &empty
+			update.AttachmentEncoding = &empty
+			update.AttachmentPromptArgument = &empty
+		}
 	}
 	return s.repo.UpdateTool(ctx, toolID, update)
 }
@@ -261,6 +364,70 @@ func (s *Service) UpdateServerToolsStatus(ctx context.Context, serverID uint, to
 		return nil, ErrInvalidToolSelection
 	}
 	return s.repo.UpdateServerToolsStatus(ctx, serverID, toolIDs, normalized)
+}
+
+func (s *Service) ReorderServersWithTools(ctx context.Context, order []ReorderServerInput) ([]domainmcp.ServerWithTools, error) {
+	if len(order) == 0 {
+		return nil, ErrInvalidToolSelection
+	}
+	currentServers, err := s.repo.ListServers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(order) != len(currentServers) {
+		return nil, ErrInvalidToolSelection
+	}
+
+	allowedServers := make(map[uint]struct{}, len(currentServers))
+	for _, server := range currentServers {
+		allowedServers[server.ID] = struct{}{}
+	}
+	seenServers := make(map[uint]struct{}, len(order))
+	for _, item := range order {
+		if item.ServerID == 0 {
+			return nil, ErrInvalidToolSelection
+		}
+		if _, ok := allowedServers[item.ServerID]; !ok {
+			return nil, ErrInvalidToolSelection
+		}
+		if _, ok := seenServers[item.ServerID]; ok {
+			return nil, ErrInvalidToolSelection
+		}
+		seenServers[item.ServerID] = struct{}{}
+
+		currentTools, err := s.repo.ListTools(ctx, item.ServerID, false)
+		if err != nil {
+			return nil, err
+		}
+		if len(item.ToolIDs) != len(currentTools) {
+			return nil, ErrInvalidToolSelection
+		}
+		allowedTools := make(map[uint]struct{}, len(currentTools))
+		for _, tool := range currentTools {
+			allowedTools[tool.ID] = struct{}{}
+		}
+		seenTools := make(map[uint]struct{}, len(item.ToolIDs))
+		for _, toolID := range item.ToolIDs {
+			if toolID == 0 {
+				return nil, ErrInvalidToolSelection
+			}
+			if _, ok := allowedTools[toolID]; !ok {
+				return nil, ErrInvalidToolSelection
+			}
+			if _, ok := seenTools[toolID]; ok {
+				return nil, ErrInvalidToolSelection
+			}
+			seenTools[toolID] = struct{}{}
+		}
+	}
+	repoOrder := make([]repository.ReorderMCPServerInput, 0, len(order))
+	for _, item := range order {
+		repoOrder = append(repoOrder, repository.ReorderMCPServerInput{
+			ServerID: item.ServerID,
+			ToolIDs:  item.ToolIDs,
+		})
+	}
+	return s.repo.ReorderServersWithTools(ctx, repoOrder)
 }
 
 func (s *Service) normalizeServerInput(input ServerInput, requireToken bool) (ServerInput, error) {
@@ -305,14 +472,10 @@ func (s *Service) normalizeServerInput(input ServerInput, requireToken bool) (Se
 }
 
 func (s *Service) validateServerBaseURL(raw string) error {
-	env := ""
-	ssrfProtectionEnabled := false
-	if s != nil && s.cfg != nil {
-		cfg := s.cfg.Snapshot()
-		env = cfg.Env
-		ssrfProtectionEnabled = cfg.SSRFProtectionEnabled
+	if s == nil {
+		return ErrInvalidServerBaseURL
 	}
-	return security.ValidateOutboundHTTPURL(raw, env, ssrfProtectionEnabled)
+	return security.ValidateTrustedOutboundHTTPURL(raw)
 }
 
 func normalizeToolInput(input ToolInput) (repository.UpdateMCPToolInput, error) {
@@ -331,6 +494,13 @@ func normalizeToolInput(input ToolInput) (repository.UpdateMCPToolInput, error) 
 		}
 		update.Description = &description
 	}
+	if input.PriceNanousd != nil {
+		price := *input.PriceNanousd
+		if price < 0 {
+			return update, ErrInvalidToolPrice
+		}
+		update.PriceNanousd = &price
+	}
 	if input.Status != nil {
 		status, err := normalizeToolStatus(*input.Status)
 		if err != nil {
@@ -338,7 +508,121 @@ func normalizeToolInput(input ToolInput) (repository.UpdateMCPToolInput, error) 
 		}
 		update.Status = &status
 	}
+	if input.AttachmentInputMode != nil {
+		mode := strings.ToLower(strings.TrimSpace(*input.AttachmentInputMode))
+		switch mode {
+		case domainmcp.AttachmentInputModeNone, domainmcp.AttachmentInputModeImage:
+			update.AttachmentInputMode = &mode
+		default:
+			return update, ErrInvalidToolAttachmentConfig
+		}
+	}
+	if input.AttachmentArgument != nil {
+		value := strings.TrimSpace(*input.AttachmentArgument)
+		if len([]rune(value)) > 128 {
+			return update, ErrInvalidToolAttachmentConfig
+		}
+		update.AttachmentArgument = &value
+	}
+	if input.AttachmentEncoding != nil {
+		encoding := strings.ToLower(strings.TrimSpace(*input.AttachmentEncoding))
+		switch encoding {
+		case "", domainmcp.AttachmentEncodingBase64, domainmcp.AttachmentEncodingDataURL:
+			update.AttachmentEncoding = &encoding
+		default:
+			return update, ErrInvalidToolAttachmentConfig
+		}
+	}
+	if input.AttachmentPromptArgument != nil {
+		value := strings.TrimSpace(*input.AttachmentPromptArgument)
+		if len([]rune(value)) > 128 {
+			return update, ErrInvalidToolAttachmentConfig
+		}
+		update.AttachmentPromptArgument = &value
+	}
 	return update, nil
+}
+
+type toolAttachmentConfig struct {
+	Mode           string
+	Argument       string
+	Encoding       string
+	PromptArgument string
+}
+
+func toolAttachmentConfigChanged(input ToolInput) bool {
+	return input.AttachmentInputMode != nil ||
+		input.AttachmentArgument != nil ||
+		input.AttachmentEncoding != nil ||
+		input.AttachmentPromptArgument != nil
+}
+
+func mergedToolAttachmentConfig(tool domainmcp.Tool, update repository.UpdateMCPToolInput) toolAttachmentConfig {
+	config := toolAttachmentConfig{
+		Mode:           strings.TrimSpace(tool.AttachmentInputMode),
+		Argument:       strings.TrimSpace(tool.AttachmentArgument),
+		Encoding:       strings.TrimSpace(tool.AttachmentEncoding),
+		PromptArgument: strings.TrimSpace(tool.AttachmentPromptArgument),
+	}
+	if update.AttachmentInputMode != nil {
+		config.Mode = *update.AttachmentInputMode
+	}
+	if update.AttachmentArgument != nil {
+		config.Argument = *update.AttachmentArgument
+	}
+	if update.AttachmentEncoding != nil {
+		config.Encoding = *update.AttachmentEncoding
+	}
+	if update.AttachmentPromptArgument != nil {
+		config.PromptArgument = *update.AttachmentPromptArgument
+	}
+	if update.AttachmentInputMode != nil && *update.AttachmentInputMode == domainmcp.AttachmentInputModeNone {
+		config.Argument = ""
+		config.Encoding = ""
+		config.PromptArgument = ""
+	}
+	return config
+}
+
+func validateToolAttachmentConfig(config toolAttachmentConfig, schemaJSON string) error {
+	if config.Mode == domainmcp.AttachmentInputModeNone {
+		if config.Argument != "" || config.Encoding != "" || config.PromptArgument != "" {
+			return ErrInvalidToolAttachmentConfig
+		}
+		return nil
+	}
+	if config.Mode != domainmcp.AttachmentInputModeImage || config.Argument == "" {
+		return ErrInvalidToolAttachmentConfig
+	}
+	switch config.Encoding {
+	case domainmcp.AttachmentEncodingBase64, domainmcp.AttachmentEncodingDataURL:
+	default:
+		return ErrInvalidToolAttachmentConfig
+	}
+	if config.PromptArgument == config.Argument {
+		return ErrInvalidToolAttachmentConfig
+	}
+
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(schemaJSON)), &schema); err != nil || len(schema.Properties) == 0 {
+		return ErrInvalidToolAttachmentConfig
+	}
+	if !toolSchemaPropertyAcceptsString(schemaJSON, config.Argument) {
+		return ErrInvalidToolAttachmentConfig
+	}
+	if config.PromptArgument != "" && !toolSchemaPropertyAcceptsString(schemaJSON, config.PromptArgument) {
+		return ErrInvalidToolAttachmentConfig
+	}
+	for _, name := range schema.Required {
+		name = strings.TrimSpace(name)
+		if name != "" && name != config.Argument && name != config.PromptArgument {
+			return ErrInvalidToolAttachmentConfig
+		}
+	}
+	return nil
 }
 
 func normalizeToolStatus(status string) (string, error) {

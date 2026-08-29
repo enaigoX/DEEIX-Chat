@@ -21,6 +21,15 @@ func NewHandler(service *appmcp.Service) *Handler {
 	return &Handler{service: service}
 }
 
+// ListServers godoc
+// @Summary 获取 MCP 服务列表
+// @Description 管理员查看已配置的 MCP 服务及其工具统计
+// @Tags admin-mcp
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} ServerListResponseDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/servers [get]
 func (h *Handler) ListServers(c *gin.Context) {
 	items, err := h.service.ListServers(c.Request.Context())
 	if err != nil {
@@ -34,6 +43,15 @@ func (h *Handler) ListServers(c *gin.Context) {
 	response.Success(c, ServerListResponse{Results: results})
 }
 
+// ListAvailableTools godoc
+// @Summary 获取可用 MCP 工具
+// @Description 获取当前聊天侧可选择的 MCP 工具
+// @Tags mcp
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} ToolListResponseDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /mcp/tools [get]
 func (h *Handler) ListAvailableTools(c *gin.Context) {
 	items, err := h.service.ListAvailableTools(c.Request.Context())
 	if err != nil {
@@ -47,6 +65,18 @@ func (h *Handler) ListAvailableTools(c *gin.Context) {
 	response.Success(c, ToolListResponse{Results: results})
 }
 
+// CreateServer godoc
+// @Summary 创建 MCP 服务
+// @Description 管理员创建一个 MCP 服务配置
+// @Tags admin-mcp
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body CreateServerRequest true "MCP 服务配置"
+// @Success 200 {object} ServerDataResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/servers [post]
 func (h *Handler) CreateServer(c *gin.Context) {
 	var req CreateServerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -67,6 +97,19 @@ func (h *Handler) CreateServer(c *gin.Context) {
 	response.Success(c, ServerDataResponse{Server: toServerResponse(*item)})
 }
 
+// UpdateServer godoc
+// @Summary 更新 MCP 服务
+// @Description 管理员更新一个 MCP 服务配置
+// @Tags admin-mcp
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "MCP 服务 ID"
+// @Param body body CreateServerRequest true "MCP 服务配置"
+// @Success 200 {object} ServerDataResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/servers/{id} [patch]
 func (h *Handler) UpdateServer(c *gin.Context) {
 	serverID, ok := parseIDParam(c, "id", "mcp server")
 	if !ok {
@@ -91,6 +134,17 @@ func (h *Handler) UpdateServer(c *gin.Context) {
 	response.Success(c, ServerDataResponse{Server: toServerResponse(*item)})
 }
 
+// DeleteServer godoc
+// @Summary 删除 MCP 服务
+// @Description 管理员删除一个 MCP 服务及其工具
+// @Tags admin-mcp
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "MCP 服务 ID"
+// @Success 200 {object} DeleteServerResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/servers/{id} [delete]
 func (h *Handler) DeleteServer(c *gin.Context) {
 	serverID, ok := parseIDParam(c, "id", "mcp server")
 	if !ok {
@@ -103,14 +157,36 @@ func (h *Handler) DeleteServer(c *gin.Context) {
 	response.Success(c, DeleteServerResponse{Deleted: true})
 }
 
+// SyncServerTools godoc
+// @Summary 同步 MCP 工具
+// @Description 管理员从 MCP 服务同步工具定义
+// @Tags admin-mcp
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "MCP 服务 ID"
+// @Param overwrite_customized_metadata query bool false "是否用远端元数据覆盖管理员自定义的工具名称和说明"
+// @Success 200 {object} ToolListResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/servers/{id}/sync [post]
 func (h *Handler) SyncServerTools(c *gin.Context) {
 	serverID, ok := parseIDParam(c, "id", "mcp server")
 	if !ok {
 		return
 	}
+	overwriteCustomizedMetadata := false
+	if raw, exists := c.GetQuery("overwrite_customized_metadata"); exists {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid overwrite_customized_metadata")
+			return
+		}
+		overwriteCustomizedMetadata = parsed
+	}
 	items, err := h.service.SyncServerTools(c.Request.Context(), appmcp.SyncServerToolsInput{
-		ServerID:  serverID,
-		RequestID: middleware.MustRequestID(c),
+		ServerID:                    serverID,
+		RequestID:                   middleware.MustRequestID(c),
+		OverwriteCustomizedMetadata: overwriteCustomizedMetadata,
 	})
 	if err != nil {
 		writeServiceError(c, err)
@@ -123,6 +199,17 @@ func (h *Handler) SyncServerTools(c *gin.Context) {
 	response.Success(c, ToolListResponse{Results: results})
 }
 
+// ListServerTools godoc
+// @Summary 获取 MCP 服务工具
+// @Description 管理员查看指定 MCP 服务已同步的工具
+// @Tags admin-mcp
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "MCP 服务 ID"
+// @Success 200 {object} ToolListResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/servers/{id}/tools [get]
 func (h *Handler) ListServerTools(c *gin.Context) {
 	serverID, ok := parseIDParam(c, "id", "mcp server")
 	if !ok {
@@ -140,6 +227,19 @@ func (h *Handler) ListServerTools(c *gin.Context) {
 	response.Success(c, ToolListResponse{Results: results})
 }
 
+// UpdateTool godoc
+// @Summary 更新 MCP 工具
+// @Description 管理员更新 MCP 工具的展示信息、附件处理配置或状态
+// @Tags admin-mcp
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "MCP 工具 ID"
+// @Param body body UpdateToolRequest true "MCP 工具配置"
+// @Success 200 {object} ToolResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/tools/{id} [patch]
 func (h *Handler) UpdateTool(c *gin.Context) {
 	toolID, ok := parseIDParam(c, "id", "mcp tool")
 	if !ok {
@@ -151,9 +251,14 @@ func (h *Handler) UpdateTool(c *gin.Context) {
 		return
 	}
 	item, err := h.service.UpdateTool(c.Request.Context(), toolID, appmcp.ToolInput{
-		DisplayName: req.DisplayName,
-		Description: req.Description,
-		Status:      req.Status,
+		DisplayName:              req.DisplayName,
+		Description:              req.Description,
+		AttachmentInputMode:      req.AttachmentInputMode,
+		AttachmentArgument:       req.AttachmentArgument,
+		AttachmentEncoding:       req.AttachmentEncoding,
+		AttachmentPromptArgument: req.AttachmentPromptArgument,
+		PriceNanousd:             req.PriceNanousd,
+		Status:                   req.Status,
 	})
 	if err != nil {
 		writeServiceError(c, err)
@@ -162,6 +267,19 @@ func (h *Handler) UpdateTool(c *gin.Context) {
 	response.Success(c, toToolResponse(*item))
 }
 
+// UpdateServerToolsStatus godoc
+// @Summary 批量更新 MCP 工具状态
+// @Description 管理员批量启用或停用指定 MCP 服务的工具
+// @Tags admin-mcp
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "MCP 服务 ID"
+// @Param body body UpdateServerToolsStatusRequest true "MCP 工具状态"
+// @Success 200 {object} ToolListResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/servers/{id}/tools/status [patch]
 func (h *Handler) UpdateServerToolsStatus(c *gin.Context) {
 	serverID, ok := parseIDParam(c, "id", "mcp server")
 	if !ok {
@@ -184,9 +302,53 @@ func (h *Handler) UpdateServerToolsStatus(c *gin.Context) {
 	response.Success(c, ToolListResponse{Results: results})
 }
 
+// ReorderServers godoc
+// @Summary 调整 MCP 服务及工具顺序
+// @Description 管理员保存 MCP 服务及其工具的展示顺序
+// @Tags admin-mcp
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body ReorderServersRequest true "MCP 排序配置"
+// @Success 200 {object} ServerToolOrderListResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /admin/mcp/servers/order [patch]
+func (h *Handler) ReorderServers(c *gin.Context) {
+	var req ReorderServersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.InvalidRequestBody(c, err)
+		return
+	}
+	input := make([]appmcp.ReorderServerInput, 0, len(req.Servers))
+	for _, item := range req.Servers {
+		input = append(input, appmcp.ReorderServerInput{
+			ServerID: item.ServerID,
+			ToolIDs:  item.ToolIDs,
+		})
+	}
+	items, err := h.service.ReorderServersWithTools(c.Request.Context(), input)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	results := make([]ServerToolOrderResponse, 0, len(items))
+	for _, item := range items {
+		tools := make([]ToolResponse, 0, len(item.Tools))
+		for _, tool := range item.Tools {
+			tools = append(tools, toToolResponse(tool))
+		}
+		results = append(results, ServerToolOrderResponse{
+			Server: toServerResponse(item.Server),
+			Tools:  tools,
+		})
+	}
+	response.Success(c, ServerToolOrderListResponse{Results: results})
+}
+
 func parseIDParam(c *gin.Context, key string, resource string) (uint, bool) {
 	raw := c.Param(key)
-	parsed, err := strconv.ParseUint(raw, 10, 64)
+	parsed, err := strconv.ParseUint(raw, 10, strconv.IntSize)
 	if err != nil || parsed == 0 {
 		response.Error(c, http.StatusBadRequest, "invalid "+resource+" id")
 		return 0, false
@@ -203,7 +365,10 @@ func writeServiceError(c *gin.Context, err error) {
 		errors.Is(err, appmcp.ErrInvalidToolStatus),
 		errors.Is(err, appmcp.ErrInvalidToolName),
 		errors.Is(err, appmcp.ErrInvalidToolDesc),
-		errors.Is(err, appmcp.ErrInvalidToolSelection):
+		errors.Is(err, appmcp.ErrInvalidToolAttachmentConfig),
+		errors.Is(err, appmcp.ErrInvalidToolSelection),
+		errors.Is(err, appmcp.ErrInvalidToolPrice),
+		errors.Is(err, appmcp.ErrServerLimitExceeded):
 		response.ErrorFrom(c, http.StatusBadRequest, err)
 	default:
 		response.ErrorFrom(c, http.StatusInternalServerError, err)
@@ -212,31 +377,39 @@ func writeServiceError(c *gin.Context, err error) {
 
 func toServerResponse(item domainmcp.Server) ServerResponse {
 	return ServerResponse{
-		ID:              item.ID,
-		Name:            item.Name,
-		BaseURL:         item.BaseURL,
-		HeadersJSON:     security.RedactHeadersJSON(item.HeadersJSON),
-		Status:          item.Status,
-		ToolCount:       item.ToolCount,
-		ActiveToolCount: item.ActiveToolCount,
-		LastSyncedAt:    item.LastSyncedAt,
-		LastError:       item.LastError,
-		CreatedAt:       item.CreatedAt,
-		UpdatedAt:       item.UpdatedAt,
+		ID:                                   item.ID,
+		Name:                                 item.Name,
+		BaseURL:                              item.BaseURL,
+		HeadersJSON:                          security.RedactHeadersJSON(item.HeadersJSON),
+		Status:                               item.Status,
+		SortOrder:                            item.SortOrder,
+		ToolCount:                            item.ToolCount,
+		ActiveToolCount:                      item.ActiveToolCount,
+		RequiresToolMetadataSyncConfirmation: item.RequiresToolMetadataSyncConfirmation,
+		LastSyncedAt:                         item.LastSyncedAt,
+		LastError:                            item.LastError,
+		CreatedAt:                            item.CreatedAt,
+		UpdatedAt:                            item.UpdatedAt,
 	}
 }
 
 func toToolResponse(item domainmcp.Tool) ToolResponse {
 	return ToolResponse{
-		ID:              item.ID,
-		ServerID:        item.ServerID,
-		ServerName:      item.ServerName,
-		Name:            item.Name,
-		DisplayName:     item.DisplayName,
-		Description:     item.Description,
-		InputSchemaJSON: item.InputSchemaJSON,
-		Status:          item.Status,
-		CreatedAt:       item.CreatedAt,
-		UpdatedAt:       item.UpdatedAt,
+		ID:                       item.ID,
+		ServerID:                 item.ServerID,
+		ServerName:               item.ServerName,
+		Name:                     item.Name,
+		DisplayName:              item.DisplayName,
+		Description:              item.Description,
+		InputSchemaJSON:          item.InputSchemaJSON,
+		AttachmentInputMode:      item.AttachmentInputMode,
+		AttachmentArgument:       item.AttachmentArgument,
+		AttachmentEncoding:       item.AttachmentEncoding,
+		AttachmentPromptArgument: item.AttachmentPromptArgument,
+		PriceNanousd:             item.PriceNanousd,
+		Status:                   item.Status,
+		SortOrder:                item.SortOrder,
+		CreatedAt:                item.CreatedAt,
+		UpdatedAt:                item.UpdatedAt,
 	}
 }

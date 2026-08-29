@@ -94,9 +94,11 @@ func buildAnthropicRequestBody(model string, input GenerateInput, stream bool) (
 			if text := extractMessageText(msg); text != "" {
 				systemParts = append(systemParts, text)
 				block := map[string]interface{}{"type": "text", "text": text}
-				if cacheControl := anthropicCacheControlFromHint(msg.CacheControl, input.Options); len(cacheControl) > 0 {
-					block["cache_control"] = cacheControl
-					explicitCacheControl = true
+				if !input.Ephemeral {
+					if cacheControl := anthropicCacheControlFromHint(msg.CacheControl, input.Options); len(cacheControl) > 0 {
+						block["cache_control"] = cacheControl
+						explicitCacheControl = true
+					}
 				}
 				systemBlocks = append(systemBlocks, block)
 			}
@@ -153,7 +155,7 @@ func buildAnthropicRequestBody(model string, input GenerateInput, stream bool) (
 			payload["system"] = strings.Join(systemParts, "\n\n")
 		}
 	}
-	if !explicitCacheControl {
+	if !input.Ephemeral && !explicitCacheControl {
 		if cacheControl := anthropicCacheControlFromOptions(input.Options); len(cacheControl) > 0 {
 			payload["cache_control"] = cacheControl
 		}
@@ -647,6 +649,7 @@ func (c *Client) newAnthropicRequest(
 	method, url string,
 	body io.Reader,
 	route RouteConfig,
+	input *GenerateInput,
 ) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
@@ -657,7 +660,7 @@ func (c *Client) newAnthropicRequest(
 	if apiKey := strings.TrimSpace(route.APIKey); apiKey != "" {
 		req.Header.Set("x-api-key", apiKey)
 	}
-	setAdditionalHeaders(req, route.HeadersJSON)
+	setAdditionalHeadersForInput(req, route.HeadersJSON, input)
 	return req, nil
 }
 
@@ -749,13 +752,13 @@ func (c *Client) generateAnthropic(
 	requestCtx, cancel := context.WithTimeout(ctx, resolveReadTimeout(route.ReadTimeoutMS))
 	defer cancel()
 
-	req, err := c.newAnthropicRequest(requestCtx, http.MethodPost, requestURL, bytes.NewReader(payload), route)
+	req, err := c.newAnthropicRequest(requestCtx, http.MethodPost, requestURL, bytes.NewReader(payload), route, &input)
 	if err != nil {
 		return nil, err
 	}
 	applyAnthropicBetaHeaders(req, requestBody, input.Options)
 
-	resp, err := c.httpClientForRoute(route).Do(req)
+	resp, err := c.doRouteGenerationRequest(route, req)
 	if err != nil {
 		return nil, err
 	}
@@ -763,6 +766,9 @@ func (c *Client) generateAnthropic(
 
 	body, err := readUpstreamBody(resp.Body)
 	if err != nil {
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil, MarkRequestAccepted(err)
+		}
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -772,7 +778,7 @@ func (c *Client) generateAnthropic(
 	debug := upstreamDebugSnapshot(req, payload, resp, body)
 	output, err := parseAnthropicResponse(body, newAnthropicToolClassifier(requestBody, input.Tools))
 	if err != nil {
-		return nil, attachUpstreamDebug(err, debug)
+		return nil, MarkRequestAccepted(attachUpstreamDebug(err, debug))
 	}
 	output.Debug = debug
 	return output, nil
@@ -1011,14 +1017,14 @@ func (c *Client) generateAnthropicStream(
 	firstByteTimer := time.AfterFunc(resolveReadTimeout(route.ReadTimeoutMS), firstByteCancel)
 	defer firstByteTimer.Stop()
 
-	req, err := c.newAnthropicRequest(firstByteCtx, http.MethodPost, requestURL, bytes.NewReader(payload), route)
+	req, err := c.newAnthropicRequest(firstByteCtx, http.MethodPost, requestURL, bytes.NewReader(payload), route, &input)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "text/event-stream")
 	applyAnthropicBetaHeaders(req, requestBody, input.Options)
 
-	resp, err := c.httpClientForRoute(route).Do(req)
+	resp, err := c.doRouteGenerationRequest(route, req)
 	firstByteTimer.Stop()
 	if err != nil {
 		return nil, err
@@ -1038,7 +1044,7 @@ func (c *Client) generateAnthropicStream(
 	idleReader := newIdleTimeoutReader(resp.Body, resolveStreamIdleTimeout(route.StreamIdleTimeoutMS))
 	streamBody := newUpstreamBodyRecorder(idleReader)
 	if err = consumeAnthropicStream(streamBody, result, onEvent, newAnthropicToolClassifier(requestBody, input.Tools)); err != nil {
-		return nil, attachUpstreamDebug(err, upstreamDebugSnapshot(req, payload, resp, streamErrorBody(streamBody, err)))
+		return nil, MarkRequestAccepted(attachUpstreamDebug(err, upstreamDebugSnapshot(req, payload, resp, streamErrorBody(streamBody, err))))
 	}
 	compactAnthropicStreamToolCalls(result)
 	return result, nil
@@ -1348,11 +1354,7 @@ func applyAnthropicStreamEvent(
 }
 
 func anthropicContentBlockIndex(parsed map[string]interface{}) int {
-	index := int(toInt64(parsed["index"]))
-	if index < 0 {
-		return 0
-	}
-	return index
+	return streamToolCallIndex(parsed["index"], 0)
 }
 
 func upsertAnthropicStreamToolCall(result *GenerateOutput, index int, item ToolCall) ToolCall {
@@ -1594,12 +1596,12 @@ func (c *Client) listModelsAnthropic(ctx context.Context, route RouteConfig) ([]
 	requestCtx, cancel := context.WithTimeout(ctx, resolveReadTimeout(route.ReadTimeoutMS))
 	defer cancel()
 
-	req, err := c.newAnthropicRequest(requestCtx, http.MethodGet, requestURL, nil, route)
+	req, err := c.newAnthropicRequest(requestCtx, http.MethodGet, requestURL, nil, route, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.httpClientForRoute(route).Do(req)
+	resp, err := c.doRouteRequest(route, req)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { SettingsSidebar } from "@/features/settings/components/settings-sidebar";
+import { CustomBrandAttribution } from "@/shared/components/powered-by-deeix";
 
 export function AppSettingsPanel({
   children,
@@ -19,6 +20,8 @@ export function AppSettingsPanel({
           </div>
         </main>
       </div>
+
+      <CustomBrandAttribution className="fixed bottom-4 right-4" />
     </div>
   );
 }

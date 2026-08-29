@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sort"
 	"strings"
@@ -21,13 +20,11 @@ import (
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/userview"
 	domainuser "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/user"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/geoip"
-	platformtracing "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/observability/tracing"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/pkg/conv"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/pkg/token"
+	idpport "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/identityprovider"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/requestmeta"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/security"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -41,12 +38,26 @@ const accessTokenSessionClockSkew = 2 * time.Minute
 type Service struct {
 	cfg                  *config.Runtime
 	repo                 repository.AuthRepository
-	geoResolver          *geoip.Client
+	geoResolver          GeoResolver
 	subscriptionResolver subscriptionResolver
-	providerHTTPClient   *http.Client
+	providerHTTPClient   identityProviderClient
 	logger               *zap.Logger
 	storeProvider        appstorage.Provider
 	auditWriter          auditWriter
+	avatarFileValidator  avatarFileValidator
+	providerAuthBridge   repository.ProviderAuthBridgeRepository
+}
+
+// GeoResolver 解析客户端 IP 的地理与网络归属信息。
+// 导出供组合根声明变量：GeoIP 关闭时应传 nil 接口，而不是 typed-nil 指针。
+type GeoResolver interface {
+	Lookup(ctx context.Context, rawIP string) (requestmeta.SessionAuditContext, error)
+}
+
+// identityProviderClient 面向可信端点白名单的身份源 HTTP 客户端。
+type identityProviderClient interface {
+	Get(ctx context.Context, targetURL string, trustedEndpoints []string, headers map[string]string) (idpport.Response, error)
+	PostForm(ctx context.Context, targetURL string, trustedEndpoints []string, form url.Values, headers map[string]string) (idpport.Response, error)
 }
 
 type subscriptionResolver interface {
@@ -61,21 +72,17 @@ type auditWriter interface {
 	Write(ctx context.Context, requestID string, actorUserID uint, action string, resource string, resourceID string, ip string, userAgent string, detail interface{})
 }
 
-// NewService 创建服务。
-func NewService(cfg config.Config, repo repository.AuthRepository, geoResolver *geoip.Client) *Service {
-	return NewServiceWithRuntime(config.NewRuntime(cfg), repo, geoResolver)
+type avatarFileValidator interface {
+	ValidateImageFile(ctx context.Context, userID uint, fileID string) error
 }
 
 // NewServiceWithRuntime 创建使用运行时配置容器的服务。
-func NewServiceWithRuntime(cfg *config.Runtime, repo repository.AuthRepository, geoResolver *geoip.Client) *Service {
-	env := ""
-	ssrfProtectionEnabled := false
-	if cfg != nil {
-		snapshot := cfg.Snapshot()
-		env = snapshot.Env
-		ssrfProtectionEnabled = snapshot.SSRFProtectionEnabled
-	}
-	providerHTTPClient := newAuthOutboundHTTPClient(env, ssrfProtectionEnabled)
+func NewServiceWithRuntime(
+	cfg *config.Runtime,
+	repo repository.AuthRepository,
+	geoResolver GeoResolver,
+	providerHTTPClient identityProviderClient,
+) *Service {
 	return &Service{
 		cfg:                cfg,
 		repo:               repo,
@@ -83,12 +90,6 @@ func NewServiceWithRuntime(cfg *config.Runtime, repo repository.AuthRepository, 
 		providerHTTPClient: providerHTTPClient,
 		storeProvider:      appstorage.NewRuntimeProvider(cfg, nil),
 	}
-}
-
-func newAuthOutboundHTTPClient(env string, ssrfProtectionEnabled bool) *http.Client {
-	client := security.NewOutboundHTTPClient(env, ssrfProtectionEnabled, providerHTTPTimeout)
-	client.Transport = platformtracing.NewHTTPTransport(client.Transport)
-	return client
 }
 
 // SetSubscriptionResolver 注入订阅派生解析能力。
@@ -101,11 +102,21 @@ func (s *Service) SetLogger(logger *zap.Logger) {
 	s.logger = logger
 }
 
+// SetProviderAuthBridge injects the short-lived OAuth handoff store.
+func (s *Service) SetProviderAuthBridge(store repository.ProviderAuthBridgeRepository) {
+	s.providerAuthBridge = store
+}
+
 // SetObjectStoreProvider 注入对象存储 provider。
 func (s *Service) SetObjectStoreProvider(provider appstorage.Provider) {
 	if provider != nil {
 		s.storeProvider = provider
 	}
+}
+
+// SetAvatarFileValidator 注入头像文件校验能力。
+func (s *Service) SetAvatarFileValidator(validator avatarFileValidator) {
+	s.avatarFileValidator = validator
 }
 
 // ShouldUseSecureCookies 判断当前运行环境是否必须写入 Secure Cookie。
@@ -517,11 +528,9 @@ func (s *Service) applyCredentialView(view *userview.UserView, item domainuser.U
 }
 
 func shouldRequireInitialUsername(item domainuser.User, adminUsername string) bool {
-	if item.UsernameChangedAt != nil {
-		return false
-	}
 	if item.Role == domainuser.RoleSuperAdmin {
-		return strings.EqualFold(strings.TrimSpace(item.Username), strings.TrimSpace(adminUsername))
+		return item.UsernameChangedAt == nil &&
+			strings.EqualFold(strings.TrimSpace(item.Username), strings.TrimSpace(adminUsername))
 	}
 	return false
 }
@@ -695,11 +704,21 @@ func sessionActivityInputFromSnapshot(snapshot sessionAuditSnapshot, lastSeenAt 
 // UpdateProfile 更新当前用户资料。
 func (s *Service) UpdateProfile(ctx context.Context, userID uint, input UpdateProfileInput) (*domainuser.User, error) {
 	updateInput := repository.UpdateUserFieldsInput{}
+	avatarFileReferenceRequested := false
 
 	if input.AvatarURL != nil {
 		nextAvatarURL := strings.TrimSpace(*input.AvatarURL)
 		if err := validateAvatarURL(nextAvatarURL); err != nil {
 			return nil, err
+		}
+		if fileID, ok := domainuser.ParseFileAvatarURL(nextAvatarURL); ok {
+			avatarFileReferenceRequested = true
+			if s.avatarFileValidator == nil {
+				return nil, ErrInvalidAvatarURL
+			}
+			if err := s.avatarFileValidator.ValidateImageFile(ctx, userID, fileID); err != nil {
+				return nil, ErrInvalidAvatarURL
+			}
 		}
 		updateInput.AvatarURL = &nextAvatarURL
 	}
@@ -740,7 +759,11 @@ func (s *Service) UpdateProfile(ctx context.Context, userID uint, input UpdatePr
 		updateInput.AppearancePreferences = &normalizedAppearancePreferences
 	}
 
-	return s.repo.UpdateProfile(ctx, userID, updateInput)
+	item, err := s.repo.UpdateProfile(ctx, userID, updateInput)
+	if avatarFileReferenceRequested && errors.Is(err, repository.ErrNotFound) {
+		return nil, ErrInvalidAvatarURL
+	}
+	return item, err
 }
 
 func normalizeAppearancePreferences(raw string) (string, error) {
@@ -859,17 +882,17 @@ func (s *Service) DeleteAccount(
 		return ErrAccountDeleteVerificationRequired
 	}
 	if !containsSecurityVerificationMethod(methods, method) {
-		return fmt.Errorf("verification method is unavailable")
+		return ErrSecurityVerificationMethodUnavailable
 	}
 	normalizedEmail := ""
 	if method == SecurityVerificationMethodEmail {
 		normalizedEmail, err = normalizeRegistrationEmail(item.Email)
 		if err != nil {
-			return fmt.Errorf("user email is invalid")
+			return ErrSecurityVerificationEmailInvalid
 		}
 	}
 	if err = s.verifySecurityCodeWithMethod(ctx, item, method, domainuser.ContactVerificationPurposeAccountDelete, normalizedEmail, code, time.Now()); err != nil {
-		return fmt.Errorf("verification code is invalid or expired")
+		return ErrSecurityVerificationCodeInvalid
 	}
 
 	normalizedAuditCtx := s.resolveSessionAuditContext(ctx, auditCtx)
@@ -1543,9 +1566,15 @@ func normalizeEditableUsername(raw string) (string, error) {
 	return username, nil
 }
 
-// validateAvatarURL 校验头像 URL 合法性；空值、相对路径和 generated: 前缀均视为合法。
+// validateAvatarURL 校验头像 URL 合法性；空值、相对路径、generated: 前缀和 file: 引用均视为合法。
 func validateAvatarURL(raw string) error {
 	if raw == "" || strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "generated:github:") {
+		return nil
+	}
+	if strings.HasPrefix(raw, "file:") {
+		if _, ok := domainuser.ParseFileAvatarURL(raw); !ok {
+			return ErrInvalidAvatarURL
+		}
 		return nil
 	}
 

@@ -3,13 +3,20 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from "@/components/ui/attachment";
 import type { MessageAttachment } from "@/features/chat/types/messages";
-import type { PreviewDialogFile } from "@/features/files/components/preview/file-preview-dialog";
-import { formatBytes, resolveFileExtension, resolveFileIcon } from "@/features/files/utils/file-display";
-import type { FileContentResult } from "@/shared/api/file";
+import type { FileContentLoader } from "@/shared/components/file-preview/preview-dialog";
+import { formatBytes, resolveFileExtension, resolveFileIcon } from "@/shared/lib/file-display";
 
 const FilePreviewDialog = dynamic(
-  () => import("@/features/files/components/preview/file-preview-dialog").then((module) => module.FilePreviewDialog),
+  () => import("@/shared/components/file-preview/preview-dialog").then((module) => module.FilePreviewDialog),
   { ssr: false },
 );
 
@@ -21,7 +28,11 @@ function resolveFileExt(name: string): string {
 }
 
 function resolveCardMeta(att: MessageAttachment): string {
-  return formatBytes(att.sizeBytes);
+  const values = [resolveFileExt(att.fileName), formatBytes(att.sizeBytes)];
+  if (att.durationSeconds && att.durationSeconds > 0) {
+    values.push(`${att.durationSeconds}s`);
+  }
+  return values.join(" · ");
 }
 
 // ─── single card ─────────────────────────────────────────────────────────────
@@ -33,37 +44,31 @@ function AttachmentCard({
   att: MessageAttachment;
   onClick: () => void;
 }) {
-  const ext = resolveFileExt(att.fileName);
   const meta = resolveCardMeta(att);
   const fileIcon = resolveFileIcon(att);
 
   return (
-    <div
-      className="group relative h-14 w-56 shrink-0 rounded-lg border border-border/50 bg-background/95 text-left shadow-[0_1px_2px_rgba(0,0,0,0.025)] transition-colors hover:border-border hover:bg-accent/30"
+    <Attachment
+      size="sm"
+      className="h-12 w-56 border-0 bg-muted/35 text-left hover:bg-muted/50 dark:bg-white/[0.06] dark:hover:bg-white/[0.09]"
     >
-      <button
-        type="button"
+      <AttachmentMedia className="size-6 bg-transparent text-muted-foreground">
+        {React.createElement(fileIcon, { className: "size-5", strokeWidth: 1.6 })}
+      </AttachmentMedia>
+      <AttachmentContent className="flex min-w-0 flex-1 flex-col justify-center px-0 py-0">
+        <AttachmentTitle className="text-[12px] leading-4 text-foreground/90" title={att.fileName}>
+          {att.fileName}
+        </AttachmentTitle>
+        <AttachmentDescription className="mt-1 text-[11px] leading-none">
+          {meta}
+        </AttachmentDescription>
+      </AttachmentContent>
+      <AttachmentTrigger
         onClick={onClick}
-        className="flex h-full w-full items-center gap-2.5 rounded-lg px-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <div className="flex size-6 shrink-0 items-center justify-center">
-          {React.createElement(fileIcon, { className: "size-5 text-muted-foreground", strokeWidth: 1.6 })}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <p className="truncate text-[12px] font-medium leading-4 text-foreground/90" title={att.fileName}>
-            {att.fileName}
-          </p>
-          <div className="mt-1 flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 shrink truncate text-[10px] leading-none text-muted-foreground">
-              {meta}
-            </span>
-            <span className="shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground/65">
-              {ext}
-            </span>
-          </div>
-        </div>
-      </button>
-    </div>
+        aria-label={att.fileName}
+        className="rounded-lg focus-visible:ring-2 focus-visible:ring-ring"
+      />
+    </Attachment>
   );
 }
 
@@ -76,7 +81,7 @@ export function MessageAttachmentRow({
   align = "end",
 }: {
   attachments: MessageAttachment[];
-  loadContent?: (file: PreviewDialogFile) => Promise<FileContentResult>;
+  loadContent?: FileContentLoader;
   allowDownload?: boolean;
   align?: "start" | "end";
 }) {

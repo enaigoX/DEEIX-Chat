@@ -1,3 +1,5 @@
+import { resolveConfiguredApiBaseURL } from "@/shared/api/http-client";
+
 type ModelIdentityInput = {
   code?: string | null;
   provider?: string | null;
@@ -14,7 +16,7 @@ type VendorCatalogItem = {
   patterns: readonly RegExp[];
 };
 
-type ResolvedModelIdentity = {
+export type ResolvedModelIdentity = {
   vendorKey: string;
   vendorLabel: string;
   vendorIcon: string;
@@ -218,11 +220,6 @@ const VENDOR_CATALOG: readonly VendorCatalogItem[] = [
   },
 ];
 
-export const KNOWN_VENDOR_OPTIONS = VENDOR_CATALOG.map((item) => ({
-  value: item.key,
-  label: item.label,
-}));
-
 function detectModelFamilyIcon(value: string): string {
   if (!value) {
     return "";
@@ -262,6 +259,10 @@ function normalizeValue(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
 
+function isModelIconResource(value: string): boolean {
+  return /^(?:https?:\/\/|\/)/iu.test(value.trim()) || /^asset:ico_[a-f0-9]{32}$/iu.test(value.trim());
+}
+
 function findVendorByExactValue(value: string): VendorCatalogItem | null {
   if (!value) {
     return null;
@@ -292,7 +293,7 @@ function findVendorByText(value: string): VendorCatalogItem | null {
 
 function chooseResolvedVendor(input: ModelIdentityInput): VendorCatalogItem | null {
   const normalizedCode = normalizeValue(input.code);
-  const normalizedIcon = normalizeValue(input.icon);
+  const normalizedIcon = isModelIconResource(input.icon ?? "") ? "" : normalizeValue(input.icon);
   const normalizedVendor = normalizeValue(input.vendor);
   const normalizedProvider = normalizeValue(input.provider);
 
@@ -323,7 +324,6 @@ function chooseResolvedVendor(input: ModelIdentityInput): VendorCatalogItem | nu
 export function resolveModelIdentity(input: ModelIdentityInput): ResolvedModelIdentity {
   const resolvedVendor = chooseResolvedVendor(input);
   const rawIcon = input.icon?.trim() ?? "";
-  const rawVendor = input.vendor?.trim() ?? "";
   const normalizedCode = normalizeValue(input.code);
   const detectedModelIcon = detectModelFamilyIcon(normalizedCode);
 
@@ -336,7 +336,8 @@ export function resolveModelIdentity(input: ModelIdentityInput): ResolvedModelId
     };
   }
 
-  const iconVendor = findVendorByExactValue(normalizeValue(input.icon)) ?? findVendorByText(normalizeValue(input.icon));
+  const normalizedIcon = isModelIconResource(rawIcon) ? "" : normalizeValue(rawIcon);
+  const iconVendor = findVendorByExactValue(normalizedIcon) ?? findVendorByText(normalizedIcon);
   const shouldOverrideGenericIcon = iconVendor != null && GENERIC_VENDOR_KEYS.has(iconVendor.key) && !GENERIC_VENDOR_KEYS.has(resolvedVendor.key);
 
   return {
@@ -347,14 +348,52 @@ export function resolveModelIdentity(input: ModelIdentityInput): ResolvedModelId
   };
 }
 
-export function resolveVendorLabel(vendor: string): string {
-  return resolveModelIdentity({ vendor }).vendorLabel;
+export function resolveVendorIdentity(vendor: string | null | undefined): ResolvedModelIdentity {
+  const rawVendor = vendor?.trim() ?? "";
+  const normalizedVendor = normalizeValue(rawVendor);
+  const resolvedVendor = findVendorByExactValue(normalizedVendor) ?? findVendorByText(normalizedVendor);
+
+  if (resolvedVendor) {
+    return {
+      vendorKey: resolvedVendor.key,
+      vendorLabel: resolvedVendor.label,
+      vendorIcon: resolvedVendor.vendorIcon,
+      modelIcon: resolvedVendor.modelIcon,
+    };
+  }
+
+  if (!normalizedVendor) {
+    return {
+      vendorKey: "unknown",
+      vendorLabel: "Unknown",
+      vendorIcon: "",
+      modelIcon: "",
+    };
+  }
+
+  return {
+    vendorKey: normalizedVendor,
+    vendorLabel: rawVendor,
+    vendorIcon: "",
+    modelIcon: "",
+  };
 }
 
-export function resolveLobeHubIconURL(icon: string): string | null {
+export function resolveVendorLabel(vendor: string): string {
+  return resolveVendorIdentity(vendor).vendorLabel;
+}
+
+export function resolveModelIconURL(icon: string): string | null {
   const normalized = icon.trim();
   if (!normalized) {
     return null;
+  }
+  if (isModelIconResource(normalized)) {
+    const assetMatch = /^asset:(ico_[a-f0-9]{32})$/iu.exec(normalized);
+    if (assetMatch) {
+      return `${resolveConfiguredApiBaseURL()}/api/v1/llm/icon-assets/${encodeURIComponent(assetMatch[1].toLowerCase())}`;
+    }
+    return normalized;
   }
   return `/vendor/lobehub-icons/${normalized}.svg`;
 }

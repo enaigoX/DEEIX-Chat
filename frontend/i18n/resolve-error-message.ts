@@ -96,10 +96,10 @@ const SETTINGS_FIELD_LABELS: Record<AppLocale, Record<string, string>> = {
     "auth:email_registration_block_plus_alias": "Block plus aliases",
     "auth:email_registration_enabled": "Email registration",
     "auth:email_verification_enabled": "Email verification",
+    "auth:password_reset_enabled": "Password reset",
     "auth:login_default_next_path": "Default redirect path",
     "auth:login_lock_minutes": "Lock duration",
     "auth:login_max_failures": "Login failure limit",
-    "auth:login_page_title": "Login page title",
     "auth:rate_limit_enabled": "Platform rate limit",
     "auth:rate_limit_rpm": "User API rate limit",
     "auth:public_auth_rate_limit_rpm": "Public auth rate limit",
@@ -121,7 +121,7 @@ const SETTINGS_FIELD_LABELS: Record<AppLocale, Record<string, string>> = {
     "billing:epay_types": "EPay payment types",
     "billing:mode": "Billing mode",
     "billing:payment_providers": "Payment providers",
-    "billing:prepaid_amount_usd": "Prepaid amount",
+    "billing:prepaid_amount_usd": "Per-request reservation",
     "billing:stripe_publishable_key": "Stripe publishable key",
     "billing:stripe_secret_key": "Stripe secret key",
     "billing:stripe_webhook_secret": "Stripe webhook secret",
@@ -132,7 +132,7 @@ const SETTINGS_FIELD_LABELS: Record<AppLocale, Record<string, string>> = {
     "chat:model_option_policy_mode": "Model option policy",
     "file:embedding_enabled": "Embedding",
     "file:full_context_limit_enabled": "Full-text injection limits",
-    "file:file_full_context_max_bytes": "Full-text byte limit",
+    "file:file_full_context_max_bytes": "Full-text size limit",
     "file:full_context_max_tokens": "Full-text token limit",
     "file:full_context_pdf_max_pages": "Full-text page limit",
     "mcp:mcp_enable": "MCP",
@@ -144,10 +144,10 @@ const SETTINGS_FIELD_LABELS: Record<AppLocale, Record<string, string>> = {
     "auth:email_registration_block_plus_alias": "禁止邮箱 + 别名",
     "auth:email_registration_enabled": "邮箱注册",
     "auth:email_verification_enabled": "邮箱验证",
+    "auth:password_reset_enabled": "重置密码",
     "auth:login_default_next_path": "登录后默认跳转路径",
     "auth:login_lock_minutes": "锁定时长",
     "auth:login_max_failures": "登录失败阈值",
-    "auth:login_page_title": "登录页标题",
     "auth:rate_limit_enabled": "平台限流",
     "auth:rate_limit_rpm": "用户接口限流",
     "auth:public_auth_rate_limit_rpm": "公开鉴权限流",
@@ -169,7 +169,7 @@ const SETTINGS_FIELD_LABELS: Record<AppLocale, Record<string, string>> = {
     "billing:epay_types": "易支付支付方式",
     "billing:mode": "计费模式",
     "billing:payment_providers": "支付渠道",
-    "billing:prepaid_amount_usd": "预付费金额",
+    "billing:prepaid_amount_usd": "单次预留金额",
     "billing:stripe_publishable_key": "Stripe Publishable Key",
     "billing:stripe_secret_key": "Stripe Secret Key",
     "billing:stripe_webhook_secret": "Stripe Webhook Secret",
@@ -219,7 +219,7 @@ function readClientLocale(): AppLocale {
 function lookupErrorMessage(locale: AppLocale, errorCode: string): string | undefined {
   let current: unknown = ERROR_MESSAGES[locale];
   for (const segment of toErrorMessagePath(errorCode)) {
-    if (!current || typeof current !== "object" || !Object.prototype.hasOwnProperty.call(current, segment)) {
+    if (!current || typeof current !== "object" || !Object.hasOwn(current, segment)) {
       return undefined;
     }
     current = (current as Record<string, unknown>)[segment];
@@ -339,6 +339,8 @@ function resolveSettingsReason(locale: AppLocale, label: string, reason: string)
         return `${label}必须是 true 或 false。`;
       case "must start with http:// or https://":
         return `${label}必须以 http:// 或 https:// 开头。`;
+      case "must be an HTTP(S) EPay site URL or an exact submit.php URL without credentials, query, or fragment":
+        return `${label}必须是 HTTP(S) 易支付站点地址或完整的 submit.php 地址，且不能包含账号信息、查询参数或片段。`;
       case "must be a json array":
         return `${label}必须是 JSON 数组。`;
       case "must contain 1-10 payment types":

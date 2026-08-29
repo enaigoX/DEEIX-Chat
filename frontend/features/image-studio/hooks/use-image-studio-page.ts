@@ -122,7 +122,9 @@ export function useImageStudioPage() {
 
   React.useEffect(() => {
     return () => {
-      draftFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewURL));
+      draftFilesRef.current.forEach((file) => {
+        URL.revokeObjectURL(file.previewURL);
+      });
     };
   }, []);
 
@@ -186,8 +188,9 @@ export function useImageStudioPage() {
           onEvent: (event: ImageStudioStreamEvent) => {
             if (event.type === "media_status") {
               setStreamStatus(normalizeStreamStatus(event.status || ""));
-              if (event.task) {
-                setTasks((current) => upsertTask(current, event.task));
+              const eventTask = event.task;
+              if (eventTask) {
+                setTasks((current) => upsertTask(current, eventTask));
               }
             }
             if (event.type === "media_image_delta") {
@@ -208,7 +211,9 @@ export function useImageStudioPage() {
         toast.success(t("completed"));
       }
       setDraftFiles((current) => {
-        current.forEach((file) => URL.revokeObjectURL(file.previewURL));
+        current.forEach((file) => {
+          URL.revokeObjectURL(file.previewURL);
+        });
         return [];
       });
       void loadTasks(true);

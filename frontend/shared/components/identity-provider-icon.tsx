@@ -5,20 +5,10 @@ import * as React from "react";
 import {
   resolveIdentityProviderIconScale,
   resolveIdentityProviderIconURL,
+  resolveSafeIdentityProviderIconURL,
   shouldInvertIdentityProviderIcon,
 } from "@/shared/lib/identity-provider-icons";
 import { cn } from "@/lib/utils";
-
-function resolveCustomIdentityProviderLogoURL(logoURL: string | undefined, slug: string): string {
-  const trimmed = logoURL?.trim() ?? "";
-  if (!trimmed) {
-    return "";
-  }
-  if (/^https?:\/\//i.test(trimmed)) {
-    return `/api/v1/auth/providers/${encodeURIComponent(slug)}/logo`;
-  }
-  return trimmed;
-}
 
 export function IdentityProviderIcon({
   name,
@@ -35,7 +25,7 @@ export function IdentityProviderIcon({
   iconClassName?: string;
   fallbackClassName?: string;
 }) {
-  const customLogoURL = resolveCustomIdentityProviderLogoURL(logoURL, slug);
+  const customLogoURL = resolveSafeIdentityProviderIconURL(logoURL);
   const defaultIconURL = resolveIdentityProviderIconURL(name, slug);
   const iconCandidates = React.useMemo(
     () => [customLogoURL, defaultIconURL].filter((value): value is string => Boolean(value)),
@@ -55,7 +45,6 @@ export function IdentityProviderIcon({
   if (iconUrl) {
     return (
       <span aria-hidden="true" className={cn(rootClassName, isDefaultIcon && "text-foreground")}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           alt=""
           className={cn("block size-4 object-contain", invertInDarkMode && "dark:invert", iconClassName)}

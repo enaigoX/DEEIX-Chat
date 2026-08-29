@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/billing"
 	appconversation "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/conversation"
 	domainbilling "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/billing"
 	model "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
@@ -28,7 +27,126 @@ func (h *Handler) StreamImageEdit(c *gin.Context) {
 	h.streamMediaImage(c, appconversation.MediaImageTaskEdit)
 }
 
-// streamMediaImage 只负责 HTTP 绑定、计费预扣和 NDJSON 事件转发，图片业务由 application 执行。
+// StreamVideoGeneration 处理会话内视频生成流式状态接口。
+func (h *Handler) StreamVideoGeneration(c *gin.Context) {
+	h.streamMediaVideo(c, appconversation.MediaVideoTaskGeneration)
+}
+
+// StreamVideoExtension 处理会话内视频扩展流式状态接口。
+// @Summary 扩展会话视频
+// @Tags Conversations
+// @Accept json
+// @Produce application/x-ndjson
+// @Param id path string true "会话 Public ID"
+// @Param payload body MediaVideoExtensionRequest true "视频扩展请求"
+// @Success 200 {string} string "NDJSON stream"
+// @Failure 400 {object} response.Envelope
+// @Failure 401 {object} response.Envelope
+// @Failure 404 {object} response.Envelope
+// @Router /conversations/{id}/media/videos/extensions/stream [post]
+func (h *Handler) StreamVideoExtension(c *gin.Context) {
+	h.streamMediaVideo(c, appconversation.MediaVideoTaskExtension)
+}
+
+type mediaVideoTransportRequest struct {
+	Prompt                string
+	Model                 string
+	Options               map[string]interface{}
+	ClientRunID           string
+	FileIDs               []string
+	ParentMessagePublicID string
+	SourceMessagePublicID string
+	BranchReason          string
+}
+
+// streamMediaVideo 统一视频生成与扩展的 HTTP、授权和事件转发流程。
+func (h *Handler) streamMediaVideo(c *gin.Context, taskType appconversation.MediaVideoTaskType) {
+	userID := middleware.MustUserID(c)
+	publicID, err := stringParam(c, "id")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid conversation id")
+		return
+	}
+	conversation, err := h.service.GetConversationByPublicID(c.Request.Context(), userID, publicID)
+	if err != nil {
+		if errors.Is(err, appconversation.ErrConversationNotFound) {
+			response.Error(c, http.StatusNotFound, "conversation not found")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "load conversation failed")
+		return
+	}
+	var req mediaVideoTransportRequest
+	if taskType == appconversation.MediaVideoTaskExtension {
+		var payload MediaVideoExtensionRequest
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			response.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		req = mediaVideoTransportRequest{
+			Prompt:                payload.Prompt,
+			Model:                 payload.Model,
+			Options:               payload.Options,
+			ClientRunID:           payload.ClientRunID,
+			FileIDs:               []string{payload.SourceVideoFileID},
+			ParentMessagePublicID: payload.ParentMessagePublicID,
+			SourceMessagePublicID: payload.SourceMessagePublicID,
+			BranchReason:          payload.BranchReason,
+		}
+	} else {
+		var payload MediaVideoRequest
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			response.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		req = mediaVideoTransportRequest{
+			Prompt:                payload.Prompt,
+			Model:                 payload.Model,
+			Options:               payload.Options,
+			ClientRunID:           payload.ClientRunID,
+			FileIDs:               payload.FileIDs,
+			ParentMessagePublicID: payload.ParentMessagePublicID,
+			SourceMessagePublicID: payload.SourceMessagePublicID,
+			BranchReason:          payload.BranchReason,
+		}
+	}
+	req.ClientRunID = appconversation.EnsureMessageGenerationRunID(req.ClientRunID)
+	req.Options = sanitizeMessageOptions(req.Options)
+	authorization, err := h.authorizeUsage(c, mediaVideoBillingInput(userID, conversation, &req, nil))
+	if err != nil {
+		return
+	}
+	stopAuthorizationRenewal := h.startUsageAuthorizationRenewal(authorization)
+	defer stopAuthorizationRenewal()
+
+	h.streamMediaTask(
+		c,
+		req.ClientRunID,
+		authorization,
+		func(onEvent func(string, map[string]interface{}) error) (*appconversation.SendMessageResult, error) {
+			return h.service.StreamMediaVideo(c.Request.Context(), appconversation.MediaVideoInput{
+				UserID:                userID,
+				ConversationID:        conversation.ID,
+				RequestID:             middleware.MustRequestID(c),
+				TaskType:              taskType,
+				Prompt:                req.Prompt,
+				PlatformModelName:     req.Model,
+				Options:               req.Options,
+				ClientRunID:           req.ClientRunID,
+				FileIDs:               req.FileIDs,
+				ParentMessagePublicID: req.ParentMessagePublicID,
+				SourceMessagePublicID: req.SourceMessagePublicID,
+				BranchReason:          req.BranchReason,
+				OnEvent:               onEvent,
+			})
+		},
+		func(result *appconversation.SendMessageResult) appconversation.SendMessageBillingInput {
+			return mediaVideoBillingInput(userID, conversation, &req, result)
+		},
+	)
+}
+
+// streamMediaImage 只负责 HTTP 绑定、计费预算预留和 NDJSON 事件转发，图片业务由 application 执行。
 func (h *Handler) streamMediaImage(c *gin.Context, taskType appconversation.MediaImageTaskType) {
 	userID := middleware.MustUserID(c)
 	publicID, err := stringParam(c, "id")
@@ -52,14 +170,48 @@ func (h *Handler) streamMediaImage(c *gin.Context, taskType appconversation.Medi
 	}
 	req.ClientRunID = appconversation.EnsureMessageGenerationRunID(req.ClientRunID)
 	req.Options = sanitizeMessageOptions(req.Options)
-	if err = h.ensureMediaImageBillingModelAccess(c, conversation, &req); err != nil {
-		return
-	}
-	reservation, err := h.reserveMediaImageUsageBalance(c, conversation, &req)
+	authorization, err := h.authorizeUsage(c, mediaImageBillingInput(userID, conversation, &req, nil))
 	if err != nil {
 		return
 	}
+	stopAuthorizationRenewal := h.startUsageAuthorizationRenewal(authorization)
+	defer stopAuthorizationRenewal()
 
+	h.streamMediaTask(
+		c,
+		req.ClientRunID,
+		authorization,
+		func(onEvent func(string, map[string]interface{}) error) (*appconversation.SendMessageResult, error) {
+			return h.service.StreamMediaImage(c.Request.Context(), appconversation.MediaImageInput{
+				UserID:                userID,
+				ConversationID:        conversation.ID,
+				RequestID:             middleware.MustRequestID(c),
+				TaskType:              taskType,
+				Prompt:                req.Prompt,
+				PlatformModelName:     req.Model,
+				Options:               req.Options,
+				ClientRunID:           req.ClientRunID,
+				FileIDs:               req.FileIDs,
+				MaskFileID:            req.MaskFileID,
+				ParentMessagePublicID: req.ParentMessagePublicID,
+				SourceMessagePublicID: req.SourceMessagePublicID,
+				BranchReason:          req.BranchReason,
+				OnEvent:               onEvent,
+			})
+		},
+		func(result *appconversation.SendMessageResult) appconversation.SendMessageBillingInput {
+			return mediaImageBillingInput(userID, conversation, &req, result)
+		},
+	)
+}
+
+func (h *Handler) streamMediaTask(
+	c *gin.Context,
+	clientRunID string,
+	authorization *domainbilling.UsageAuthorization,
+	run func(onEvent func(string, map[string]interface{}) error) (*appconversation.SendMessageResult, error),
+	billingInput func(result *appconversation.SendMessageResult) appconversation.SendMessageBillingInput,
+) {
 	c.Header("Content-Type", "application/x-ndjson; charset=utf-8")
 	c.Header("Cache-Control", "no-cache, no-transform")
 	c.Header("Connection", "keep-alive")
@@ -68,7 +220,7 @@ func (h *Handler) streamMediaImage(c *gin.Context, taskType appconversation.Medi
 
 	var clientDisconnected atomic.Bool
 	flushStreamEvent := func(payload map[string]interface{}) error {
-		payload = h.service.PublishMessageGenerationEvent(req.ClientRunID, payload)
+		payload = h.service.PublishMessageGenerationEvent(clientRunID, payload)
 		if clientDisconnected.Load() {
 			return nil
 		}
@@ -84,58 +236,111 @@ func (h *Handler) streamMediaImage(c *gin.Context, taskType appconversation.Medi
 		return nil
 	}
 
-	result, err := h.service.StreamMediaImage(c.Request.Context(), appconversation.MediaImageInput{
-		UserID:                userID,
-		ConversationID:        conversation.ID,
-		RequestID:             middleware.MustRequestID(c),
-		TaskType:              taskType,
-		Prompt:                req.Prompt,
-		PlatformModelName:     req.Model,
-		Options:               req.Options,
-		ClientRunID:           req.ClientRunID,
-		FileIDs:               req.FileIDs,
-		MaskFileID:            req.MaskFileID,
-		ParentMessagePublicID: req.ParentMessagePublicID,
-		SourceMessagePublicID: req.SourceMessagePublicID,
-		BranchReason:          req.BranchReason,
-		OnEvent: func(eventType string, payload map[string]interface{}) error {
-			_ = flushStreamEvent(normalizeStreamEventPayload(eventType, payload))
-			return nil
-		},
+	result, err := run(func(eventType string, payload map[string]interface{}) error {
+		_ = flushStreamEvent(normalizeStreamEventPayload(eventType, payload))
+		return nil
 	})
+	if err == nil && result != nil && result.IsModerationBlocked() {
+		if !result.ModerationTerminalEmitted() {
+			_ = flushStreamEvent(moderationBlockedStreamPayload(result))
+		}
+		if result.Billable {
+			billingCtx, billingCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			usageLedger, billingErr := h.service.RecordSendMessageBilling(billingCtx, billingInput(result), authorization)
+			billingCancel()
+			if billingErr == nil {
+				appconversation.ApplyUsageBilling(&result.AssistantMessage, usageLedger)
+			}
+		} else {
+			_ = h.releaseSendMessageUsageAuthorization(authorization)
+		}
+		h.service.FinishMessageGeneration(clientRunID)
+		return
+	}
 	if err != nil {
-		if releaseErr := h.releaseSendMessageUsageReservation(reservation, "图片生成失败退回预扣"); releaseErr != nil {
-			_ = flushStreamEvent(billingStreamErrorPayload(releaseErr))
-			h.service.FinishMessageGeneration(req.ClientRunID)
+		if result == nil || !result.Billable {
+			if releaseErr := h.releaseSendMessageUsageAuthorization(authorization); releaseErr != nil {
+				_ = flushStreamEvent(billingStreamErrorPayload(releaseErr))
+				h.service.FinishMessageGeneration(clientRunID)
+				return
+			}
+			_ = flushStreamEvent(mediaStreamErrorPayload(err, result))
+			h.service.FinishMessageGeneration(clientRunID)
 			return
 		}
-		_ = flushStreamEvent(streamErrorPayload(err))
-		h.service.FinishMessageGeneration(req.ClientRunID)
+
+		billingCtx, billingCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		usageLedger, billingErr := h.service.RecordSendMessageBilling(billingCtx, billingInput(result), authorization)
+		billingCancel()
+		if billingErr != nil {
+			payload := billingStreamErrorPayload(billingErr)
+			payload["data"] = toSendMessageResponse(result)
+			_ = flushStreamEvent(payload)
+			h.service.FinishMessageGeneration(clientRunID)
+			return
+		}
+		appconversation.ApplyUsageBilling(&result.AssistantMessage, usageLedger)
+		payload := mediaStreamErrorPayload(err, result)
+		_ = flushStreamEvent(payload)
+		h.service.FinishMessageGeneration(clientRunID)
+		return
+	}
+	if result == nil || !result.Billable {
+		if releaseErr := h.releaseSendMessageUsageAuthorization(authorization); releaseErr != nil {
+			_ = flushStreamEvent(billingStreamErrorPayload(releaseErr))
+			h.service.FinishMessageGeneration(clientRunID)
+			return
+		}
+		if result != nil && result.AssistantMessage.Status == "canceled" {
+			payload := streamErrorPayload(appconversation.ErrMessageGenerationCanceled)
+			payload["data"] = toSendMessageResponse(result)
+			_ = flushStreamEvent(payload)
+		} else if result != nil {
+			_ = flushStreamEvent(map[string]interface{}{
+				"type": "completed",
+				"data": toSendMessageResponse(result),
+			})
+		}
+		h.service.FinishMessageGeneration(clientRunID)
 		return
 	}
 
 	billingCtx, billingCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	usageLedger, billingErr := h.service.RecordSendMessageBilling(
 		billingCtx,
-		mediaImageBillingInput(userID, conversation, &req, result),
-		reservation,
+		billingInput(result),
+		authorization,
 	)
 	billingCancel()
 	if billingErr != nil {
-		if shouldReleaseReservationAfterBillingError(billingErr) {
-			_ = h.releaseSendMessageUsageReservation(reservation, "计费失败退回预扣")
-		}
 		_ = flushStreamEvent(billingStreamErrorPayload(billingErr))
-		h.service.FinishMessageGeneration(req.ClientRunID)
+		h.service.FinishMessageGeneration(clientRunID)
 		return
 	}
 	appconversation.ApplyUsageBilling(&result.AssistantMessage, usageLedger)
+
+	if result.AssistantMessage.Status == "canceled" {
+		payload := streamErrorPayload(appconversation.ErrMessageGenerationCanceled)
+		payload["data"] = toSendMessageResponse(result)
+		_ = flushStreamEvent(payload)
+		h.service.FinishMessageGeneration(clientRunID)
+		return
+	}
 
 	_ = flushStreamEvent(map[string]interface{}{
 		"type": "completed",
 		"data": toSendMessageResponse(result),
 	})
-	h.service.FinishMessageGeneration(req.ClientRunID)
+	h.service.FinishMessageGeneration(clientRunID)
+}
+
+// mediaStreamErrorPayload 在错误事件中保留已持久化的消息结果，供客户端完成临时消息对账。
+func mediaStreamErrorPayload(err error, result *appconversation.SendMessageResult) map[string]interface{} {
+	payload := streamErrorPayload(err)
+	if result != nil {
+		payload["data"] = toSendMessageResponse(result)
+	}
+	return payload
 }
 
 // mediaImageBillingInput 构造媒体任务复用消息计费链路所需的上下文。
@@ -154,51 +359,28 @@ func mediaImageBillingInput(
 	if conversation != nil {
 		input.ConversationID = conversation.ID
 		input.ConversationModel = conversation.Model
+		input.Conversation = conversation
 	}
 	return input
 }
 
-// ensureMediaImageBillingModelAccess 在进入流式响应前校验模型是否可计费使用。
-func (h *Handler) ensureMediaImageBillingModelAccess(c *gin.Context, conversation *model.Conversation, req *MediaImageRequest) error {
-	if err := h.service.EnsureSendMessageBillingAccess(
-		c.Request.Context(),
-		mediaImageBillingInput(middleware.MustUserID(c), conversation, req, nil),
-	); err != nil {
-		if errors.Is(err, billing.ErrPeriodCreditExceeded) {
-			response.Error(c, http.StatusPaymentRequired, "period usage credit exceeded")
-			return err
-		}
-		if errors.Is(err, billing.ErrModelPricingRequired) {
-			response.Error(c, http.StatusPaymentRequired, "model pricing is required")
-			return err
-		}
-		if errors.Is(err, billing.ErrUsageBalanceInsufficient) {
-			response.Error(c, http.StatusPaymentRequired, "usage balance is insufficient")
-			return err
-		}
-		response.Error(c, http.StatusInternalServerError, "billing access check failed")
-		return err
+// mediaVideoBillingInput 构造视频任务复用消息计费链路所需的上下文。
+func mediaVideoBillingInput(
+	userID uint,
+	conversation *model.Conversation,
+	req *mediaVideoTransportRequest,
+	result *appconversation.SendMessageResult,
+) appconversation.SendMessageBillingInput {
+	input := appconversation.SendMessageBillingInput{
+		UserID:            userID,
+		PlatformModelName: strings.TrimSpace(req.Model),
+		ClientRunID:       strings.TrimSpace(req.ClientRunID),
+		Result:            result,
 	}
-	return nil
-}
-
-// reserveMediaImageUsageBalance 在上游调用前预扣余额，失败直接返回 HTTP 错误。
-func (h *Handler) reserveMediaImageUsageBalance(c *gin.Context, conversation *model.Conversation, req *MediaImageRequest) (*domainbilling.UsageBalanceReservation, error) {
-	reservation, err := h.service.ReserveSendMessageUsageBalance(
-		c.Request.Context(),
-		mediaImageBillingInput(middleware.MustUserID(c), conversation, req, nil),
-	)
-	if err != nil {
-		if errors.Is(err, billing.ErrUsageBalanceInsufficient) {
-			response.Error(c, http.StatusPaymentRequired, "usage balance is insufficient")
-			return nil, err
-		}
-		if errors.Is(err, billing.ErrModelPricingRequired) {
-			response.Error(c, http.StatusPaymentRequired, "model pricing is required")
-			return nil, err
-		}
-		response.Error(c, http.StatusInternalServerError, "usage balance reservation failed")
-		return nil, err
+	if conversation != nil {
+		input.ConversationID = conversation.ID
+		input.ConversationModel = conversation.Model
+		input.Conversation = conversation
 	}
-	return reservation, nil
+	return input
 }

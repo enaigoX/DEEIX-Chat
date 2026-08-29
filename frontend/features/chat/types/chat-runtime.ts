@@ -1,7 +1,8 @@
 import type {
   ChatInlineAlert,
-  ImageLoadingAspectRatio,
   ChatMessageProcessTrace,
+  ImageLoadingAspectRatio,
+  MessageAttachment,
 } from "@/features/chat/types/messages";
 import type { ConversationOptions } from "@/shared/api/conversation.types";
 import type { PublicModelPricingDTO } from "@/shared/api/model.types";
@@ -16,13 +17,26 @@ export type ChatModelOption = {
   platformModelName: string;
   icon: string;
   vendor: string;
+  vendorName: string;
+  vendorIcon: string;
+  displayGroupID: number | null;
+  displayGroupName: string;
+  displayGroupIcon: string;
   kinds: string[];
   protocols: string[];
   defaultOptions: ConversationOptions;
   optionControls: ModelOptionControl[];
+  lockedOptionPaths: string[];
   nativeToolKeys: string[];
   nativeTools: ModelNativeToolConfig[];
   pricing: PublicModelPricingDTO | null;
+  videoExtension: ModelMediaTaskConfig | null;
+};
+
+export type ModelMediaTaskConfig = {
+  enabled: boolean;
+  defaultOptions: ConversationOptions;
+  optionControls: ModelOptionControl[];
 };
 
 export type ModelOptionControlType = "boolean" | "number" | "select" | "text";
@@ -34,6 +48,7 @@ export type ModelOptionControl = {
   type?: ModelOptionControlType;
   options?: string[];
   placeholder?: string;
+  locked?: boolean;
 };
 
 export type PendingAttachment = {
@@ -64,6 +79,9 @@ export type UploadingAttachment = {
 
 export type PendingExchange = {
   key: string;
+  conversationScopeKey: string;
+  branchScopePath: string[];
+  branchScopeRunID: string;
   conversationPublicID: string | null;
   tempUserPublicID: string;
   tempAssistantPublicID: string;
@@ -74,6 +92,7 @@ export type PendingExchange = {
   parentPublicID: string | null;
   sourcePublicID: string | null;
   branchReason: "default" | "retry" | "edit";
+  reuseUserMessage: boolean;
   userContent: string;
   userAttachments?: PendingAttachment[];
   userServerMessageID?: number;
@@ -93,6 +112,7 @@ export type PendingExchange = {
   assistantCreatedAt: string;
   assistantUpdatedAt?: string;
   assistantContentType?: string;
+  assistantAttachments?: MessageAttachment[];
   assistantInputTokens?: number;
   assistantOutputTokens?: number;
   assistantCacheReadTokens?: number;
@@ -101,3 +121,5 @@ export type PendingExchange = {
   assistantLatencyMS?: number;
   compactDone?: { method: string; freed_tokens: number; summary_preview: string };
 };
+
+export type PendingExchangeMap = Record<string, PendingExchange>;

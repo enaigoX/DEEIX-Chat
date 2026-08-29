@@ -23,6 +23,15 @@ type BillingAccountState struct {
 	Status         string
 }
 
+// IdentityProviderSummary 描述用户绑定的第三方身份源展示信息。
+type IdentityProviderSummary struct {
+	ID      uint
+	Type    string
+	Name    string
+	Slug    string
+	LogoURL string
+}
+
 // UserView 面向应用层传递的用户视图
 // 序列化由 transport 层的响应 DTO 负责。
 type UserView struct {
@@ -56,6 +65,7 @@ type UserView struct {
 	TwoFactorRequired       bool
 	TwoFactorRecoveryCount  int
 	LastLoginAt             *time.Time
+	LastActiveAt            *time.Time
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
 	SubscriptionTier        string
@@ -66,6 +76,7 @@ type UserView struct {
 	BillingAccountCurrency  string
 	BillingBalanceNanousd   int64
 	BillingAccountStatus    string
+	IdentityProviders       []IdentityProviderSummary
 }
 
 // FromUser 将用户领域模型转换为前端可用的用户视图。
@@ -91,6 +102,7 @@ func FromUser(item domainuser.User, subscription *SubscriptionState) UserView {
 		PhoneVerifiedAt:        item.PhoneVerifiedAt,
 		UsernameChangedAt:      item.UsernameChangedAt,
 		LastLoginAt:            item.LastLoginAt,
+		LastActiveAt:           item.LastLoginAt,
 		CreatedAt:              item.CreatedAt,
 		UpdatedAt:              item.UpdatedAt,
 		SubscriptionTier:       "free",
@@ -122,6 +134,14 @@ func FromUser(item domainuser.User, subscription *SubscriptionState) UserView {
 	return view
 }
 
+// WithLastActiveAt 设置用户视图中的最近活跃时间。
+func WithLastActiveAt(view UserView, value *time.Time) UserView {
+	if value != nil {
+		view.LastActiveAt = value
+	}
+	return view
+}
+
 // WithBillingAccount 设置用户视图中的按量余额信息。
 func WithBillingAccount(view UserView, account *BillingAccountState) UserView {
 	if account == nil {
@@ -134,5 +154,11 @@ func WithBillingAccount(view UserView, account *BillingAccountState) UserView {
 	if normalizedStatus := strings.TrimSpace(account.Status); normalizedStatus != "" {
 		view.BillingAccountStatus = normalizedStatus
 	}
+	return view
+}
+
+// WithIdentityProviders 设置用户绑定的第三方身份源展示信息。
+func WithIdentityProviders(view UserView, providers []IdentityProviderSummary) UserView {
+	view.IdentityProviders = providers
 	return view
 }

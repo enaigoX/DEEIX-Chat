@@ -11,12 +11,14 @@ import (
 )
 
 const (
-	fileCategoryImage   = "image"
-	fileCategoryPDF     = "pdf"
-	fileCategoryWord    = "word"
-	fileCategoryExcel   = "excel"
-	fileCategoryText    = "text"
-	fileCategoryUnknown = "unknown"
+	fileCategoryImage        = "image"
+	fileCategoryVideo        = "video"
+	fileCategoryPDF          = "pdf"
+	fileCategoryWord         = "word"
+	fileCategoryPresentation = "presentation"
+	fileCategoryExcel        = "excel"
+	fileCategoryText         = "text"
+	fileCategoryUnknown      = "unknown"
 )
 
 func normalizeDetectedMIME(detected string, fileName string) string {
@@ -32,6 +34,10 @@ func normalizeDetectedMIME(detected string, fileName string) string {
 		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	case "doc":
 		return "application/msword"
+	case "pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case "ppt":
+		return "application/vnd.ms-powerpoint"
 	case "xlsx":
 		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	case "xls":
@@ -54,6 +60,8 @@ func normalizeDetectedMIME(detected string, fileName string) string {
 		switch ext {
 		case "docx":
 			return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		case "pptx":
+			return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 		case "xlsx":
 			return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 		}
@@ -110,10 +118,14 @@ func inferFileCategory(mimeType string, fileName string) string {
 	switch {
 	case strings.HasPrefix(mime, "image/"):
 		return fileCategoryImage
+	case strings.HasPrefix(mime, "video/"):
+		return fileCategoryVideo
 	case mime == "application/pdf" || ext == "pdf":
 		return fileCategoryPDF
 	case strings.Contains(mime, "wordprocessingml") || strings.Contains(mime, "msword") || ext == "docx" || ext == "doc":
 		return fileCategoryWord
+	case strings.Contains(mime, "presentationml") || strings.Contains(mime, "ms-powerpoint") || ext == "pptx" || ext == "ppt":
+		return fileCategoryPresentation
 	case strings.Contains(mime, "spreadsheetml") || strings.Contains(mime, "ms-excel") || mime == "text/csv" || ext == "xlsx" || ext == "xls" || ext == "csv":
 		return fileCategoryExcel
 	case isTextMIMEForEmbed(mime, fileName):
@@ -149,6 +161,9 @@ func maxBytesForCategory(category string, cfg config.Config) int64 {
 	if category == fileCategoryImage {
 		return cfg.FileImageMaxBytes
 	}
+	if category == fileCategoryVideo {
+		return 0
+	}
 	return cfg.FileDocMaxBytes
 }
 
@@ -158,7 +173,7 @@ func supportsInlineExtraction(category string) bool {
 
 func supportsExtraction(category string) bool {
 	switch category {
-	case fileCategoryPDF, fileCategoryWord, fileCategoryExcel, fileCategoryText:
+	case fileCategoryPDF, fileCategoryWord, fileCategoryPresentation, fileCategoryExcel, fileCategoryText:
 		return true
 	default:
 		return false
@@ -167,7 +182,7 @@ func supportsExtraction(category string) bool {
 
 func supportsRAG(category string) bool {
 	switch category {
-	case fileCategoryPDF, fileCategoryWord, fileCategoryExcel, fileCategoryText:
+	case fileCategoryPDF, fileCategoryWord, fileCategoryPresentation, fileCategoryExcel, fileCategoryText, fileCategoryImage:
 		return true
 	default:
 		return false

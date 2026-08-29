@@ -1,13 +1,16 @@
 package conversation
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
+	domainchannel "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/channel"
 	model "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
+	domainknowledgebase "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/knowledgebase"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
 )
 
 const (
@@ -19,7 +22,10 @@ const (
 )
 
 type attachmentSnapshotRef struct {
-	FileID string `json:"file_id"`
+	FileID       string `json:"file_id"`
+	Kind         string `json:"kind"`
+	MimeType     string `json:"mime_type"`
+	DetectedMIME string `json:"detected_mime"`
 }
 
 type conversationFileContextPlan struct {
@@ -59,6 +65,17 @@ func collectConversationFileIDs(messages []model.Message, currentFileIDs []strin
 }
 
 func parseAttachmentSnapshotFileIDs(raw string) []string {
+	items := parseAttachmentSnapshotRefs(raw)
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if fileID := strings.TrimSpace(item.FileID); fileID != "" {
+			result = append(result, fileID)
+		}
+	}
+	return result
+}
+
+func parseAttachmentSnapshotRefs(raw string) []attachmentSnapshotRef {
 	payload := strings.TrimSpace(raw)
 	if payload == "" || payload == "[]" {
 		return nil
@@ -67,13 +84,7 @@ func parseAttachmentSnapshotFileIDs(raw string) []string {
 	if err := json.Unmarshal([]byte(payload), &items); err != nil {
 		return nil
 	}
-	result := make([]string, 0, len(items))
-	for _, item := range items {
-		if fileID := strings.TrimSpace(item.FileID); fileID != "" {
-			result = append(result, fileID)
-		}
-	}
-	return result
+	return items
 }
 
 func filterCurrentAttachments(items []AttachmentInput) []AttachmentInput {
@@ -86,12 +97,68 @@ func filterCurrentAttachments(items []AttachmentInput) []AttachmentInput {
 	return result
 }
 
+func bindAttachmentMessageRoles(items []AttachmentInput, messages []model.Message) []AttachmentInput {
+	if len(items) == 0 || len(messages) == 0 {
+		return items
+	}
+	roles := make(map[string]string)
+	for _, message := range messages {
+		role := strings.ToLower(strings.TrimSpace(message.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		for _, fileID := range parseAttachmentSnapshotFileIDs(message.Attachments) {
+			if role == "user" || roles[fileID] == "" {
+				roles[fileID] = role
+			}
+		}
+	}
+	result := append([]AttachmentInput(nil), items...)
+	for index := range result {
+		result[index].MessageRole = roles[strings.TrimSpace(result[index].FileID)]
+	}
+	return result
+}
+
 func filterAttachmentsByContextMode(items []AttachmentInput, contextMode string) []AttachmentInput {
 	result := make([]AttachmentInput, 0)
 	for _, item := range items {
 		if strings.EqualFold(strings.TrimSpace(item.ContextMode), strings.TrimSpace(contextMode)) {
 			result = append(result, item)
 		}
+	}
+	return result
+}
+
+func isStableTextAttachment(item AttachmentInput) bool {
+	if strings.EqualFold(strings.TrimSpace(item.ContextMode), fileContextModeDirectImage) {
+		return false
+	}
+	return strings.TrimSpace(item.ExtractedText) != ""
+}
+
+func shouldShowAttachmentProcessTrace(items []AttachmentInput) bool {
+	for _, item := range items {
+		if strings.EqualFold(strings.TrimSpace(item.ContextMode), fileContextModeDirectImage) && !item.Current {
+			continue
+		}
+		if item.Current {
+			return true
+		}
+		if !strings.EqualFold(strings.TrimSpace(item.ContextMode), fileContextModeSkipped) {
+			return true
+		}
+	}
+	return false
+}
+
+func attachmentProcessTraceItems(items []AttachmentInput) []AttachmentInput {
+	result := make([]AttachmentInput, 0, len(items))
+	for _, item := range items {
+		if strings.EqualFold(strings.TrimSpace(item.ContextMode), fileContextModeDirectImage) && !item.Current {
+			continue
+		}
+		result = append(result, item)
 	}
 	return result
 }
@@ -109,7 +176,7 @@ func buildConversationFileContextPlan(
 	}
 	for _, item := range attachments {
 		kind := normalizeAttachmentKind(item.Kind, item.DetectedMIME)
-		if kind == "image" {
+		if kind == "image" && (item.Current || strings.EqualFold(strings.TrimSpace(item.MessageRole), "user")) {
 			item.ContextMode = fileContextModeDirectImage
 			plan.Attachments = append(plan.Attachments, item)
 			plan.FullAttachments = append(plan.FullAttachments, item)
@@ -167,7 +234,7 @@ func shouldUseRAGForAttachment(item AttachmentInput, fileMode string, cfg config
 			return true
 		}
 		if cfg.ContextTokenBudgetEnabled {
-			budget := llm.EffectiveContextBudgetFromCapabilities(capabilityModelName, capabilitiesJSON)
+			budget := domainchannel.EffectiveContextBudgetFromCapabilitiesWithFallback(capabilityModelName, capabilitiesJSON, cfg.ContextWindowFallbackTokens)
 			fileTokens := int(estimateTokens(item.ExtractedText))
 			return budget > 0 && fileTokens > budget*2/5
 		}
@@ -191,7 +258,72 @@ func fileContextPlanRAGObjects(items []AttachmentInput) []model.FileObject {
 			FileName:    item.FileName,
 			EmbedStatus: item.EmbedStatus,
 			ChunkCount:  item.ChunkCount,
+			UpdatedAt:   item.FileUpdatedAt,
 		})
+	}
+	return result
+}
+
+func (s *Service) resolveKnowledgeBaseRAGFiles(
+	ctx context.Context,
+	userID uint,
+	publicIDs []string,
+	ragAvailable bool,
+) ([]model.FileObject, error) {
+	if len(publicIDs) == 0 {
+		return nil, nil
+	}
+	if !ragAvailable || s.knowledgeBaseResolver == nil || s.ragSvc == nil {
+		return nil, ErrKnowledgeBaseUnavailable
+	}
+	bases, files, err := s.knowledgeBaseResolver.ResolveFiles(ctx, userID, publicIDs)
+	if err != nil {
+		if errors.Is(err, domainknowledgebase.ErrReferenceUnavailable) {
+			return nil, ErrInvalidKnowledgeBaseReference
+		}
+		return nil, err
+	}
+	for _, base := range bases {
+		if base.ReadyFileCount == 0 {
+			return nil, ErrKnowledgeBaseNotReady
+		}
+	}
+	ready := make([]model.FileObject, 0, len(files))
+	seen := make(map[uint]struct{}, len(files))
+	for _, file := range files {
+		if file.ID == 0 || !file.ProcessingReady || file.RagOptOut || !strings.EqualFold(strings.TrimSpace(file.EmbedStatus), "ready") || file.ChunkCount <= 0 {
+			continue
+		}
+		if _, exists := seen[file.ID]; exists {
+			continue
+		}
+		seen[file.ID] = struct{}{}
+		ready = append(ready, file)
+	}
+	if len(ready) == 0 {
+		return nil, ErrKnowledgeBaseNotReady
+	}
+	return ready, nil
+}
+
+func mergeRAGFileObjects(groups ...[]model.FileObject) []model.FileObject {
+	count := 0
+	for _, group := range groups {
+		count += len(group)
+	}
+	result := make([]model.FileObject, 0, count)
+	seen := make(map[uint]struct{}, count)
+	for _, group := range groups {
+		for _, item := range group {
+			if item.ID == 0 {
+				continue
+			}
+			if _, exists := seen[item.ID]; exists {
+				continue
+			}
+			seen[item.ID] = struct{}{}
+			result = append(result, item)
+		}
 	}
 	return result
 }

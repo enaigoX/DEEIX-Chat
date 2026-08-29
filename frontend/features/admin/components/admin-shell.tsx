@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { AdminSidebar } from "@/features/admin/components/admin-sidebar";
+import { CustomBrandAttribution } from "@/shared/components/powered-by-deeix";
 
 export function AdminShell({
   children,
@@ -19,6 +20,8 @@ export function AdminShell({
           </div>
         </main>
       </div>
+
+      <CustomBrandAttribution className="fixed bottom-4 right-4" />
     </div>
   );
 }

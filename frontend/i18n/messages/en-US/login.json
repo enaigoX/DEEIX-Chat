@@ -5,6 +5,7 @@
   "username": "Username",
   "emailOrUsername": "Email / Username",
   "password": "Password",
+  "newPassword": "New password",
   "newPasswordPlaceholder": "At least 8 characters, not digits only",
   "twoFactorCode": "Two-factor code",
   "twoFactorPlaceholder": "Code or recovery code",
@@ -15,8 +16,14 @@
   "signIn": "Sign in",
   "signingIn": "Signing in",
   "verifyAndSignIn": "Verify and sign in",
+  "backToLogin": "Back to sign-in",
   "backToPasswordLogin": "Back to password sign-in",
   "backToLoginMethods": "Back to sign-in methods",
+  "rememberPassword": "Remembered your password?",
+  "back": "Back",
+  "forgotPassword": "Forgot password?",
+  "resetPassword": "Reset password",
+  "resettingPassword": "Resetting",
   "register": "Register",
   "registering": "Registering",
   "send": "Send",
@@ -36,6 +43,9 @@
     "codeSendFailed": "Failed to send verification code.",
     "turnstileRequired": "Complete the human verification first.",
     "passwordInvalid": "Password must be at least 8 characters and not digits only.",
+    "passwordResetCodeFailed": "Unable to send reset code.",
+    "passwordResetFailed": "Password reset failed. Check your email, code, and new password.",
+    "passwordResetSuccess": "Password reset. Sign in again.",
     "registerFailed": "Registration failed. Please try again later."
   },
   "oauthCallback": {
@@ -45,6 +55,20 @@
     "bindSessionExpired": "Your session expired. Please sign in again before binding this identity provider.",
     "bindFailed": "Failed to bind identity provider",
     "loginFailed": "Third-party sign-in failed",
-    "loading": "Signing in"
+    "errorTitle": "Third-party sign-in was not completed",
+    "loading": "Signing in",
+    "loadingDescription": "Verifying the third-party identity. Please wait.",
+    "backToLogin": "Back to sign-in",
+    "emailConflict": {
+      "title": "This email already has an account",
+      "description": "For account security, the third-party identity cannot be merged directly into an existing account. Sign in to the existing account first, then link the third-party identity in account settings.",
+      "providerLabel": "Provider",
+      "providerUnknown": "Unknown provider",
+      "emailLabel": "Email",
+      "notePrefix": "To use another account, ",
+      "noteLink": "return to sign-in",
+      "noteSuffix": " and choose again.",
+      "signInExistingAccount": "Sign in to existing account"
+    }
   }
 }

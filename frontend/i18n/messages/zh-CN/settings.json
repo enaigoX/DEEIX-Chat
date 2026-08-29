@@ -70,8 +70,6 @@
       "colorMode": "颜色模式",
       "themePreset": "主题",
       "fontSize": "字体大小",
-      "chatFont": "对话字体",
-      "chatFontWeight": "对话字重",
       "preset": {
         "default": "默认",
         "azure": "Azure",
@@ -87,29 +85,23 @@
         "system": "跟随系统",
         "dark": "深色"
       },
-      "font": {
-        "default": "默认",
-        "songti": "衬线",
-        "heiti": "无衬线",
-        "mono": "等宽"
-      },
       "fontSizeOption": {
         "small": "小号",
         "standard": "标准",
         "medium": "中号",
         "large": "大号"
-      },
-      "fontWeight": {
-        "regular": "常规",
-        "medium": "中等",
-        "semibold": "半粗",
-        "bold": "粗体"
       }
     },
     "avatarDialog": {
       "title": "编辑头像",
-      "description": "输入头像 URL，或点击头像区域生成像素风头像。",
+      "description": "上传图片、输入头像 URL，或生成像素风头像。",
       "avatarURL": "头像 URL",
+      "upload": "上传图片",
+      "uploading": "上传中",
+      "uploaded": "头像已上传",
+      "uploadFailed": "头像上传失败",
+      "uploadInvalid": "请选择图片文件",
+      "generate": "生成头像",
       "apply": "应用"
     }
   },
@@ -348,12 +340,14 @@
   },
   "chatPage": {
     "defaultModel": {
-      "sectionTitle": "默认模型",
+      "sectionTitle": "基础会话",
       "title": "新会话默认模型",
       "description": "开启新对话时预选的模型。留空则使用系统推荐的第一个可用模型。",
       "systemRecommended": "系统默认",
       "autoTitle": "自动生成标题",
-      "autoTitleDescription": "关闭后，新对话使用第一条消息的前 20 个字符作为标题。"
+      "autoTitleDescription": "关闭后，新对话使用第一条消息的前 16 个字符作为标题。",
+      "autoLabels": "自动生成标签",
+      "autoLabelsDescription": "关闭后，系统将不再自动生成会话标签，可减少辅助模型调用及相应的 Token 消耗。"
     },
     "input": {
       "sectionTitle": "输入与发送",
@@ -370,6 +364,8 @@
       "restoreDraftDescription": "控制发送失败时是否自动恢复本次发送的文字和附件。",
       "preserveDraftTitle": "保留会话草稿",
       "preserveDraftDescription": "控制切换会话后是否保留并恢复当前会话的未发送内容。",
+      "reuseModelOptionsTitle": "复用模型配置",
+      "reuseModelOptionsDescription": "开启后，新会话选择同一模型时会自动填充上次使用的模型参数。",
       "deleteFilesDefaultTitle": "删除会话时默认删除文件",
       "deleteFilesDefaultDescription": "开启后，删除会话确认框会默认勾选同时删除文件；仍被其他会话引用的文件会保留。"
     },
@@ -377,6 +373,10 @@
       "sectionTitle": "显示与渲染",
       "markdownTitle": "Markdown 渲染",
       "markdownDescription": "控制 AI 回复是否渲染为格式化 Markdown 内容。",
+      "autoExpandThinkingTitle": "自动展开深度思考",
+      "autoExpandThinkingDescription": "回复生成时自动展开当前深度思考。",
+      "autoExpandToolCallsTitle": "自动展开工具调用",
+      "autoExpandToolCallsDescription": "工具运行时自动展开当前调用详情。",
       "modelTitle": "显示调用模型",
       "modelDescription": "控制 AI 回复下方是否展示本次调用的模型。",
       "tokenTitle": "显示 Token 用量",
@@ -385,12 +385,34 @@
       "latencyDescription": "控制 AI 回复下方是否展示本次调用的总耗时。",
       "costTitle": "显示调用总费用",
       "costDescription": "控制 AI 回复下方是否展示本次调用的总费用。",
-      "costDescriptionSelfMode": "控制 AI 回复下方是否展示本次调用的总费用。自用模式不展示。"
+      "costDescriptionSelfMode": "控制 AI 回复下方是否展示本次调用的总费用。自用模式不展示。",
+      "widthTitle": "对话区域宽度",
+      "width": {
+        "compact": "紧凑",
+        "standard": "标准",
+        "wide": "宽屏"
+      },
+      "chatFont": "对话字体",
+      "chatFontWeight": "对话字重",
+      "font": {
+        "default": "默认",
+        "songti": "衬线",
+        "heiti": "无衬线",
+        "mono": "等宽"
+      },
+      "fontWeight": {
+        "regular": "常规",
+        "medium": "中等",
+        "semibold": "半粗",
+        "bold": "粗体"
+      }
     },
     "context": {
       "sectionTitle": "上下文管理",
       "autoCompactTitle": "自动压缩上下文",
-      "autoCompactDescription": "当对话上下文接近模型限制时，自动对早期消息进行摘要压缩，保持对话连续性。关闭后需手动触发压缩。"
+      "autoCompactDescription": "开启后，当对话超过轮次或 Token 阈值时，系统会自动将较早消息压缩为摘要，并保留最近几轮原文，以减少上下文。关闭后，将不会自动压缩对话上下文。",
+      "reasoningPassbackTitle": "回传推理上下文",
+      "reasoningPassbackDescription": "开启后，支持的 Chat Completions 推理模型会在后续轮次携带上一轮推理内容，以提升多步推理连贯性。"
     },
     "file": {
       "sectionTitle": "文件处理",
@@ -460,6 +482,10 @@
       "used": "已使用 {value}",
       "total": "总额度 {value}"
     },
+    "periodOverage": {
+      "title": "超额按量",
+      "balance": "可用余额 {value}"
+    },
     "entitlements": {
       "title": "订阅权益",
       "count": "{count} 段",
@@ -484,6 +510,7 @@
       "monthly": "按月",
       "dailyUsage": "每日用量",
       "monthlyUsage": "月度用量",
+      "otherModels": "其他",
       "empty": "暂无用量数据。",
       "metrics": {
         "totalCost": "总费用",
@@ -493,7 +520,8 @@
       },
       "tooltip": {
         "cost": "费用",
-        "calls": "调用"
+        "calls": "调用",
+        "latency": "平均耗时"
       }
     },
     "usageLog": {
@@ -517,6 +545,7 @@
         "model": "模型",
         "baseBilling": "基础计费",
         "serviceBilling": "服务计费",
+        "balanceAfter": "结算后余额",
         "latency": "耗时"
       },
       "empty": "暂无调用日志"
@@ -591,10 +620,10 @@
     },
     "topUp": {
       "title": "充值",
-      "description": "输入美元金额并确认支付方式。",
+      "description": "输入充值金额并确认支付方式。",
       "currentBalance": "当前余额 {value}",
       "amount": "充值金额",
-      "amountAria": "充值美元金额",
+      "amountAria": "充值金额",
       "confirm": "充值"
     },
     "redemption": {

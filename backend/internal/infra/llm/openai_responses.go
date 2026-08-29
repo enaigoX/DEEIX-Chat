@@ -41,11 +41,21 @@ func buildResponsesRequestBody(
 	if adapter == AdapterOpenRouterResponses {
 		return buildOpenRouterResponsesRequestBody(model, input, messages, providerTools, toolDefinitions, providerStreamOptions, stream)
 	}
-	items := buildResponsesAPIInput(messages)
+	promptCache := resolveOpenAIPromptCacheConfig(adapter, input)
+	items := buildResponsesAPIInput(messages, &promptCache)
 	payload := map[string]interface{}{
 		"model":  strings.TrimSpace(model),
 		"input":  items,
 		"stream": stream,
+	}
+	if adapter == AdapterOpenAIResponses && input.Ephemeral {
+		payload["store"] = false
+	} else if adapter == AdapterOpenAIResponses && input.ResponsesBackground {
+		payload["background"] = true
+		payload["store"] = true
+	}
+	if instructions := strings.TrimSpace(input.Instructions); adapter == AdapterOpenAIResponses && instructions != "" {
+		payload["instructions"] = instructions
 	}
 	if maxTokens := modelParamInt(input.Options, "max_output_tokens"); maxTokens > 0 {
 		payload["max_output_tokens"] = maxTokens
@@ -59,19 +69,17 @@ func buildResponsesRequestBody(
 	}
 	nativeTools := append([]map[string]interface{}{}, providerTools...)
 	nativeTools = append(nativeTools, webSearchTools...)
-	if retention := normalizePromptCacheRetention(modelParamString(input.Options, "prompt_cache_retention")); retention != "" {
-		payload["prompt_cache_retention"] = retention
-	}
+	applyOpenAIPromptCacheRequestFields(payload, promptCache)
 	appendToolDeclarations(payload, providerTools, webSearchTools, buildOpenAITools(toolDefinitions, false))
 	// 有状态会话：提供 previous_response_id 时服务端续接存储的历史，
 	// input 仅包含本轮新消息，避免全量重传。
-	if prevID := strings.TrimSpace(input.PreviousResponseID); prevID != "" {
+	if prevID := strings.TrimSpace(input.PreviousResponseID); !input.Ephemeral && prevID != "" {
 		payload["previous_response_id"] = prevID
 	}
 	if streamOptions := responsesStreamOptions(providerStreamOptions); stream && len(streamOptions) > 0 {
 		payload["stream_options"] = streamOptions
 	}
-	applyProviderOptions(payload, input.Options, responsesProtectedProviderOptionKeys(adapter)...)
+	applyProviderOptions(payload, input.Options, responsesProtectedProviderOptionKeys(adapter, strings.TrimSpace(input.Instructions) != "")...)
 	if supportsResponsesIncludeDefaults(adapter) {
 		defaultIncludes := responsesDefaultIncludeValues(adapter, stream, nativeTools)
 		appendResponseInclude(payload, responseIncludeValues(input.Options, defaultIncludes...)...)
@@ -81,13 +89,16 @@ func buildResponsesRequestBody(
 	return payload
 }
 
-func responsesProtectedProviderOptionKeys(adapter string) []string {
+func responsesProtectedProviderOptionKeys(adapter string, hasManagedInstructions bool) []string {
 	keys := []string{
 		"contents",
 		"include",
 		"input",
 		"messages",
 		"model",
+		"prompt_cache_key",
+		"prompt_cache_options",
+		"prompt_cache_retention",
 		"previous_response_id",
 		"reasoning",
 		"response_format",
@@ -98,8 +109,13 @@ func responsesProtectedProviderOptionKeys(adapter string) []string {
 		"text",
 		"tools",
 	}
+	if adapter == AdapterOpenAIResponses {
+		keys = append(keys, "background", "store")
+	}
 	if adapter != AdapterOpenAIResponses {
 		keys = append(keys, "instructions", "metadata", "prompt")
+	} else if hasManagedInstructions {
+		keys = append(keys, "instructions")
 	}
 	return keys
 }
@@ -194,7 +210,7 @@ func responsesToolsIncludeType(tools []map[string]interface{}, toolType string) 
 	return false
 }
 
-func buildResponsesAPIInput(messages []Message) []map[string]interface{} {
+func buildResponsesAPIInput(messages []Message, promptCache *openAIPromptCacheConfig) []map[string]interface{} {
 	items := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {
 		if len(msg.ToolCalls) > 0 {
@@ -224,19 +240,19 @@ func buildResponsesAPIInput(messages []Message) []map[string]interface{} {
 		}
 		items = append(items, map[string]interface{}{
 			"role":    normalizeRole(msg.Role),
-			"content": buildResponsesAPIContent(msg),
+			"content": buildResponsesAPIContent(msg, promptCache),
 		})
 	}
 	return items
 }
 
 // buildResponsesAPIContent 将消息内容序列化为 Responses API 格式（content 数组）。
-func buildResponsesAPIContent(msg Message) []map[string]interface{} {
+func buildResponsesAPIContent(msg Message, promptCache *openAIPromptCacheConfig) []map[string]interface{} {
 	textType := responsesTextContentType(msg.Role)
 	if len(msg.Parts) == 0 {
-		return []map[string]interface{}{
-			{"type": textType, "text": msg.Content},
-		}
+		block := map[string]interface{}{"type": textType, "text": msg.Content}
+		appendOpenAIPromptCacheBreakpoint(block, msg.CacheControl, promptCache)
+		return []map[string]interface{}{block}
 	}
 	parts := make([]map[string]interface{}, 0, len(msg.Parts))
 	for _, part := range msg.Parts {
@@ -253,24 +269,35 @@ func buildResponsesAPIContent(msg Message) []map[string]interface{} {
 				mime = "image/jpeg"
 			}
 			b64 := base64.StdEncoding.EncodeToString(part.Data)
-			parts = append(parts, map[string]interface{}{
+			block := map[string]interface{}{
 				"type":      "input_image",
 				"image_url": "data:" + mime + ";base64," + b64,
-			})
+			}
+			appendOpenAIPromptCacheBreakpoint(block, part.CacheControl, promptCache)
+			parts = append(parts, block)
 		default: // text, file
 			text := part.Text
 			if strings.TrimSpace(text) == "" {
 				continue
 			}
-			parts = append(parts, map[string]interface{}{
+			block := map[string]interface{}{
 				"type": textType,
 				"text": text,
-			})
+			}
+			appendOpenAIPromptCacheBreakpoint(block, part.CacheControl, promptCache)
+			parts = append(parts, block)
 		}
 	}
 	if len(parts) == 0 {
-		return []map[string]interface{}{
-			{"type": textType, "text": msg.Content},
+		block := map[string]interface{}{"type": textType, "text": msg.Content}
+		appendOpenAIPromptCacheBreakpoint(block, msg.CacheControl, promptCache)
+		return []map[string]interface{}{block}
+	}
+	if msg.CacheControl != nil {
+		for index := len(parts) - 1; index >= 0; index-- {
+			if appendOpenAIPromptCacheBreakpoint(parts[index], msg.CacheControl, promptCache) {
+				break
+			}
 		}
 	}
 	return parts
@@ -309,12 +336,17 @@ func applyResponsesStreamEvent(
 
 	switch eventType {
 	case "response.created":
+		var eventErr error
 		if responseID := strings.TrimSpace(getStringFromPath(parsed, "response", "id")); responseID != "" {
 			result.ResponseID = responseID
+			if onEvent != nil {
+				eventErr = onEvent(GenerateStreamEvent{ResponseID: responseID})
+			}
 		}
 		if serviceTier := strings.TrimSpace(getStringFromPath(parsed, "response", "service_tier")); serviceTier != "" {
 			result.Usage.ServiceTier = serviceTier
 		}
+		return eventErr
 	case "response.output_item.added", "response.output_item.in_progress":
 		return mergeResponsesStreamOutputItem(result, asMap(parsed["item"]), onEvent)
 	case "response.output_item.done":
@@ -355,6 +387,17 @@ func applyResponsesStreamEvent(
 		if text != "" && !strings.Contains(result.Text, text) {
 			result.Text += text
 		}
+	case "response.image_generation_call.partial_image":
+		image, ok := parseResponsesPartialImage(parsed)
+		if !ok || onEvent == nil {
+			return nil
+		}
+		return onEvent(GenerateStreamEvent{
+			GeneratedImage:        &image,
+			GeneratedImageIndex:   toInt64(parsed["partial_image_index"]),
+			GeneratedImagePartial: true,
+			ResponseID:            result.ResponseID,
+		})
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta", "response.thinking.delta":
 		reasoning := parseResponsesReasoningDelta(eventType, parsed)
 		if reasoning == nil || reasoning.Text == "" {
@@ -376,7 +419,7 @@ func applyResponsesStreamEvent(
 			mergeReasoningDeltaOutput(&result.Reasoning, reasoning)
 		}
 	case "response.completed":
-		output := buildGenerateOutputFromParsedForAdapter(EndpointResponses, adapter, asMap(parsed["response"]))
+		output := buildGenerateOutputFromParsedForAdapter(EndpointResponses, adapter, asMap(parsed["response"]), false)
 		if result.Reasoning == nil && output.Reasoning != nil && onEvent != nil {
 			if text := firstNonEmptyString(output.Reasoning.Text, output.Reasoning.Summary); text != "" {
 				if err := onEvent(GenerateStreamEvent{
@@ -414,7 +457,7 @@ func parseResponsesServerToolStatusEvent(eventType string, parsed map[string]int
 		return ToolCall{}, false
 	}
 	status := ""
-	for _, suffix := range []string{".in_progress", ".searching", ".completed", ".failed", ".error"} {
+	for _, suffix := range []string{".in_progress", ".searching", ".generating", ".completed", ".failed", ".error"} {
 		if strings.HasSuffix(value, suffix) {
 			status = strings.TrimPrefix(suffix, ".")
 			value = strings.TrimSuffix(strings.TrimPrefix(value, "response."), suffix)
@@ -722,6 +765,9 @@ func mergeResponsesOutputItem(result *GenerateOutput, item map[string]interface{
 	case itemType == "reasoning":
 		mergeReasoningOutput(&result.Reasoning, parseReasoningOutputItem(item))
 	case isResponsesServerToolCallItem(item):
+		if image, ok := parseResponsesGeneratedImage(item); ok {
+			result.GeneratedImages = appendUniqueGeneratedImage(result.GeneratedImages, image)
+		}
 		appendUniqueToolCall(&result.ServerToolCalls, parseResponseServerToolCall(item))
 		result.Citations = appendUniqueStrings(result.Citations, parseResponseCitations(item)...)
 	case isResponsesClientToolCallType(itemType):
@@ -802,6 +848,9 @@ func parseResponseServerToolCall(item map[string]interface{}) ToolCall {
 		normalizeJSONString(item["result"]),
 		actionOutputJSON,
 	)
+	if isResponsesImageGenerationCallType(itemType) {
+		outputJSON = responsesImageGenerationToolOutputJSON(item)
+	}
 	errorJSON := normalizeJSONString(item["error"])
 	return ToolCall{
 		ToolCallID:    toolCallID,
@@ -812,6 +861,87 @@ func parseResponseServerToolCall(item map[string]interface{}) ToolCall {
 		OutputJSON:    outputJSON,
 		ErrorJSON:     errorJSON,
 	}
+}
+
+// parseResponsesPartialImage 解析 Responses 图片生成过程中的预览帧。
+func parseResponsesPartialImage(parsed map[string]interface{}) (GeneratedImage, bool) {
+	b64 := strings.TrimSpace(getString(parsed["partial_image_b64"]))
+	if b64 == "" {
+		return GeneratedImage{}, false
+	}
+	return GeneratedImage{
+		B64JSON:  b64,
+		MIMEType: openAIImageMIMEType(getString(parsed["output_format"])),
+	}, true
+}
+
+// parseResponsesGeneratedImage 从最终 image_generation_call 中提取可持久化图片。
+func parseResponsesGeneratedImage(item map[string]interface{}) (GeneratedImage, bool) {
+	if !isResponsesImageGenerationCallType(getString(item["type"])) {
+		return GeneratedImage{}, false
+	}
+	outputFormat := getString(item["output_format"])
+	revisedPrompt := strings.TrimSpace(getString(item["revised_prompt"]))
+	if b64 := strings.TrimSpace(getString(item["result"])); b64 != "" {
+		return GeneratedImage{
+			B64JSON:       b64,
+			MIMEType:      openAIImageMIMEType(outputFormat),
+			RevisedPrompt: revisedPrompt,
+		}, true
+	}
+	image, ok := parseOpenAIImagePayload(asMap(item["result"]), outputFormat)
+	if !ok {
+		image, ok = parseOpenAIImagePayload(item, outputFormat)
+	}
+	if !ok {
+		return GeneratedImage{}, false
+	}
+	if image.RevisedPrompt == "" {
+		image.RevisedPrompt = revisedPrompt
+	}
+	return image, true
+}
+
+// appendUniqueGeneratedImage 合并同一响应内重复出现的最终图片结果。
+func appendUniqueGeneratedImage(images []GeneratedImage, image GeneratedImage) []GeneratedImage {
+	for _, existing := range images {
+		if existing.B64JSON != "" && existing.B64JSON == image.B64JSON {
+			return images
+		}
+		if existing.URL != "" && existing.URL == image.URL {
+			return images
+		}
+	}
+	return append(images, image)
+}
+
+// isResponsesImageGenerationCallType 判断 Responses 输出项是否为图片生成结果。
+func isResponsesImageGenerationCallType(itemType string) bool {
+	switch strings.TrimSpace(itemType) {
+	case "image_generation_call", "image_generation_call_output":
+		return true
+	default:
+		return false
+	}
+}
+
+// responsesImageGenerationToolOutputJSON 只保留图片工具元数据，避免把 base64 写入 trace。
+func responsesImageGenerationToolOutputJSON(item map[string]interface{}) string {
+	payload := make(map[string]interface{})
+	for _, key := range []string{"background", "output_format", "quality", "revised_prompt", "size", "status"} {
+		if value, ok := item[key]; ok {
+			payload[key] = value
+		}
+	}
+	if _, ok := parseResponsesGeneratedImage(item); ok {
+		payload["image_generated"] = true
+	}
+	if result := asMap(item["result"]); len(result) > 0 {
+		if imageURL := strings.TrimSpace(getString(result["url"])); imageURL != "" {
+			payload["url"] = imageURL
+		}
+	}
+	return normalizeJSONString(payload)
 }
 
 func responseServerToolCallID(item map[string]interface{}, itemType string) string {

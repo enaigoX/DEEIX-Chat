@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, Info, Star } from "lucide-react";
+import { ChevronDown, CircleDollarSign, ImageIcon, Info, Star } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -62,6 +62,10 @@ function MCPToolRowAction({
       {children}
     </button>
   );
+}
+
+function formatMCPToolPrice(priceNanousd: number): string {
+  return `$${priceNanousd / 1_000_000_000}`;
 }
 
 function resolveMCPToolLabel(tool: MCPToolDTO, fallback: string): string {
@@ -230,6 +234,28 @@ export function ChatMCP({
     [defaultToolIDs, defaultToolIDSet, onDefaultToolsChange, selectionLimit, showToolLimitToast],
   );
 
+  const toggleDefaultToolGroup = React.useCallback(
+    (tools: MCPToolDTO[]) => {
+      const toolIDs = tools.map((tool) => tool.id);
+      if (toolIDs.length === 0) {
+        return;
+      }
+      const allDefault = toolIDs.every((toolID) => defaultToolIDSet.has(toolID));
+      if (allDefault) {
+        const removeSet = new Set(toolIDs);
+        void onDefaultToolsChange(defaultToolIDs.filter((id) => !removeSet.has(id)));
+        return;
+      }
+      const missingIDs = toolIDs.filter((toolID) => !defaultToolIDSet.has(toolID));
+      if (defaultToolIDs.length + missingIDs.length > selectionLimit) {
+        showToolLimitToast();
+        return;
+      }
+      void onDefaultToolsChange([...defaultToolIDs, ...missingIDs]);
+    },
+    [defaultToolIDs, defaultToolIDSet, onDefaultToolsChange, selectionLimit, showToolLimitToast],
+  );
+
   const toggleServerExpanded = React.useCallback((serverKey: string) => {
     setExpandedServerKeys((current) => {
       const next = new Set(current);
@@ -256,36 +282,47 @@ export function ChatMCP({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <InputGroupButton
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="relative size-7 rounded-md text-muted-foreground hover:text-foreground sm:size-8"
-          disabled={disabled}
-          aria-label={tComposer("mcpTools")}
-          title={selectedToolCount > 0 ? tComposer("mcpToolsSelected", { count: selectedToolCount }) : tComposer("mcpTools")}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-        >
-          <Unplug
-            size={20}
-            strokeWidth={1.4}
-            animate={hovered ? "default" : undefined}
-          />
-          {selectedToolCount > 0 ? (
-            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium leading-none text-primary-foreground">
-              {selectedToolCount}
-            </span>
-          ) : null}
-        </InputGroupButton>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <InputGroupButton
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="relative size-7 rounded-md text-muted-foreground hover:text-foreground sm:size-8"
+              disabled={disabled}
+              aria-label={tComposer("mcpTools")}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              <Unplug
+                size={20}
+                strokeWidth={1.4}
+                animate={hovered ? "default" : undefined}
+              />
+              {selectedToolCount > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium leading-none text-primary-foreground">
+                  {selectedToolCount}
+                </span>
+              ) : null}
+            </InputGroupButton>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {selectedToolCount > 0
+            ? tComposer("mcpToolsSelected", { count: selectedToolCount })
+            : tComposer("mcpTools")}
+        </TooltipContent>
+      </Tooltip>
       <PopoverContent
         side="bottom"
         align="start"
         sideOffset={8}
         data-mcp-tools-popover-content
         className="w-[22rem] p-1.5"
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
         onPointerDownOutside={(event) => {
           const target = event.target as HTMLElement | null;
           if (target?.closest("[data-mcp-tools-popover-content]")) {
@@ -313,9 +350,6 @@ export function ChatMCP({
         </div>
         <div
           className="px-1 py-1"
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
         >
           <Input
             value={search}
@@ -332,6 +366,9 @@ export function ChatMCP({
             const overLimit = group.tools.length > selectionLimit;
             const groupRowKey = `server:${group.key}`;
             const groupInteractive = hoveredRowKey === groupRowKey || focusedRowKey === groupRowKey;
+            const defaultCount = group.tools.filter((tool) => defaultToolIDSet.has(tool.id)).length;
+            const allDefault = group.tools.length > 0 && defaultCount === group.tools.length;
+            const hasDefault = defaultCount > 0;
             return (
               <div key={group.key} className="mb-1">
                 <div
@@ -369,6 +406,36 @@ export function ChatMCP({
                       ) : null}
                     </span>
                   </button>
+                  <Tooltip disableHoverableContent>
+                    <TooltipTrigger asChild>
+                      <MCPToolRowAction
+                        label={allDefault
+                          ? tComposer("mcpUnsetDefaultServerTools", { server: group.serverName })
+                          : tComposer("mcpSetDefaultServerTools", { server: group.serverName })}
+                        className={cn("-mr-2", hasDefault && "text-amber-500 hover:text-amber-500 focus-visible:text-amber-500")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleDefaultToolGroup(group.tools);
+                        }}
+                      >
+                        <Star
+                          className="size-3.5"
+                          strokeWidth={1.8}
+                          fill={allDefault ? "currentColor" : "none"}
+                        />
+                      </MCPToolRowAction>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="right"
+                      align="center"
+                      sideOffset={6}
+                      className="text-xs data-[state=closed]:[animation-duration:60ms] data-[state=open]:[animation-duration:90ms]"
+                    >
+                      {allDefault
+                        ? tComposer("mcpDefaultServerToolsEnabled")
+                        : tComposer("mcpDefaultServerToolsDisabled")}
+                    </TooltipContent>
+                  </Tooltip>
                   <button
                     type="button"
                     className="-mr-2 flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/45 outline-none transition-[background-color,color] duration-150 hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground"
@@ -422,8 +489,45 @@ export function ChatMCP({
                                 onBlur={() => setFocusedRowKey((current) => (current === toolRowKey ? null : current))}
                               >
                                 <span className="min-w-0 truncate text-xs text-current">{label}</span>
+                                {tool.attachmentInputMode === "image" ? (
+                                  <Tooltip disableHoverableContent>
+                                    <TooltipTrigger asChild>
+                                      <span
+                                        className="flex size-4 shrink-0 items-center justify-center rounded text-primary/75"
+                                        aria-label={tComposer("mcpImageProcessor")}
+                                      >
+                                        <ImageIcon className="size-3" strokeWidth={1.8} />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" className="text-xs">
+                                      {tComposer("mcpImageProcessor")}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : null}
                               </button>
                               <div className="-mr-2 flex shrink-0 items-center gap-0">
+                                {tool.priceNanousd > 0 ? (
+                                  <Tooltip disableHoverableContent>
+                                    <TooltipTrigger asChild>
+                                      <MCPToolRowAction
+                                        label={tComposer("mcpPaidTool", { price: formatMCPToolPrice(tool.priceNanousd) })}
+                                      >
+                                        <CircleDollarSign className="size-3.5" strokeWidth={1.8} />
+                                      </MCPToolRowAction>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="right"
+                                      align="center"
+                                      sideOffset={6}
+                                      className="max-w-xs text-left text-xs leading-5 data-[state=closed]:[animation-duration:60ms] data-[state=open]:[animation-duration:90ms]"
+                                    >
+                                      <div className="space-y-1">
+                                        <p className="tabular-nums">{tComposer("mcpPaidTool", { price: formatMCPToolPrice(tool.priceNanousd) })}</p>
+                                        <p>{tComposer("mcpPaidToolNote")}</p>
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : null}
                                 <Tooltip disableHoverableContent>
                                   <TooltipTrigger asChild>
                                     <MCPToolRowAction

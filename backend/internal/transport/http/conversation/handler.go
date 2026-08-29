@@ -1,16 +1,16 @@
 package conversation
 
 import (
+	"encoding/json"
 	"errors"
-	"mime"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
 	appconversation "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/conversation"
 	model "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/lifecycle"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/response"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
@@ -18,8 +18,11 @@ import (
 
 // Handler 封装会话 HTTP 处理。
 type Handler struct {
-	service *appconversation.Service
-	cfg     *config.Runtime
+	service  *appconversation.Service
+	cfg      *config.Runtime
+	// shutdown 触发时订阅型长连接（run 对账流、run 观看流）立即退出，
+	// 让优雅关停不被常驻 SSE 拖到超时；客户端依靠既有重连逻辑恢复。
+	shutdown *lifecycle.Shutdown
 }
 
 func normalizeStreamEventPayload(eventType string, payload map[string]interface{}) map[string]interface{} {
@@ -48,10 +51,11 @@ func normalizeStreamEventPayload(eventType string, payload map[string]interface{
 }
 
 // NewHandler 创建处理器。
-func NewHandler(service *appconversation.Service, cfg *config.Runtime) *Handler {
+func NewHandler(service *appconversation.Service, cfg *config.Runtime, shutdown *lifecycle.Shutdown) *Handler {
 	return &Handler{
-		service: service,
-		cfg:     cfg,
+		service:  service,
+		cfg:      cfg,
+		shutdown: shutdown,
 	}
 }
 
@@ -70,7 +74,7 @@ func (h *Handler) recordAudit(c *gin.Context, action string, resource string, re
 
 const (
 	defaultHTTPPageSize = 20
-	maxHTTPPageSize     = 100
+	maxHTTPPageSize     = 1000
 	maxMessagePageSize  = 1000
 )
 
@@ -120,6 +124,12 @@ func mapStreamError(err error) streamError {
 	case errors.Is(err, appconversation.ErrInvalidFileReference):
 		status = http.StatusBadRequest
 		message = "invalid file reference"
+	case errors.Is(err, appconversation.ErrFileNotFound):
+		status = http.StatusNotFound
+		message = "file not found"
+	case errors.Is(err, appconversation.ErrFileTooLarge):
+		status = http.StatusRequestEntityTooLarge
+		message = "file too large"
 	case errors.Is(err, appconversation.ErrInvalidMessageBranch):
 		status = http.StatusBadRequest
 		message = "invalid message branch"
@@ -129,6 +139,21 @@ func mapStreamError(err error) streamError {
 	case errors.Is(err, appconversation.ErrTooManySelectedTools):
 		status = http.StatusBadRequest
 		message = "too many selected tools"
+	case errors.Is(err, appconversation.ErrMultipleImageAttachmentProcessors):
+		status = http.StatusBadRequest
+		message = "multiple image attachment processors selected"
+	case errors.Is(err, appconversation.ErrImageAttachmentProcessingFailed):
+		status = http.StatusBadGateway
+		message = "image attachment processing failed"
+	case errors.Is(err, appconversation.ErrTooManySelectedSkills):
+		status = http.StatusBadRequest
+		message = "too many selected skills"
+	case errors.Is(err, appconversation.ErrSkillNotFound):
+		status = http.StatusNotFound
+		message = "skill not found"
+	case errors.Is(err, appconversation.ErrInvalidSkillUse):
+		status = http.StatusBadRequest
+		message = "invalid skill use"
 	case errors.Is(err, appconversation.ErrFileProcessingNotReady):
 		status = http.StatusBadRequest
 		message = "file processing not ready"
@@ -141,12 +166,20 @@ func mapStreamError(err error) streamError {
 	case errors.Is(err, appconversation.ErrModelRouteNotConfigured):
 		status = http.StatusServiceUnavailable
 		message = "model route not configured"
+	case errors.Is(err, appconversation.ErrGeneratedMediaArtifactUnavailable):
+		status = http.StatusBadGateway
+		code = appconversation.MessageErrorCode(err)
+		message = "generated media artifact is temporarily unavailable"
 	case errors.Is(err, appconversation.ErrUpstreamEmptyResponse):
 		status = http.StatusBadGateway
 		message = "model returned empty response"
 	case errors.Is(err, appconversation.ErrMessageGenerationCanceled):
 		status = http.StatusBadRequest
 		message = "message generation canceled"
+	case appconversation.IsUpstreamRateLimitError(err):
+		status = http.StatusTooManyRequests
+		code = appconversation.MessageErrorCodeUpstreamRateLimited
+		message = "upstream rate limited"
 	case errors.Is(err, appconversation.ErrMediaImagePromptRequired):
 		status = http.StatusBadRequest
 		message = "image prompt is required"
@@ -162,6 +195,15 @@ func mapStreamError(err error) streamError {
 	case errors.Is(err, appconversation.ErrMediaImageEditInputInvalid):
 		status = http.StatusBadRequest
 		message = "image edit input image is invalid"
+	case errors.Is(err, appconversation.ErrMediaVideoPromptRequired):
+		status = http.StatusBadRequest
+		message = "video prompt is required"
+	case errors.Is(err, appconversation.ErrMediaVideoInputInvalid):
+		status = http.StatusBadRequest
+		message = "video generation input is invalid"
+	case errors.Is(err, appconversation.ErrMediaVideoTooManyInputs):
+		status = http.StatusBadRequest
+		message = "too many video generation input images"
 	case errors.Is(err, appconversation.ErrMediaRouteProtocolMismatch):
 		status = http.StatusServiceUnavailable
 		message = "media route protocol does not match task"
@@ -190,6 +232,7 @@ func streamErrorPayload(err error) map[string]interface{} {
 	mapped := mapStreamError(err)
 	payload := map[string]interface{}{
 		"type":      "error",
+		"status":    mapped.Status,
 		"message":   mapped.Message,
 		"errorCode": mapped.Code,
 	}
@@ -207,12 +250,57 @@ func streamErrorPayloadWithCode(code string, message string) map[string]interfac
 	}
 }
 
+// moderationBlockedStreamPayload is retained for recovery/reconnect assembly only.
+// Live streams receive moderation_blocked via OnEvent after ApplyRunBlock commits.
+func moderationBlockedStreamPayload(result *appconversation.SendMessageResult) map[string]interface{} {
+	payload := map[string]interface{}{
+		"type": "moderation_blocked",
+	}
+	if result == nil {
+		return payload
+	}
+	if result.Moderation != nil && result.Moderation.Blocked {
+		payload["eventID"] = result.Moderation.EventID
+		payload["direction"] = result.Moderation.Direction
+		if len(result.Moderation.Categories) > 0 {
+			payload["categories"] = result.Moderation.Categories
+		}
+		return payload
+	}
+	eventID := strings.TrimSpace(result.AssistantMessage.ModerationEventID)
+	if eventID == "" {
+		eventID = strings.TrimSpace(result.UserMessage.ModerationEventID)
+	}
+	direction := "output"
+	if strings.EqualFold(strings.TrimSpace(result.UserMessage.Status), "blocked") {
+		direction = "input"
+	}
+	categoriesJSON := result.AssistantMessage.ModerationCategoriesJSON
+	if strings.TrimSpace(categoriesJSON) == "" || categoriesJSON == "[]" {
+		categoriesJSON = result.UserMessage.ModerationCategoriesJSON
+	}
+	var categories []string
+	_ = json.Unmarshal([]byte(categoriesJSON), &categories)
+	payload["eventID"] = eventID
+	payload["direction"] = direction
+	if len(categories) > 0 {
+		payload["categories"] = categories
+	}
+	return payload
+}
+
 func mapClientErrorMessage(err error) string {
 	if err == nil {
 		return ""
 	}
 	if errors.Is(err, appconversation.ErrUpstreamEmptyResponse) {
 		return "model returned empty response"
+	}
+	if errors.Is(err, appconversation.ErrGeneratedMediaArtifactUnavailable) {
+		return "generated media artifact is temporarily unavailable"
+	}
+	if appconversation.IsUpstreamRateLimitError(err) {
+		return "upstream rate limited"
 	}
 	if errors.Is(err, appconversation.ErrUpstreamRequestFailed) {
 		detail := appconversation.MessageErrorSummary(err)
@@ -329,82 +417,4 @@ func normalizeFileKinds(value string) string {
 		return "all"
 	}
 	return strings.Join(normalized, ",")
-}
-
-func buildContentDisposition(fileName string, inline bool) string {
-	normalizedName := strings.TrimSpace(fileName)
-	if normalizedName == "" {
-		normalizedName = "file"
-	}
-	escapedName := strings.NewReplacer("\\", "_", "\"", "_", "\n", "_", "\r", "_").Replace(normalizedName)
-	disposition := "attachment"
-	if inline {
-		disposition = "inline"
-	}
-	return disposition + `; filename="` + escapedName + `"; filename*=UTF-8''` + url.PathEscape(normalizedName)
-}
-
-func safeFileContentType(contentType string) string {
-	mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(contentType))
-	if err != nil {
-		mediaType = strings.TrimSpace(contentType)
-		params = nil
-	}
-	normalized := strings.ToLower(strings.TrimSpace(mediaType))
-	if normalized == "" {
-		return "application/octet-stream"
-	}
-	if isActiveFileContentType(normalized) {
-		return "text/plain; charset=utf-8"
-	}
-	if len(params) == 0 {
-		return normalized
-	}
-	return mime.FormatMediaType(normalized, params)
-}
-
-func isActiveFileContentType(mediaType string) bool {
-	switch strings.ToLower(strings.TrimSpace(mediaType)) {
-	case "text/html",
-		"text/css",
-		"text/javascript",
-		"text/xml",
-		"application/javascript",
-		"application/ecmascript",
-		"application/x-javascript",
-		"application/typescript",
-		"application/xml",
-		"application/xhtml+xml",
-		"image/svg+xml":
-		return true
-	default:
-		return false
-	}
-}
-
-func isPassiveInlineContentType(contentType string) bool {
-	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
-	if err != nil {
-		mediaType = contentType
-	}
-	normalized := strings.ToLower(strings.TrimSpace(mediaType))
-	if normalized == "application/pdf" {
-		return true
-	}
-	switch normalized {
-	case "image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp":
-		return true
-	default:
-		return false
-	}
-}
-
-func applyFileSecurityHeaders(c *gin.Context, public bool) {
-	c.Header("X-Content-Type-Options", "nosniff")
-	c.Header("Content-Security-Policy", "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'none'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:")
-	if public {
-		c.Header("Cross-Origin-Resource-Policy", "cross-origin")
-		return
-	}
-	c.Header("Cross-Origin-Resource-Policy", "same-origin")
 }

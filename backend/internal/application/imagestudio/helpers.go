@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -16,10 +14,9 @@ import (
 	appupload "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/upload"
 	domainconversation "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
 	domainimagestudio "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/imagestudio"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/pkg/conv"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/security"
 	"github.com/google/uuid"
 )
 
@@ -311,7 +308,7 @@ func stripBase64DataURLPrefix(value string) string {
 	return normalized
 }
 
-func (s *Service) readGeneratedImage(ctx context.Context, image llm.GeneratedImage) ([]byte, string, error) {
+func (s *Service) readGeneratedImage(ctx context.Context, image llm.GeneratedImage, trustedProviderEndpoint string) ([]byte, string, error) {
 	mimeType := strings.TrimSpace(image.MIMEType)
 	if mimeType == "" {
 		mimeType = "image/png"
@@ -327,39 +324,30 @@ func (s *Service) readGeneratedImage(ctx context.Context, image llm.GeneratedIma
 	if url == "" {
 		return nil, mimeType, ErrUpstreamEmptyResponse
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, mimeType, err
+	if s.mediaDownloader == nil {
+		return nil, mimeType, fmt.Errorf("generated media downloader is not configured")
 	}
 	cfg := s.cfg.Snapshot()
-	client := security.NewOutboundHTTPClient(cfg.Env, cfg.SSRFProtectionEnabled, 60*time.Second)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, mimeType, err
-	}
-	defer resp.Body.Close() //nolint:errcheck
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, mimeType, fmt.Errorf("download generated image failed: HTTP %d", resp.StatusCode)
-	}
-	if contentType := strings.TrimSpace(resp.Header.Get("Content-Type")); strings.HasPrefix(strings.ToLower(contentType), "image/") {
-		mimeType = strings.Split(contentType, ";")[0]
-	}
-	limit := s.cfg.Snapshot().MaxUploadFileBytes
+	limit := cfg.MaxUploadFileBytes
 	if limit <= 0 {
 		limit = 20 * 1024 * 1024
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	data, downloadedMIME, err := s.mediaDownloader.DownloadImage(ctx, url, trustedProviderEndpoint, limit)
 	if err != nil {
+		var tooLarge mediaArtifactResponseTooLarge
+		if errors.As(err, &tooLarge) {
+			return nil, mimeType, ErrFileTooLarge
+		}
 		return nil, mimeType, err
 	}
-	if int64(len(data)) > limit {
-		return nil, mimeType, ErrFileTooLarge
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(downloadedMIME)), "image/") {
+		mimeType = strings.TrimSpace(downloadedMIME)
 	}
 	return validateImageBytes(data, mimeType)
 }
 
-func (s *Service) uploadGeneratedImage(ctx context.Context, userID uint, modelName string, capturedAt time.Time, index int, total int, image llm.GeneratedImage) (*domainconversation.FileObject, error) {
-	data, mimeType, err := s.readGeneratedImage(ctx, image)
+func (s *Service) uploadGeneratedImage(ctx context.Context, userID uint, modelName string, trustedProviderEndpoint string, capturedAt time.Time, index int, total int, image llm.GeneratedImage) (*domainconversation.FileObject, error) {
+	data, mimeType, err := s.readGeneratedImage(ctx, image, trustedProviderEndpoint)
 	if err != nil {
 		return nil, err
 	}

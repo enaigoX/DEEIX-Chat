@@ -10,6 +10,11 @@
       "label": "Enable MCP tools",
       "description": "Allow users to select enabled MCP tools in conversations."
     },
+    "toolPrompt": {
+      "label": "MCP tool prompt",
+      "description": "Controls when and how the model calls MCP tools. Leave empty to use the built-in default prompt."
+    },
+    "defaultPromptPlaceholder": "Leave empty to use the built-in default prompt",
     "maxSelectedTools": {
       "label": "Selectable tools per message",
       "description": "Maximum MCP tools a user can select for one message. Default 32, maximum 128."
@@ -43,6 +48,7 @@
     "disabled": "Disabled"
   },
   "sort": {
+    "customOrder": "Custom order",
     "nameAsc": "Name A-Z",
     "nameDesc": "Name Z-A",
     "statusAsc": "Status",
@@ -82,13 +88,39 @@
     "viewToolSchema": "View {name} schema",
     "toggleTool": "Toggle tool {name}",
     "activateSelected": "Enable",
-    "deactivateSelected": "Disable"
+    "deactivateSelected": "Disable",
+    "order": "Order"
+  },
+  "order": {
+    "title": "MCP display order",
+    "description": "Configure how MCP servers and their tools appear in the conversation selector.",
+    "loading": "Loading MCP order",
+    "empty": "No MCP servers to order",
+    "loadFailed": "Failed to load MCP order",
+    "serverHeader": "MCP servers",
+    "toolHeader": "Tools",
+    "itemCount": "{count}",
+    "dragServer": "Drag to reorder MCP server {name}",
+    "dragTool": "Drag to reorder {name}",
+    "statusActive": "Enabled",
+    "statusInactive": "Disabled",
+    "emptyTools": "This server has no tools to order",
+    "saveSuccess": "MCP display order saved",
+    "saveFailed": "Failed to save MCP display order"
   },
   "bulkConfirm": {
     "title": "Confirm bulk action",
     "description": "Run this bulk action for {count} selected tools.",
     "confirm": "Confirm",
     "pending": "Processing"
+  },
+  "syncConfirm": {
+    "title": "Sync MCP tools",
+    "description": "Choose how to handle tool names and descriptions for \"{name}\".",
+    "preserve": "Keep current content",
+    "preserveDescription": "Keep names and descriptions while syncing other tool data",
+    "overwrite": "Use server content",
+    "overwriteDescription": "Sync names and descriptions returned by the MCP server"
   },
   "serverDialog": {
     "createTitle": "Add MCP server",
@@ -105,11 +137,27 @@
   },
   "toolDialog": {
     "title": "Edit MCP tool",
-    "description": "Customize the tool name and description shown in the conversation toolbar and model calls.",
+    "description": "Edit the tool name, description, and optional invocation capabilities.",
     "displayName": "Display name",
     "displayNamePlaceholder": "Tool display name",
     "toolDescription": "Description",
-    "toolDescriptionPlaceholder": "Describe what this tool is useful for"
+    "toolDescriptionPlaceholder": "Describe what this tool is useful for",
+    "imageRoutingTitle": "Image attachment processing",
+    "imageRoutingTooltip": "Only for tools that accept image data. The backend calls this tool first and the main model receives only its text result. Map parameters manually from the tool schema; fields are not detected automatically.",
+    "imageArgument": "Image data argument",
+    "imageArgumentTooltip": "Select the string argument in the tool schema that actually receives encoded image data.",
+    "selectImageArgument": "Select image data argument",
+    "noStringArguments": "This tool schema has no string argument for image data, so this capability cannot be enabled.",
+    "schemaArgumentRequired": "Required",
+    "imageEncoding": "Transfer format",
+    "imageEncodingTooltip": "Match the tool contract. Data URLs include a MIME type; raw Base64 contains only encoded data.",
+    "imageEncodingDataURL": "Data URL (includes MIME type)",
+    "imageEncodingBase64": "Raw Base64",
+    "passUserPrompt": "Also pass the user's request",
+    "passUserPromptTooltip": "Send the current user input to the tool as well. Use this for vision tools that need analysis instructions.",
+    "promptArgument": "User request argument",
+    "selectPromptArgument": "Select user request argument",
+    "unmappedRequiredArguments": "Unmapped required arguments: {names}"
   },
   "schemaDialog": {
     "fallbackTitle": "Tool schema",

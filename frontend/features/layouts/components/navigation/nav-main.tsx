@@ -1,67 +1,65 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { usePathname, useRouter } from "next/navigation"
-import { useTranslations } from "next-intl"
+import { useTranslations } from "next-intl";
+import * as React from "react";
 
-import { SidebarGroup, SidebarMenu, useSidebar } from "@/components/ui/sidebar"
-import { useChatSession } from "@/features/chat/context/chat-session-context"
-import { useNavigationSearch, useNavigationShortcuts } from "@/features/layouts/hooks/use-navigation-search"
-import { NAVIGATION_ITEMS } from "@/features/layouts/model/navigation-items"
-import { NavigationSearch } from "@/features/layouts/components/navigation/navigation-search"
-import { NavMainItem } from "@/features/layouts/components/navigation/nav-main-item"
-import { useSidebarRecents } from "@/features/recent/context/sidebar-recents-context"
+import {
+  SidebarGroup,
+  SidebarMenu,
+  useSidebarActions,
+  useSidebarIsMobile,
+  useSidebarVisualState,
+} from "@/components/ui/sidebar";
+import { useSidebarConversationField } from "@/entities/conversation";
+import { NavMainItem } from "@/features/layouts/components/navigation/nav-main-item";
+import { NavigationSearch } from "@/features/layouts/components/navigation/navigation-search";
+import {
+  useLayoutNavigationSearch,
+  useLayoutNavigationShortcuts,
+} from "@/features/layouts/hooks/use-layout-navigation-search";
+import { NAVIGATION_ITEMS } from "@/features/layouts/model/navigation-items";
+import {
+  filterConversationSearchResults,
+  NAVIGATION_SEARCH_PAGE_SIZE,
+} from "@/features/layouts/model/navigation-search";
 
-const MAX_SEARCH_RESULTS = 8
+export function NavMain({
+  onCreateConversation,
+}: {
+  onCreateConversation: () => void;
+}) {
+  const t = useTranslations("common.navigation");
+  const isMobile = useSidebarIsMobile();
+  const { setOpenMobile } = useSidebarActions();
+  const state = useSidebarVisualState();
+  const isCollapsed = !isMobile && state === "collapsed";
+  const sidebarConversations = useSidebarConversationField("items");
+  const untitled = t("newChat");
+  const initialSearchResults = React.useMemo(
+    () => filterConversationSearchResults(sidebarConversations, "", { untitled })
+      .slice(0, NAVIGATION_SEARCH_PAGE_SIZE),
+    [sidebarConversations, untitled],
+  );
 
-export function NavMain() {
-  const t = useTranslations("common.navigation")
-  const { state, isMobile, setOpenMobile } = useSidebar()
-  const router = useRouter()
-  const pathname = usePathname()
-  const { requestNewConversation } = useChatSession()
-  const { items, loadingInitial } = useSidebarRecents()
-  const isCollapsed = !isMobile && state === "collapsed"
-  const searchLoading = loadingInitial && items.length === 0
-
-  const search = useNavigationSearch({
-    items,
-    maxResults: MAX_SEARCH_RESULTS,
-  })
+  const search = useLayoutNavigationSearch({
+    initialResults: initialSearchResults,
+    untitled,
+  });
 
   const onCloseMobileSidebar = React.useCallback(() => {
-    setOpenMobile(false)
-  }, [setOpenMobile])
+    setOpenMobile(false);
+  }, [setOpenMobile]);
 
-  const onCreateConversation = React.useCallback(() => {
-    requestNewConversation({ projectID: "" })
-    if (pathname === "/chat") {
-      window.history.pushState(null, "", "/chat")
-      return
-    }
-    router.push("/chat")
-  }, [pathname, requestNewConversation, router])
-
-  useNavigationShortcuts({
+  useLayoutNavigationShortcuts({
     onCreateConversation,
     onOpenSearch: search.openSearch,
-  })
-
-  const primaryItems = React.useMemo(
-    () => NAVIGATION_ITEMS.filter((item) => item.group === "primary"),
-    [],
-  )
-
-  const secondaryItems = React.useMemo(
-    () => NAVIGATION_ITEMS.filter((item) => item.group === "secondary"),
-    [],
-  )
+  });
 
   return (
     <>
-      <SidebarGroup>
-        <SidebarMenu className="gap-0.2">
-          {primaryItems.map((item) => (
+      <SidebarGroup className="px-2 py-2">
+        <SidebarMenu className="gap-0.5">
+          {NAVIGATION_ITEMS.filter((item) => item.group === "primary").map((item) => (
             <NavMainItem
               key={item.id}
               item={item}
@@ -75,8 +73,8 @@ export function NavMain() {
           ))}
         </SidebarMenu>
 
-        <SidebarMenu className="mt-4 gap-0.2">
-          {secondaryItems.map((item) => (
+        <SidebarMenu className="mt-4 gap-0.5">
+          {NAVIGATION_ITEMS.filter((item) => item.group === "secondary").map((item) => (
             <NavMainItem
               key={item.id}
               item={item}
@@ -100,11 +98,27 @@ export function NavMain() {
         title={t("searchTitle")}
         description={t("searchDescription")}
         placeholder={t("searchPlaceholder")}
-        loading={searchLoading}
+        loading={search.loading}
+        loadingMore={search.loadingMore}
+        loadFailed={search.loadFailed}
+        loadMoreFailed={search.loadMoreFailed}
+        hasMore={search.hasMore}
         loadingText={t("searchLoading")}
+        loadingMoreText={t("searchLoadingMore")}
+        loadFailedText={t("searchLoadFailed")}
+        loadMoreFailedText={t("searchLoadMoreFailed")}
         emptyText={t("searchEmpty")}
+        showPreviewPane
+        previewConversationID={search.preview.conversationID}
+        previewMessages={search.preview.messages}
+        previewLoading={search.preview.loading}
+        previewLoadFailed={search.preview.loadFailed}
+        onLoadMore={search.loadMore}
+        onRetry={search.retrySearch}
+        onPreviewChange={search.previewResult}
+        onPreviewRetry={search.retryPreview}
         onSelect={search.selectResult}
       />
     </>
-  )
+  );
 }

@@ -7,7 +7,7 @@ server:
   # Optional. Defaults match docker-compose.sqlite.yml. Change only when exposed ports or public URLs differ.
   http_port: "8080"
   cors_allow_origin: "http://localhost:8080,http://127.0.0.1:8080"
-  trusted_proxies: "127.0.0.1/32,::1/128"
+  trusted_proxies: "127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7"
   public_api_base_url: "http://localhost:8080"
   public_web_base_url: "http://localhost:8080"
   frontend_dist_dir: "/app/frontend/out"
@@ -15,6 +15,7 @@ server:
   read_timeout_seconds: 120
   idle_timeout_seconds: 120
   max_header_bytes: 1048576
+  shutdown_timeout_seconds: 10
 
 security:
   # Required. Replace both values with strong random secrets before deployment.
@@ -22,8 +23,24 @@ security:
   data_encryption_key: "change-me-dev-data-encryption-key-32-bytes-min"
   # Optional. Enable in production to block outbound requests to private or metadata networks.
   ssrf_protection_enabled: false
+  # Optional. Exact trusted integration hostnames, comma-separated (for example: new-api,host.docker.internal). Configure only for hostname targets; do not include schemes, ports, paths, IPs, or wildcards.
+  ssrf_allowed_hosts: ""
+  # Optional. Trusted integration IP ranges in CIDR notation, comma-separated (for example: 172.17.0.0/16). Configure only when an IP range must be trusted; this is independent from ssrf_allowed_hosts.
+  ssrf_allowed_cidrs: ""
   # Optional. Override only when using a compatible Turnstile verification proxy.
   turnstile_siteverify_url: "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+branding:
+  # Optional. Frontend product branding; changes take effect after restarting the app.
+  title: DEEIX Chat
+  short_name: DEEIX
+  description: DEEIX Chat is a multi-model AI conversation system.
+  logo_url: ""
+  favicon_url: /favicon.ico
+  pwa_icon_192_url: /pwa/icon-192.png
+  pwa_icon_512_url: /pwa/icon-512.png
+  pwa_maskable_icon_512_url: /pwa/icon-maskable-512.png
+  apple_touch_icon_180_url: /pwa/apple-touch-icon.png
 
 database:
   # Required. SQLite is intended for single-node deployments.

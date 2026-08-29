@@ -11,6 +11,11 @@ import (
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 )
 
+const (
+	defaultMCPToolTimeoutSeconds = 10
+	maxMCPToolTimeoutSeconds     = 1800
+)
+
 // RuntimeSettings 负责把数据库中的动态配置应用到运行时配置，并维护配置缓存。
 type RuntimeSettings struct {
 	repo              repository.SettingsRepository
@@ -100,6 +105,8 @@ func (r *RuntimeSettings) applyItem(cfg *config.Config, item domainsettings.Syst
 		cfg.EmailRegistrationEnabled = toBool(item.Value, cfg.EmailRegistrationEnabled)
 	case "auth:email_verification_enabled":
 		cfg.EmailVerificationEnabled = toBool(item.Value, cfg.EmailVerificationEnabled)
+	case "auth:password_reset_enabled":
+		cfg.PasswordResetEnabled = toBool(item.Value, cfg.PasswordResetEnabled)
 	case "auth:smtp_host":
 		cfg.SMTPHost = strings.TrimSpace(item.Value)
 	case "auth:smtp_port":
@@ -128,12 +135,16 @@ func (r *RuntimeSettings) applyItem(cfg *config.Config, item domainsettings.Syst
 		cfg.MaxContextMessages = toInt(item.Value, cfg.MaxContextMessages)
 	case "chat:context_max_turns":
 		cfg.ContextMaxTurns = toInt(item.Value, cfg.ContextMaxTurns)
-	case "chat:context_max_input_tokens":
-		cfg.ContextMaxInputTokens = toInt(item.Value, cfg.ContextMaxInputTokens)
-	case "chat:context_compact_trigger_tokens":
-		cfg.ContextCompactTrigger = toInt(item.Value, cfg.ContextCompactTrigger)
+	case "chat:context_compact_enabled":
+		cfg.ContextCompactEnabled = toBool(item.Value, cfg.ContextCompactEnabled)
+	case "chat:context_window_fallback_tokens":
+		cfg.ContextWindowFallbackTokens = toInt(item.Value, cfg.ContextWindowFallbackTokens)
+	case "chat:context_compact_trigger_percent":
+		cfg.ContextCompactTriggerPercent = toInt(item.Value, cfg.ContextCompactTriggerPercent)
 	case "chat:context_compact_preserve_recent_turns":
 		cfg.ContextCompactPreserve = toInt(item.Value, cfg.ContextCompactPreserve)
+	case "chat:conversation_default_model":
+		cfg.ConversationDefaultModel = strings.TrimSpace(item.Value)
 	case "chat:conversation_task_model":
 		cfg.ConversationTaskModel = item.Value
 	case "chat:conversation_title_prompt":
@@ -142,6 +153,8 @@ func (r *RuntimeSettings) applyItem(cfg *config.Config, item domainsettings.Syst
 		cfg.ConversationLabelsPrompt = item.Value
 	case "chat:default_system_prompt":
 		cfg.DefaultSystemPrompt = item.Value
+	case "chat:skills_prompt":
+		cfg.SkillsPrompt = item.Value
 	case "chat:model_option_policy_mode":
 		cfg.ModelOptionPolicyMode = strings.TrimSpace(item.Value)
 	case "chat:model_option_allowed_paths":
@@ -240,10 +253,20 @@ func (r *RuntimeSettings) applyItem(cfg *config.Config, item domainsettings.Syst
 		cfg.ExtractMinerUSource = item.Value
 	case "extract:mineru_base_url":
 		cfg.ExtractMinerUBaseURL = item.Value
+	case "extract:mineru_file_types":
+		cfg.ExtractMinerUFileTypes = item.Value
 	case "extract:mineru_timeout_seconds":
 		cfg.ExtractMinerUTimeoutSeconds = toInt(item.Value, cfg.ExtractMinerUTimeoutSeconds)
 	case "extract:mineru_auth_token":
 		cfg.ExtractMinerUAuthToken = item.Value
+	case "extract:mistral_ocr_base_url":
+		cfg.ExtractMistralOCRBaseURL = item.Value
+	case "extract:mistral_ocr_auth_token":
+		cfg.ExtractMistralOCRAuthToken = item.Value
+	case "extract:mistral_ocr_model":
+		cfg.ExtractMistralOCRModel = item.Value
+	case "extract:mistral_ocr_timeout_seconds":
+		cfg.ExtractMistralOCRTimeoutSeconds = toInt(item.Value, cfg.ExtractMistralOCRTimeoutSeconds)
 	case "extract:llm_ocr_base_url":
 		cfg.ExtractLLMOCRBaseURL = item.Value
 	case "extract:llm_ocr_model":
@@ -344,6 +367,8 @@ func (r *RuntimeSettings) applyItem(cfg *config.Config, item domainsettings.Syst
 		cfg.MCPMaxLLMCallsPerRun = toInt(item.Value, cfg.MCPMaxLLMCallsPerRun)
 	case "mcp:mcp_max_tool_calls_per_run":
 		cfg.MCPMaxToolCallsPerRun = toInt(item.Value, cfg.MCPMaxToolCallsPerRun)
+	case "mcp:mcp_tool_prompt":
+		cfg.MCPToolPrompt = item.Value
 
 	}
 }
@@ -354,6 +379,9 @@ func (r *RuntimeSettings) normalizeConfig(cfg *config.Config) {
 	}
 	if !cfg.EmailRegistrationEnabled {
 		cfg.TurnstileRegistrationEnabled = false
+	}
+	if !cfg.EmailVerificationEnabled || (!cfg.UsernameLoginEnabled && !cfg.EmailLoginEnabled) {
+		cfg.PasswordResetEnabled = false
 	}
 	if !cfg.EmbeddingEnabled || strings.TrimSpace(cfg.EmbeddingHost) == "" || strings.TrimSpace(cfg.RAGModel) == "" {
 		cfg.RAGEnabled = false
@@ -380,11 +408,25 @@ func (r *RuntimeSettings) normalizeConfig(cfg *config.Config) {
 	if strings.TrimSpace(cfg.ModelOptionDeniedPaths) == "" {
 		cfg.ModelOptionDeniedPaths = config.DefaultModelOptionDeniedPathsJSON()
 	}
+	if cfg.ContextWindowFallbackTokens < config.MinContextWindowFallbackTokens || cfg.ContextWindowFallbackTokens > config.MaxContextWindowFallbackTokens {
+		cfg.ContextWindowFallbackTokens = config.DefaultContextWindowFallbackTokens
+	}
+	if cfg.ContextCompactTriggerPercent < 0 ||
+		cfg.ContextCompactTriggerPercent > config.MaxContextCompactTriggerPercent ||
+		(cfg.ContextCompactTriggerPercent > 0 && cfg.ContextCompactTriggerPercent < config.MinContextCompactTriggerPercent) {
+		cfg.ContextCompactTriggerPercent = config.DefaultContextCompactTriggerPercent
+	}
 	if cfg.MCPMaxSelectedToolsPerMessage <= 0 {
 		cfg.MCPMaxSelectedToolsPerMessage = config.DefaultMCPMaxSelectedToolsPerMessage
 	}
 	if cfg.MCPMaxSelectedToolsPerMessage > config.MaxMCPSelectedToolsPerMessage {
 		cfg.MCPMaxSelectedToolsPerMessage = config.MaxMCPSelectedToolsPerMessage
+	}
+	if cfg.MCPToolTimeoutSeconds <= 0 {
+		cfg.MCPToolTimeoutSeconds = defaultMCPToolTimeoutSeconds
+	}
+	if cfg.MCPToolTimeoutSeconds > maxMCPToolTimeoutSeconds {
+		cfg.MCPToolTimeoutSeconds = maxMCPToolTimeoutSeconds
 	}
 	if !cfg.FileFullContextLimitEnabled {
 		cfg.FileFullContextMaxBytes = 0

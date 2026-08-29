@@ -1,12 +1,9 @@
 "use client";
 
-import * as React from "react";
-import { CircleHelp, Save } from "lucide-react";
+import { CircleHelp, Download, Save } from "lucide-react";
 import { useTranslations } from "next-intl";
+import * as React from "react";
 import { toast } from "sonner";
-
-import { TaskModelField, type ModelOption } from "../shared/model-field";
-import { SettingsFieldEditor } from "../shared/settings-runtime-panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,38 +16,45 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { exportAllConversations, getAdminReferenceData, listAdminSettings, patchAdminSettings } from "@/features/admin/api";
+import { ConversationPromptPresetsSection } from "@/features/admin/components/sections/conversation/conversation-prompt-presets";
+import {
+  buildConversationSettingsFields,
+  CONVERSATION_DEFAULT_MODEL_SYSTEM,
+  CONVERSATION_TASK_MODEL_FOLLOW,
+  type ConversationSettingsField,
+  fieldID,
+  flattenConversationSettings,
+  resolveVisibleConversationFields,
+  toEditorField,
+} from "@/features/admin/model/conversation-settings";
+import { buildTaskModelOptions } from "@/features/admin/model/task-model-options";
+import { resolveAdminErrorMessage } from "@/features/admin/utils/admin-error";
+import type { PatchSettingItem } from "@/shared/api/settings.types";
 import { resolveAccessToken } from "@/shared/auth/resolve-access-token";
 import {
+  SettingsFieldInset,
   SettingsFieldItem,
   SettingsFieldList,
+  SettingsFieldRow,
   SettingsPage,
   SettingsSection,
   SettingsSectionSeparator,
 } from "@/shared/components/settings-layout";
-import { getAdminReferenceData, listAdminSettings, patchAdminSettings } from "@/features/admin/api";
-import {
-  applyConversationDefaults,
-  buildConversationSettingsFields,
-  CONVERSATION_TASK_MODEL_FOLLOW,
-  fieldID,
-  flattenConversationSettings,
-  resolveErrorMessage,
-  toEditorField,
-  type ConversationSettingsField,
-} from "@/features/admin/model/conversation-settings";
-import { buildTaskModelOptions } from "@/features/admin/model/task-model-options";
-import type { PatchSettingItem } from "@/shared/api/settings.types";
+import { downloadBlob, readExportManifest } from "@/shared/lib/export-download";
 import {
   HARD_DENIED_MODEL_OPTION_PATHS,
   MODEL_OPTION_POLICY_PROTOCOL_LABELS,
   MODEL_OPTION_POLICY_PROTOCOLS,
+  type ModelOptionRuleMap,
   parseModelOptionRuleMap,
   uniqueModelOptionPaths,
-  type ModelOptionRuleMap,
 } from "@/shared/lib/model-option-policy";
+import { SettingsFieldEditor } from "../shared/settings-runtime-panel";
+import { type ModelOption, TaskModelField } from "../shared/task-model-field";
 
 function isModelOptionPolicyField(field: ConversationSettingsField): boolean {
-  return field.key.startsWith("model_option_");
+  return field.section === "optionPassthrough";
 }
 
 type ModelOptionPreviewRow = {
@@ -223,10 +227,6 @@ generationConfig.safetySettings.threshold`}
     "reasoning.effort",
     "text.verbosity"
   ],
-  "openrouter_responses": [
-    "reasoning.effort",
-    "reasoning.summary"
-  ],
   "openai_image_generations": [
     "background",
     "moderation",
@@ -257,6 +257,19 @@ generationConfig.safetySettings.threshold`}
     "generationConfig.imageConfig.aspectRatio",
     "generationConfig.imageConfig.imageSize"
   ],
+  "gemini_interactions": [
+    "generation_config.temperature",
+    "generation_config.top_p",
+    "generation_config.max_output_tokens",
+    "generation_config.thinking_level",
+    "generation_config.thinking_summaries",
+    "response_format.type",
+    "response_format.aspect_ratio",
+    "response_format.image_size",
+    "response_format.mime_type",
+    "response_format.schema",
+    "generation_config.video_config.task"
+  ],
   "xai_image": [
     "aspect_ratio",
     "n",
@@ -269,9 +282,26 @@ generationConfig.safetySettings.threshold`}
     "resolution",
     "response_format"
   ],
+  "xai_video": [
+    "aspect_ratio",
+    "duration",
+    "resolution"
+  ],
+  "xai_video_extensions": [
+    "duration"
+  ],
   "openai_chat_completions": [
     "service_tier",
     "thinking.type"
+  ],
+  "openrouter_chat_completions": [
+    "reasoning_effort",
+    "reasoning.effort",
+    "thinking.type"
+  ],
+  "openrouter_responses": [
+    "reasoning.effort",
+    "reasoning.summary"
   ],
   "anthropic_messages": [
     "speed",
@@ -306,7 +336,7 @@ generationConfig.safetySettings.threshold`}
             <h4 className="text-sm font-medium text-foreground">{t("guide.protocolTitle")}</h4>
             <p className="text-xs">{t("guide.protocolDescription")}</p>
             <div className="flex flex-wrap gap-1.5">
-              {["default", "openai_chat_completions", "openai_responses", "openrouter_responses", "openai_image_generations", "openai_image_edits", "google_image_generation", "xai_image", "xai_image_edits", "anthropic_messages", "xai_responses", "gemini_generate_content"].map((item) => (
+              {MODEL_OPTION_POLICY_PROTOCOLS.map((item) => (
                 <code key={item} className="rounded-md bg-muted/60 px-2 py-1 text-xs text-foreground">{item}</code>
               ))}
             </div>
@@ -339,13 +369,41 @@ export function AdminConversationSettingsPage() {
   const [saving, setSaving] = React.useState(false);
   const [settingsMap, setSettingsMap] = React.useState<Record<string, string>>({});
   const [savedMap, setSavedMap] = React.useState<Record<string, string>>({});
-  const [modelOptions, setModelOptions] = React.useState<ModelOption[]>(() =>
+  const [taskModelOptions, setTaskModelOptions] = React.useState<ModelOption[]>(() =>
     buildTaskModelOptions({
       models: [],
       followLabel: t("taskModel.follow"),
       followValue: CONVERSATION_TASK_MODEL_FOLLOW,
     }),
   );
+  const [defaultModelOptions, setDefaultModelOptions] = React.useState<ModelOption[]>(() =>
+    buildTaskModelOptions({
+      models: [],
+      followLabel: t("defaultModel.systemRecommended"),
+      followValue: CONVERSATION_DEFAULT_MODEL_SYSTEM,
+    }),
+  );
+  const [exporting, setExporting] = React.useState(false);
+
+  const handleExportConversations = React.useCallback(async () => {
+    setExporting(true);
+    try {
+      const token = await resolveAccessToken();
+      if (!token) return;
+      const { blob, fileName } = await exportAllConversations(token);
+      const manifest = await readExportManifest(blob);
+      downloadBlob(blob, fileName);
+      if (manifest && (!manifest.complete || (manifest.failed ?? 0) > 0)) {
+        toast.warning(t("dataExport.partial", { exported: manifest.exported ?? 0, failed: manifest.failed ?? 0 }));
+      } else if (manifest) {
+        toast.success(t("dataExport.success", { count: manifest.exported ?? 0 }));
+      }
+    } catch {
+      toast.error(t("dataExport.failed"));
+    } finally {
+      setExporting(false);
+    }
+  }, [t]);
 
   const loadSettings = React.useCallback(async () => {
     setLoading(true);
@@ -357,19 +415,25 @@ export function AdminConversationSettingsPage() {
       }
       const [grouped, referenceData] = await Promise.all([
         listAdminSettings(token),
-        getAdminReferenceData(token).catch(() => null),
+        getAdminReferenceData(token).catch((): null => null),
       ]);
       const nextModelOptions = buildTaskModelOptions({
         models: referenceData?.models ?? [],
         followLabel: t("taskModel.follow"),
         followValue: CONVERSATION_TASK_MODEL_FOLLOW,
       });
+      const nextDefaultModelOptions = buildTaskModelOptions({
+        models: referenceData?.models ?? [],
+        followLabel: t("defaultModel.systemRecommended"),
+        followValue: CONVERSATION_DEFAULT_MODEL_SYSTEM,
+      });
       const flattened = flattenConversationSettings(grouped);
-      setModelOptions(nextModelOptions);
+      setTaskModelOptions(nextModelOptions);
+      setDefaultModelOptions(nextDefaultModelOptions);
       setSettingsMap(flattened);
       setSavedMap(flattened);
     } catch (error) {
-      toast.error(t("toast.loadFailed"), { description: resolveErrorMessage(error) });
+      toast.error(t("toast.loadFailed"), { description: resolveAdminErrorMessage(error) });
     } finally {
       setLoading(false);
     }
@@ -390,8 +454,8 @@ export function AdminConversationSettingsPage() {
     return result;
   }, [conversationSettingsFields, savedMap, settingsMap]);
 
-  const handleSave = React.useCallback(async () => {
-    const items: PatchSettingItem[] = conversationSettingsFields
+  const handleSave = React.useCallback(async (fields: ConversationSettingsField[]) => {
+    const items: PatchSettingItem[] = fields
       .filter((field) => dirtyFieldIDs.has(fieldID(field)))
       .map((field) => ({
         namespace: field.namespace,
@@ -414,19 +478,27 @@ export function AdminConversationSettingsPage() {
       setSavedMap(flattened);
       toast.success(t("toast.updated"));
     } catch (error) {
-      toast.error(t("toast.saveFailed"), { description: resolveErrorMessage(error) });
+      toast.error(t("toast.saveFailed"), { description: resolveAdminErrorMessage(error) });
     } finally {
       setSaving(false);
     }
-  }, [conversationSettingsFields, dirtyFieldIDs, settingsMap, t]);
+  }, [dirtyFieldIDs, settingsMap, t]);
 
+  const visibleConversationSettingsFields = React.useMemo(
+    () => resolveVisibleConversationFields(conversationSettingsFields, settingsMap),
+    [conversationSettingsFields, settingsMap],
+  );
   const conversationFields = React.useMemo(
-    () => conversationSettingsFields.filter((field) => !isModelOptionPolicyField(field)),
-    [conversationSettingsFields],
+    () => visibleConversationSettingsFields.filter((field) => field.section === "conversation"),
+    [visibleConversationSettingsFields],
+  );
+  const contextManagementFields = React.useMemo(
+    () => visibleConversationSettingsFields.filter((field) => field.section === "contextManagement"),
+    [visibleConversationSettingsFields],
   );
   const modelOptionFields = React.useMemo(
-    () => conversationSettingsFields.filter(isModelOptionPolicyField),
-    [conversationSettingsFields],
+    () => visibleConversationSettingsFields.filter(isModelOptionPolicyField),
+    [visibleConversationSettingsFields],
   );
   const modelOptionMode = settingsMap["chat.model_option_policy_mode"] || "allowlist";
   const modelOptionModeField = React.useMemo(
@@ -453,7 +525,7 @@ export function AdminConversationSettingsPage() {
   );
   const renderSaveAction = React.useCallback(
     (fields: ConversationSettingsField[]) => hasDirtyField(fields) ? (
-      <Button type="button" size="sm" disabled={loading || saving} onClick={() => void handleSave()}>
+      <Button type="button" size="sm" disabled={loading || saving} onClick={() => void handleSave(fields)}>
         <Save className="size-3.5" />
         {commonT("actions.save")}
       </Button>
@@ -461,6 +533,7 @@ export function AdminConversationSettingsPage() {
     [commonT, handleSave, hasDirtyField, loading, saving],
   );
   const modelOptionActions = renderSaveAction(modelOptionFields);
+  const contextManagementActions = renderSaveAction(contextManagementFields);
   const conversationActions = renderSaveAction(conversationFields);
 
   function renderField(
@@ -468,26 +541,10 @@ export function AdminConversationSettingsPage() {
     index: number,
     options?: {
       animateLayout?: boolean;
+      inset?: boolean;
     },
   ) {
     const id = fieldID(field);
-    if (id === "chat.conversation_task_model") {
-      return (
-        <SettingsFieldItem key={id} index={index}>
-          <TaskModelField
-            id={id}
-            label={field.label}
-            description={field.description}
-            value={settingsMap[id] ?? ""}
-            fallbackValue={CONVERSATION_TASK_MODEL_FOLLOW}
-            dirty={(settingsMap[id] ?? "") !== (savedMap[id] ?? "")}
-            disabled={loading || saving}
-            modelOptions={modelOptions}
-            onChange={(value) => setSettingsMap((prev) => ({ ...prev, [id]: value }))}
-          />
-        </SettingsFieldItem>
-      );
-    }
     const labelAction =
       field.key === "model_option_allowed_paths" || field.key === "model_option_denied_paths"
         ? <ModelOptionPolicyGuideButton t={t} />
@@ -501,18 +558,46 @@ export function AdminConversationSettingsPage() {
           t={t}
         />
       ) : undefined;
+    const content = id === "chat.conversation_default_model" ? (
+      <TaskModelField
+        id={id}
+        label={field.label}
+        description={field.description}
+        value={settingsMap[id] ?? ""}
+        fallbackValue={CONVERSATION_DEFAULT_MODEL_SYSTEM}
+        dirty={(settingsMap[id] ?? "") !== (savedMap[id] ?? "")}
+        disabled={loading || saving}
+        modelOptions={defaultModelOptions}
+        onChange={(value) => setSettingsMap((prev) => ({ ...prev, [id]: value }))}
+      />
+    ) : id === "chat.conversation_task_model" || id === "chat.compact_task_model" ? (
+      <TaskModelField
+        id={id}
+        label={field.label}
+        description={field.description}
+        value={settingsMap[id] ?? ""}
+        fallbackValue={CONVERSATION_TASK_MODEL_FOLLOW}
+        dirty={(settingsMap[id] ?? "") !== (savedMap[id] ?? "")}
+        disabled={loading || saving}
+        modelOptions={taskModelOptions}
+        onChange={(value) => setSettingsMap((prev) => ({ ...prev, [id]: value }))}
+      />
+    ) : (
+      <SettingsFieldEditor
+        field={toEditorField(field)}
+        value={settingsMap[id] ?? ""}
+        dirty={(settingsMap[id] ?? "") !== (savedMap[id] ?? "")}
+        disabled={loading || saving}
+        labelAction={labelAction}
+        afterControl={afterControl}
+        animateLayout={options?.animateLayout ?? true}
+        onChange={(value) => setSettingsMap((prev) => ({ ...prev, [id]: value }))}
+      />
+    );
+
     return (
       <SettingsFieldItem key={id} index={index}>
-        <SettingsFieldEditor
-          field={toEditorField(field)}
-          value={settingsMap[id] ?? ""}
-          dirty={(settingsMap[id] ?? "") !== (savedMap[id] ?? "")}
-          disabled={loading || saving}
-          labelAction={labelAction}
-          afterControl={afterControl}
-          animateLayout={options?.animateLayout ?? true}
-          onChange={(value) => setSettingsMap((prev) => ({ ...prev, [id]: value }))}
-        />
+        {options?.inset ? <SettingsFieldInset>{content}</SettingsFieldInset> : content}
       </SettingsFieldItem>
     );
   }
@@ -527,6 +612,18 @@ export function AdminConversationSettingsPage() {
 
       <SettingsSectionSeparator />
 
+      <SettingsSection title={t("sections.contextManagement")} actions={contextManagementActions}>
+        <SettingsFieldList>
+          {contextManagementFields.map((field, index) => renderField(field, index, { inset: Boolean(field.subgroupKey) }))}
+        </SettingsFieldList>
+      </SettingsSection>
+
+      <SettingsSectionSeparator />
+
+      <ConversationPromptPresetsSection />
+
+      <SettingsSectionSeparator />
+
       <SettingsSection title={t("sections.optionPassthrough")} actions={modelOptionActions}>
         <SettingsFieldList>
           {modelOptionModeField ? renderField(modelOptionModeField, 0) : null}
@@ -535,6 +632,29 @@ export function AdminConversationSettingsPage() {
               animateLayout: false,
             })
             : null}
+        </SettingsFieldList>
+      </SettingsSection>
+
+      <SettingsSectionSeparator />
+
+      <SettingsSection title={t("sections.dataExport")}>
+        <SettingsFieldList>
+          <SettingsFieldItem>
+            <SettingsFieldRow
+              title={t("dataExport.title")}
+              description={t("dataExport.description")}
+            >
+              <Button
+                variant="default"
+                size="sm"
+                disabled={exporting}
+                onClick={handleExportConversations}
+              >
+                <Download className="size-3.5" />
+                {t("dataExport.exportButton")}
+              </Button>
+            </SettingsFieldRow>
+          </SettingsFieldItem>
         </SettingsFieldList>
       </SettingsSection>
     </SettingsPage>

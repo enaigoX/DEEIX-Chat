@@ -34,10 +34,19 @@ func New(cfg config.Config) (*gorm.DB, error) {
 	if err = schema.Migrate(db); err != nil {
 		return nil, err
 	}
+	if err = schema.SeedModelVendors(db); err != nil {
+		return nil, err
+	}
+	if err = schema.CleanupRemovedColumns(db); err != nil {
+		return nil, err
+	}
 	if err = sqlitevec.Migrate(db); err != nil {
 		return nil, err
 	}
 	if err = schema.SeedLLMSettings(db); err != nil {
+		return nil, err
+	}
+	if err = schema.SeedPermissionGroups(db); err != nil {
 		return nil, err
 	}
 	if err = schema.SeedBillingCatalog(db); err != nil {

@@ -9,18 +9,22 @@ import (
 )
 
 var validModelOptionProtocolKeys = map[string]struct{}{
-	"default":                  {},
-	"openai_chat_completions":  {},
-	"openai_image_generations": {},
-	"openai_image_edits":       {},
-	"openai_responses":         {},
-	"openrouter_responses":     {},
-	"anthropic_messages":       {},
-	"xai_responses":            {},
-	"xai_image":                {},
-	"xai_image_edits":          {},
-	"gemini_generate_content":  {},
-	"google_image_generation":  {},
+	"default":                     {},
+	"openai_chat_completions":     {},
+	"openrouter_chat_completions": {},
+	"openrouter_responses":        {},
+	"openai_image_generations":    {},
+	"openai_image_edits":          {},
+	"openai_responses":            {},
+	"anthropic_messages":          {},
+	"xai_responses":               {},
+	"xai_image":                   {},
+	"xai_image_edits":             {},
+	"xai_video":                   {},
+	"xai_video_extensions":        {},
+	"gemini_generate_content":     {},
+	"google_image_generation":     {},
+	"gemini_interactions":         {},
 }
 
 // validateModelOptionPathsJSON 校验模型参数透传路径配置，防止保存不可解析或越界的策略。

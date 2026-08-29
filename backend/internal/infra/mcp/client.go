@@ -15,56 +15,46 @@ import (
 	"time"
 
 	platformtracing "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/observability/tracing"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/outboundhttp"
+	portmcp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/mcp"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/shared/security"
 )
 
-const protocolVersion = "2025-06-18"
+const (
+	protocolVersion         = "2025-06-18"
+	defaultRequestTimeoutMS = 10000
+	defaultConnectTimeout   = 10 * time.Second
+)
 
 // Client 封装 MCP Streamable HTTP JSON-RPC 客户端。
 type Client struct {
-	httpClient *http.Client
-	nextID     atomic.Int64
+	httpClients *outboundhttp.Pool
+	nextID      atomic.Int64
 }
 
-// CallConfig 定义 MCP 调用配置。
-type CallConfig struct {
-	BaseURL   string
-	AuthToken string
-	TimeoutMS int
-	Headers   map[string]string
-}
+// 数据契约定义在 ports/mcp，此处保留同名引用供实现使用。
+type (
+	CallConfig = portmcp.CallConfig
+	CallInput  = portmcp.CallInput
+	Tool       = portmcp.Tool
+)
 
-// CallInput 定义 MCP 工具调用入参。
-type CallInput struct {
-	ToolName       string
-	ArgumentsJSON  string
-	UserID         uint
-	ConversationID uint
-	RequestID      string
-}
-
-// Tool 定义 MCP 工具元数据。
-type Tool struct {
-	Name        string          `json:"name"`
-	Title       string          `json:"title,omitempty"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
-}
-
-// NewClient 创建 MCP 客户端。
-func NewClient() *Client {
-	return NewClientWithEnv("", false)
-}
-
-// NewClientWithEnv 创建带运行环境的 MCP 客户端。
-func NewClientWithEnv(env string, ssrfProtectionEnabled bool) *Client {
-	transport := security.NewOutboundHTTPTransport(env, ssrfProtectionEnabled, 10*time.Second)
+// NewClient 创建带出站安全策略的 MCP 客户端。
+func NewClient(outboundPolicy security.OutboundPolicy) *Client {
 	return &Client{
-		httpClient: &http.Client{
-			Timeout:   30 * time.Second,
-			Transport: platformtracing.NewHTTPTransport(transport),
-		},
+		httpClients: outboundhttp.NewPool(outboundPolicy, outboundhttp.DefaultCacheLimit, func(policy security.OutboundPolicy, trustedOrigin string, variant string) (outboundhttp.ManagedClient, error) {
+			return newMCPHTTPClient(policy, outboundPolicy, trustedOrigin, variant)
+		}),
 	}
+}
+
+func newMCPHTTPClient(policy security.OutboundPolicy, redirectPolicy security.OutboundPolicy, trustedOrigin string, _ string) (outboundhttp.ManagedClient, error) {
+	transport := security.NewOutboundHTTPTransport(policy, defaultConnectTimeout)
+	client := &http.Client{Transport: platformtracing.NewHTTPTransport(transport)}
+	if trustedOrigin != "" {
+		client.CheckRedirect = outboundhttp.NewRedirectPolicy(redirectPolicy, trustedOrigin, "MCP request")
+	}
+	return outboundhttp.ManagedClient{Client: client, CloseIdleConnections: transport.CloseIdleConnections}, nil
 }
 
 // ListTools 读取 MCP 服务暴露的工具列表。
@@ -168,11 +158,7 @@ func (c *Client) rpcWithSession(
 		return nil, sessionID, err
 	}
 
-	timeoutMS := cfg.TimeoutMS
-	if timeoutMS <= 0 {
-		timeoutMS = 10000
-	}
-	requestCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
+	requestCtx, cancel := context.WithTimeout(ctx, time.Duration(resolveRequestTimeoutMS(cfg.TimeoutMS))*time.Millisecond)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(raw))
@@ -195,7 +181,7 @@ func (c *Client) rpcWithSession(
 		req.Header.Set(headerKey, strings.TrimSpace(value))
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClients.Do(req, cfg.BaseURL, "")
 	if err != nil {
 		return nil, sessionID, err
 	}
@@ -221,8 +207,22 @@ func (c *Client) rpcWithSession(
 	return result, sessionID, nil
 }
 
+func resolveRequestTimeoutMS(timeoutMS int) int {
+	if timeoutMS <= 0 {
+		return defaultRequestTimeoutMS
+	}
+	return timeoutMS
+}
+
 func (c *Client) nextRequestID() int64 {
 	return c.nextID.Add(1)
+}
+
+// CloseIdleConnections 释放所有 MCP origin 客户端的空闲连接。
+func (c *Client) CloseIdleConnections() {
+	if c != nil && c.httpClients != nil {
+		c.httpClients.CloseIdleConnections()
+	}
 }
 
 func buildEndpointURL(cfg CallConfig) (string, error) {
@@ -259,10 +259,14 @@ func parseRPCResponse(contentType string, body []byte) (json.RawMessage, error) 
 }
 
 func extractSSEDataPayload(payload string) string {
-	scanner := bufio.NewScanner(strings.NewReader(payload))
+	reader := bufio.NewReader(strings.NewReader(payload))
 	dataLines := make([]string, 0, 4)
-	for scanner.Scan() {
-		line := strings.TrimRight(scanner.Text(), "\r")
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && len(line) == 0 {
+			break
+		}
+		line = strings.TrimRight(line, "\r\n")
 		if line == "" {
 			if len(dataLines) > 0 {
 				break

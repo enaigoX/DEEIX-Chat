@@ -1,4 +1,14 @@
 {
+  "admin": {
+    "defaultPermissionGroupDeleteNotAllowed": "默认权限组不可删除。",
+    "permissionGroupNotFound": "权限组不存在。",
+    "invalidPermissionGroupName": "权限组名称不能为空。",
+    "invalidPermissionGroupRateMultiplier": "计费倍率无效，范围 1-10000。",
+    "invalidPermissionGroupModels": "权限组模型配置无效。",
+    "invalidPermissionGroupUsers": "权限组成员配置无效。",
+    "defaultPermissionGroupUsersImplicit": "默认权限组成员由系统自动维护。",
+    "permissionGroupReferencedByPlan": "该权限组已被计费套餐引用，请先解除绑定再删除。"
+  },
   "auth": {
     "adminRequired": "需要管理员权限。",
     "authorizationCodeRequired": "缺少授权码。",
@@ -24,6 +34,7 @@
     "oauthIntentMismatch": "第三方登录流程不匹配，请重新操作。",
     "oauthStateExpired": "第三方登录状态已过期，请重新登录。",
     "oauthStateInvalid": "第三方登录状态无效，请重新登录。",
+    "passwordResetFailed": "密码重置失败，请检查邮箱、验证码和新密码。",
     "passwordResetRequired": "请先完成密码重置。",
     "passwordReuseNotAllowed": "新密码不能与初始密码相同。",
     "providerAccountNotRegistered": "该第三方账号尚未注册。",
@@ -69,6 +80,11 @@
   "billing": {
     "insufficientBalance": "余额不足。",
     "insufficientFunds": "余额不足。",
+    "concurrencyLimitExceeded": "最多同时运行 5 个付费请求。",
+    "reservationConflict": "该请求已提交，请勿重复发送。",
+    "invalidPlan": "计费套餐无效。",
+    "planNotFound": "计费套餐不存在。",
+    "invalidPermissionGroup": "权限组无效。",
     "invalidDailyUsageDateRange": "用量日期范围无效。",
     "invalidDailyUsageDays": "用量天数无效。",
     "invalidModelPricing": "模型定价无效。",
@@ -107,6 +123,10 @@
   "conversation": {
     "invalidId": "对话 ID 无效。",
     "invalidTitle": "对话标题无效。",
+    "messageForkHistoryIncomplete": "当前对话层级过深或消息历史不完整，无法从此处分支到新聊天。",
+    "messageForkStateInvalid": "请等待当前消息生成完成后再分支到新聊天。",
+    "messageForkTargetInvalid": "只能从助手回复处分支到新聊天。",
+    "noTitleableContent": "当前对话没有可用于生成标题的内容。",
     "notFound": "对话不存在。"
   },
   "conversationRun": {
@@ -138,6 +158,7 @@
     "invalidName": "文件名无效。",
     "invalidReference": "文件引用无效。",
     "invalidStream": "文件流无效。",
+    "inUse": "文件正在使用中，无法删除。",
     "notFound": "文件不存在。",
     "notReady": "文件尚未准备完成。",
     "required": "请选择文件。",
@@ -151,19 +172,44 @@
   "internal": {
     "error": "服务器内部错误，请稍后重试。"
   },
+  "knowledgeBase": {
+    "conflict": "当前范围内已存在同名知识库。",
+		"fileCleanupUnavailable": "平台资料清理服务暂不可用，请稍后重试。",
+    "internal": "知识库操作失败，请稍后重试。",
+    "invalid": "知识库配置无效。",
+    "invalidReference": "所选知识库不存在、已停用或无权访问。",
+		"notFound": "知识库不存在。",
+		"notReady": "所选知识库暂无可检索文件，请等待索引完成。",
+		"ownerFileReference": "该账号仍有文件被内置知识库引用，请先移除或由其他管理员重新上传接管。",
+		"platformFileInUse": "该平台资料仍被其他资源引用，请解除引用后再删除。",
+		"unavailable": "知识库检索暂不可用，请稍后重试；若问题持续，请联系管理员检查向量服务。"
+  },
+  "toolRun": {
+    "finalAnswerMissing": "工具调用已到达运行上限，但模型没有生成最终回答。请重试或减少本次启用的工具。"
+  },
   "llm": {
     "apiKeysRequired": "API Keys 不能为空。",
+    "circuitBreakerDisabled": "模型熔断未开启，请先启用后再执行此操作。",
     "emptyResponse": "模型返回了空响应。",
     "invalidAdapter": "接口协议不受支持，请重新选择协议。",
     "invalidApiKeysConfig": "API Keys 配置无效。",
     "invalidCompatible": "兼容模式无效。",
     "invalidHeadersConfig": "请求头配置无效。",
-    "invalidKinds": "模型类型无效。",
-    "invalidPlatformModelName": "平台模型名称无效。",
+		"invalidKinds": "模型类型无效。",
+		"invalidModelCapabilities": "模型上下文窗口必须在 4096 到 16000000 之间，输出 Token 上限必须小于上下文窗口。",
+		"invalidPlatformModelName": "平台模型名称无效。",
     "invalidRouteProtocolCombination": "当前协议组合不可用。同一绑定只能选择单个协议，或同时选择同一厂商的图像生成与图像编辑协议。",
     "systemPromptTooLong": "系统提示词不能超过 20000 个字符。",
     "invalidProtocolDefaultsConfig": "协议默认配置无效。",
+    "modelAccessDenied": "当前权限组无权使用此模型。",
     "modelRouteNotConfigured": "模型路由未配置。",
+    "modelIconInvalid": "模型图标引用无效，请使用内置图标名称、上传图标或 http(s) 图片 URL。",
+    "modelIconFileInvalid": "图标文件无效，仅支持 PNG、JPEG 或 WebP。",
+    "modelIconFileTooLarge": "图标文件不能超过 1 MiB。",
+    "modelIconAssetNotFound": "图标资产不存在，请重新上传。",
+    "modelIconAssetInUse": "该图标仍被使用，请先解除关联。",
+    "modelVendorBuiltin": "内置厂商不可删除。",
+    "modelVendorInUse": "厂商仍有关联模型，请先迁移这些模型。",
     "noActiveApiKey": "没有可用的 API Key。",
     "platformModelNameExists": "平台模型名称已存在。",
     "platformModelNameRequired": "平台模型名称不能为空。",
@@ -198,6 +244,7 @@
     "imageEditInputRequired": "图片编辑需要至少上传一张输入图片。",
     "imageEditTooManyInputs": "图片编辑输入图片过多。",
     "imageEditInputInvalid": "图片编辑只支持有效的图片文件。",
+    "artifactUnavailable": "生成结果暂时无法获取，请稍后重试；若问题持续，请联系管理员。",
     "imageStreamUnsupported": "Tips：当前上游可能不支持流式响应，请管理员在模型能力中关闭“图像流式调用”（设置 image.stream=false）后重试。",
     "routeProtocolMismatch": "当前模型路由协议与图片任务不匹配，请检查模型绑定。",
     "invalidTask": "图片任务参数无效。"
@@ -213,8 +260,12 @@
     "notFound": "消息不存在。",
     "tooManyFiles": "单条消息包含的文件过多。"
   },
+  "temporaryChat": {
+    "contextTooLarge": "临时对话上下文过长，请新建临时对话或缩短当前内容。"
+  },
   "payment": {
     "checkoutFailed": "创建支付订单失败。",
+    "epayGatewayInvalid": "易支付页面跳转网关地址无效。",
     "epayTypeUnsupported": "该易支付类型不受支持。",
     "invalidEvent": "支付事件无效。",
     "invalidSignature": "支付签名无效。",
@@ -273,6 +324,7 @@
     "smtpInvalid": "SMTP 设置无效。"
   },
   "upstream": {
+    "rateLimited": "上游请求正在限流，请稍后重试。",
     "unavailable": "上游服务不可用。"
   },
   "upstreamEmptyResponse": "上游返回了空响应，请稍后重试或联系管理员检查模型路由。",
@@ -306,5 +358,12 @@
   "userSettings": {
     "invalidValue": "用户设置值无效。",
     "unknownKey": "未知的用户设置项。"
+  },
+  "content_moderation": {
+    "blocked": "内容已被安全检查拦截。",
+    "invalid_config": "内容审核配置无效。",
+    "config_required": "启用内容审核时必须配置完整服务并至少选择一个审核类别。",
+    "probe_failed": "内容审核连接测试失败。",
+    "event_not_found": "未找到内容审核事件。"
   }
 }

@@ -1,28 +1,125 @@
 "use client";
 
-import * as React from "react";
-import { motion } from "motion/react";
-import { ArrowDownToLine } from "lucide-react";
+import { ArrowDownToLine, Check } from "lucide-react";
 import { useTranslations } from "next-intl";
-
-import { ChatLabel } from "@/features/chat/components/sections/chat-label";
-import { useMessageFeedback } from "@/features/chat/hooks/use-message-feedback";
+import * as React from "react";
+import { CenteredEmptyState } from "@/components/ui/empty-state";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScroller,
+  useMessageScrollerScrollable,
+} from "@/components/ui/message-scroller";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   AssistantMessageSkeleton,
   ChatInlineAlertCard,
   ChatMessageBot,
 } from "@/features/chat/components/message/message-bot";
-import { areChatAreaMessagesRenderEqual } from "@/features/chat/model/chat-message-render";
 import { type AssistantReaction } from "@/features/chat/components/message/message-meta";
-import type { ChatAreaMessage, MessageAttachment } from "@/features/chat/types/messages";
 import { ChatMessageUser } from "@/features/chat/components/message/message-user";
-import { StreamdownRender } from "@/features/chat/components/markdown/streamdown-render";
+import { ChatLabel } from "@/features/chat/components/sections/chat-label";
+import {
+  ChatMessagePositionRail,
+  chatMessageScrollerID,
+} from "@/features/chat/components/sections/chat-message-position-rail";
+import { ChatResponseOutlineRail } from "@/features/chat/components/sections/chat-response-outline-rail";
+import { ChatScreenshotSelectionBar } from "@/features/chat/components/sections/chat-screenshot-selection-bar";
+import { useChatMessageFeedback } from "@/features/chat/hooks/use-chat-message-feedback";
 import type { OpenCodeArtifactInput } from "@/features/chat/model/chat-artifacts";
-import { CenteredEmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
+import { areChatAreaMessagesRenderEqual } from "@/features/chat/model/chat-message-render";
+import { MAX_SCREENSHOT_MESSAGES } from "@/features/chat/model/conversation-screenshot";
+import type { ChatModelOption } from "@/features/chat/types/chat-runtime";
+import type { ChatAreaMessage, MessageAttachment } from "@/features/chat/types/messages";
+import { cn } from "@/lib/utils";
+import { AppLogo, DeeixLogo } from "@/shared/components/app-logo";
 import { ConversationShareExportIconDropdown } from "@/shared/components/conversation-share-export-menu";
 import { useCopyAction } from "@/shared/components/copy-action";
-import { cn } from "@/lib/utils";
+import type { FileContentLoader } from "@/shared/components/file-preview/preview-dialog";
+import { StreamdownRender } from "@/shared/components/markdown/streamdown-render";
+import { PoweredByDeeix } from "@/shared/components/powered-by-deeix";
+import { useBranding } from "@/shared/config/branding-provider";
+import type { BillingDisplayCurrency } from "@/shared/lib/billing-display";
+
+function ScrollToLiveUser({
+  scrollKey,
+  viewportRef,
+}: {
+  scrollKey: string;
+  viewportRef: React.RefObject<HTMLDivElement | null>;
+}): null {
+  const handledScrollKeyRef = React.useRef("");
+  const followWhenOverflowingRef = React.useRef(false);
+  const { scrollToEnd, scrollToMessage } = useMessageScroller();
+  const scrollable = useMessageScrollerScrollable();
+
+  React.useLayoutEffect(() => {
+    if (!scrollKey) {
+      handledScrollKeyRef.current = "";
+      followWhenOverflowingRef.current = false;
+      return;
+    }
+    if (handledScrollKeyRef.current === scrollKey) {
+      return;
+    }
+
+    handledScrollKeyRef.current = scrollKey;
+    let secondFrameID: number | null = null;
+    const firstFrameID = window.requestAnimationFrame(() => {
+      secondFrameID = window.requestAnimationFrame(() => {
+        const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+        followWhenOverflowingRef.current = true;
+        scrollToMessage(scrollKey, {
+          align: "start",
+          behavior: reducedMotion ? "auto" : "smooth",
+        });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrameID);
+      if (secondFrameID !== null) {
+        window.cancelAnimationFrame(secondFrameID);
+      }
+    };
+  }, [scrollKey, scrollToMessage]);
+
+  React.useLayoutEffect(() => {
+    if (!scrollKey || !scrollable.end || !followWhenOverflowingRef.current) {
+      return;
+    }
+    followWhenOverflowingRef.current = false;
+    scrollToEnd({ behavior: "auto" });
+  }, [scrollKey, scrollToEnd, scrollable.end]);
+
+  React.useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!scrollKey || !viewport) {
+      return;
+    }
+    const stopFollowing = () => {
+      followWhenOverflowingRef.current = false;
+    };
+    const stopFollowingFromKeyboard = (event: KeyboardEvent) => {
+      if (["ArrowDown", "ArrowUp", "End", "Home", "PageDown", "PageUp", " "].includes(event.key)) {
+        stopFollowing();
+      }
+    };
+    viewport.addEventListener("wheel", stopFollowing, { passive: true });
+    viewport.addEventListener("touchmove", stopFollowing, { passive: true });
+    viewport.addEventListener("keydown", stopFollowingFromKeyboard);
+    return () => {
+      viewport.removeEventListener("wheel", stopFollowing);
+      viewport.removeEventListener("touchmove", stopFollowing);
+      viewport.removeEventListener("keydown", stopFollowingFromKeyboard);
+    };
+  }, [scrollKey, viewportRef]);
+
+  return null;
+}
 
 function CompactDivider({ summaryPreview }: { summaryPreview: string }) {
   const t = useTranslations("chat.messages");
@@ -49,51 +146,168 @@ function CompactDivider({ summaryPreview }: { summaryPreview: string }) {
   );
 }
 
-const MESSAGE_SWITCH_TRANSITION = {
-  layout: {
-    duration: 0.22,
-    ease: [0.16, 1, 0.3, 1] as const,
-  },
-  opacity: {
-    duration: 0.16,
-    ease: "easeOut" as const,
-  },
-};
-
 type ChatAreaProps = {
   title: string;
   starred: boolean;
   canOperateConversation: boolean;
   messages: ChatAreaMessage[];
+  messagesReadOnly?: boolean;
   busy: boolean;
-  messageViewportRef: React.RefObject<HTMLDivElement | null>;
   messageContentRef: React.RefObject<HTMLDivElement | null>;
-  messageEndRef: React.RefObject<HTMLDivElement | null>;
-  onScroll: () => void;
-  onScrollToLatest: () => void;
-  showScrollToLatestButton: boolean;
+  onScroll: (event: React.UIEvent<HTMLDivElement>) => void;
   onRetryUserMessage: (message: ChatAreaMessage) => Promise<void> | void;
   onRetryAssistantMessage: (message: ChatAreaMessage) => Promise<void> | void;
   onContinueAssistantMessage?: (message: ChatAreaMessage) => Promise<void> | void;
   onEditAssistantMessage: (message: ChatAreaMessage, content: string) => Promise<boolean> | boolean;
   onEditUserMessage: (message: ChatAreaMessage, content: string) => Promise<boolean> | boolean;
+  onForkMessage?: (message: ChatAreaMessage) => Promise<void> | void;
+  modelOptions: ChatModelOption[];
+  selectedPlatformModelName: string;
+  onModelChange: (platformModelName: string) => void;
+  onModelCatalogRefresh?: () => void | Promise<void>;
+  attachmentContentLoader?: FileContentLoader;
   onEditImageAttachment?: (attachment: MessageAttachment, sourceModelName?: string) => void;
+  onExtendVideoAttachment?: (attachment: MessageAttachment, sourceModelName?: string) => void;
   onOpenCodeArtifact?: (message: ChatAreaMessage, artifact: OpenCodeArtifactInput) => void;
   onCycleMessageBranch: (parentPublicID: string | null, direction: "previous" | "next") => void;
   onToggleStar?: () => void | Promise<void>;
   onRename?: (title: string) => void | Promise<void>;
+  onAutoRename?: () => void | Promise<void>;
+  labels?: string[];
+  onUpdateLabels?: (labels: string[]) => void | Promise<void>;
   projectMenu?: React.ComponentProps<typeof ChatLabel>["projectMenu"];
   onShare?: () => void;
   shareActive?: boolean;
   onExport?: () => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
   markdownRender?: boolean;
+  autoExpandThinking?: boolean;
+  autoExpandToolCalls?: boolean;
   showModelInfo?: boolean;
   showLatency?: boolean;
   showTokenUsage?: boolean;
   showBillingCost?: boolean;
+  billingDisplayCurrency?: BillingDisplayCurrency;
+  billingDisplayUsdToCnyRate?: number | null;
   splitRightInset?: boolean;
+  contentWidthClassName?: string;
+  onScreenshotLatest?: () => void;
+  onScreenshotSelect?: () => void;
+  screenshot?: {
+    selectionMode: boolean;
+    selectedIDs: Set<string>;
+    selectedCount: number;
+    capturing: boolean;
+    onToggleSelection: (publicID: string) => void;
+    onSelectAll: (publicIDs: string[]) => void;
+    onClearSelection: () => void;
+    onPruneSelection: (publicIDs: string[]) => void;
+    onCapture: () => void;
+    onExit: () => void;
+  };
 };
+
+type ScreenshotTimestampValues = {
+  year: number;
+  month: number;
+  day: number;
+  time: string;
+};
+
+type ScreenshotTimestampFormatter = (
+  key: "todayTime" | "thisYearDateTime" | "fullDateTime",
+  values: ScreenshotTimestampValues,
+) => string;
+
+function formatScreenshotMessageTimestamp(
+  value: string | undefined,
+  formatLabel: ScreenshotTimestampFormatter,
+) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const time = [date.getHours(), date.getMinutes(), date.getSeconds()]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+  const values = { year, month, day, time };
+
+  return formatLabel("fullDateTime", values);
+}
+
+function ChatScreenshotMessageMeta({
+  align,
+  modelName,
+  timestamp,
+}: {
+  align: "start" | "end";
+  modelName: string;
+  timestamp: string;
+}) {
+  if (!modelName && !timestamp) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "chat-screenshot-meta mt-1.5 hidden min-w-0 flex-wrap items-center gap-1 text-[10px] leading-3.5 text-muted-foreground/70",
+        align === "end" ? "justify-end" : "justify-start",
+      )}
+      data-screenshot-only="true"
+    >
+      {modelName ? (
+        <span className="inline-flex max-w-48 items-center truncate rounded bg-muted/30 px-1.5 py-0.5 font-mono">
+          {modelName}
+        </span>
+      ) : null}
+      {timestamp ? (
+        <span className="inline-flex items-center rounded bg-muted/30 px-1.5 py-0.5 tabular-nums">
+          {timestamp}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ChatScreenshotBrandMark({ placement }: { placement: "top" | "bottom" }) {
+  const branding = useBranding();
+
+  return (
+    <div
+      className={cn(
+        "chat-screenshot-brand hidden items-center gap-4 border-border/50",
+        placement === "top"
+          ? "mb-3 justify-between border-b pb-2"
+          : "mt-3 justify-center border-t pt-2",
+      )}
+      data-screenshot-only="true"
+    >
+      {placement === "top" ? (
+        <>
+          <AppLogo width={65} height={20} className="h-5 w-auto opacity-75" />
+          {branding.logoURL ? <PoweredByDeeix className="text-[10px]" /> : null}
+        </>
+      ) : branding.logoURL ? (
+        <>
+          <AppLogo width={65} height={20} className="h-5 w-auto opacity-75" />
+          <span aria-hidden="true" className="h-4 w-px bg-border" />
+          <DeeixLogo width={65} height={20} className="h-5 w-auto opacity-75" />
+        </>
+      ) : (
+        <DeeixLogo width={65} height={20} className="h-5 w-auto opacity-75" />
+      )}
+    </div>
+  );
+}
 
 function useStableEvent<Args extends unknown[], Return>(callback: (...args: Args) => Return) {
   const callbackRef = React.useRef(callback);
@@ -107,40 +321,80 @@ function useStableEvent<Args extends unknown[], Return>(callback: (...args: Args
 const ChatMessageRow = React.memo(function ChatMessageRow({
   item,
   busy,
+  readOnly,
   reaction,
   onRetryUserMessage,
   onRetryAssistantMessage,
   onContinueAssistantMessage,
   onEditAssistantMessage,
   onEditUserMessage,
+  onForkMessage,
+  modelOptions,
+  selectedPlatformModelName,
+  onModelChange,
+  onModelCatalogRefresh,
+  attachmentContentLoader,
   onEditImageAttachment,
+  onExtendVideoAttachment,
   onCycleMessageBranch,
   onReactAssistantMessage,
   onOpenCodeArtifact,
   markdownRender,
+  autoExpandThinking,
+  autoExpandToolCalls,
   showModelInfo,
   showLatency,
   showTokenUsage,
   showBillingCost,
+  billingDisplayCurrency,
+  billingDisplayUsdToCnyRate,
+  contentWidthClassName,
+  screenshotMetaAlign,
+  screenshotMetaModelName,
+  screenshotMetaTimestamp,
 }: {
   item: ChatAreaMessage;
   busy: boolean;
+  readOnly: boolean;
   reaction: AssistantReaction;
   onRetryUserMessage: (message: ChatAreaMessage) => Promise<void> | void;
   onRetryAssistantMessage: (message: ChatAreaMessage) => Promise<void> | void;
   onContinueAssistantMessage?: (message: ChatAreaMessage) => Promise<void> | void;
   onEditAssistantMessage: (message: ChatAreaMessage, content: string) => Promise<boolean> | boolean;
   onEditUserMessage: (message: ChatAreaMessage, content: string) => Promise<boolean> | boolean;
+  onForkMessage?: (message: ChatAreaMessage) => Promise<void> | void;
+  modelOptions: ChatModelOption[];
+  selectedPlatformModelName: string;
+  onModelChange: (platformModelName: string) => void;
+  onModelCatalogRefresh?: () => void | Promise<void>;
+  attachmentContentLoader?: FileContentLoader;
   onEditImageAttachment?: (attachment: MessageAttachment, sourceModelName?: string) => void;
+  onExtendVideoAttachment?: (attachment: MessageAttachment, sourceModelName?: string) => void;
   onCycleMessageBranch: (parentPublicID: string | null, direction: "previous" | "next") => void;
   onReactAssistantMessage: (publicID: string, reaction: AssistantReaction) => void;
   onOpenCodeArtifact?: (message: ChatAreaMessage, artifact: OpenCodeArtifactInput) => void;
   markdownRender: boolean;
+  autoExpandThinking: boolean;
+  autoExpandToolCalls: boolean;
   showModelInfo: boolean;
   showLatency: boolean;
   showTokenUsage: boolean;
   showBillingCost: boolean;
+  billingDisplayCurrency: BillingDisplayCurrency;
+  billingDisplayUsdToCnyRate: number | null;
+  contentWidthClassName: string;
+  screenshotMetaAlign: "start" | "end";
+  screenshotMetaModelName: string;
+  screenshotMetaTimestamp: string;
 }) {
+  const screenshotMeta = (
+    <ChatScreenshotMessageMeta
+      align={screenshotMetaAlign}
+      modelName={screenshotMetaModelName}
+      timestamp={screenshotMetaTimestamp}
+    />
+  );
+
   const t = useTranslations("chat.messages");
   const { copy, isCopied } = useCopyAction({
     messages: {
@@ -160,6 +414,18 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
         : undefined,
     [isAssistant, item, onOpenCodeArtifact],
   );
+  const sourceSupportsVideoExtension = React.useMemo(
+    () =>
+      Boolean(
+        item.platformModelName &&
+        modelOptions.some(
+          (model) =>
+            model.platformModelName === item.platformModelName &&
+            model.videoExtension?.enabled,
+        ),
+      ),
+    [item.platformModelName, modelOptions],
+  );
 
   const copyKey = item.publicID || item.key;
   const onCopy = React.useCallback(async () => {
@@ -170,12 +436,18 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
     return (
       <ChatMessageUser
         item={item}
-        busy={busy}
         onRetryUserMessage={onRetryUserMessage}
         onEditUserMessage={onEditUserMessage}
+        modelOptions={modelOptions}
+        selectedPlatformModelName={selectedPlatformModelName}
+        onModelChange={onModelChange}
+        onModelCatalogRefresh={onModelCatalogRefresh}
         onCycleMessageBranch={onCycleMessageBranch}
         onCopy={() => void onCopy()}
         copySucceeded={isCopied(copyKey)}
+        attachmentContentLoader={attachmentContentLoader}
+        readOnly={readOnly}
+        screenshotMeta={screenshotMeta}
       />
     );
   }
@@ -189,17 +461,29 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
         onRetryAssistantMessage={onRetryAssistantMessage}
         onContinueAssistantMessage={onContinueAssistantMessage}
         onEditAssistantMessage={onEditAssistantMessage}
+        onForkMessage={onForkMessage}
         onCycleMessageBranch={onCycleMessageBranch}
         onReactAssistantMessage={onReactAssistantMessage}
         onCopy={() => void onCopy()}
         copySucceeded={isCopied(copyKey)}
+        attachmentContentLoader={attachmentContentLoader}
         onEditImageAttachment={onEditImageAttachment}
+        onExtendVideoAttachment={
+          sourceSupportsVideoExtension ? onExtendVideoAttachment : undefined
+        }
         artifactActions={artifactActions}
         markdownRender={markdownRender}
+        autoExpandThinking={autoExpandThinking}
+        autoExpandToolCalls={autoExpandToolCalls}
         showModelInfo={showModelInfo}
         showLatency={showLatency}
         showTokenUsage={showTokenUsage}
         showBillingCost={showBillingCost}
+        billingDisplayCurrency={billingDisplayCurrency}
+        billingDisplayUsdToCnyRate={billingDisplayUsdToCnyRate}
+        readOnly={readOnly}
+        contentWidthClassName={contentWidthClassName}
+        screenshotMeta={screenshotMeta}
       />
     );
   }
@@ -214,17 +498,33 @@ const ChatMessageRow = React.memo(function ChatMessageRow({
       {item.inlineAlert ? (
         <ChatInlineAlertCard alert={item.inlineAlert} className={item.content.trim() ? "my-4" : "mb-4"} />
       ) : null}
+      {screenshotMeta}
     </div>
   );
 }, (previous, next) => (
   previous.busy === next.busy &&
+  previous.readOnly === next.readOnly &&
   previous.reaction === next.reaction &&
   previous.markdownRender === next.markdownRender &&
+  previous.autoExpandThinking === next.autoExpandThinking &&
+  previous.autoExpandToolCalls === next.autoExpandToolCalls &&
   previous.showModelInfo === next.showModelInfo &&
   previous.showLatency === next.showLatency &&
   previous.showTokenUsage === next.showTokenUsage &&
   previous.showBillingCost === next.showBillingCost &&
+  previous.billingDisplayCurrency === next.billingDisplayCurrency &&
+  previous.billingDisplayUsdToCnyRate === next.billingDisplayUsdToCnyRate &&
+  previous.contentWidthClassName === next.contentWidthClassName &&
+  previous.screenshotMetaAlign === next.screenshotMetaAlign &&
+  previous.screenshotMetaModelName === next.screenshotMetaModelName &&
+  previous.screenshotMetaTimestamp === next.screenshotMetaTimestamp &&
+  previous.modelOptions === next.modelOptions &&
+  previous.selectedPlatformModelName === next.selectedPlatformModelName &&
+  previous.onModelChange === next.onModelChange &&
+  previous.onModelCatalogRefresh === next.onModelCatalogRefresh &&
+  previous.attachmentContentLoader === next.attachmentContentLoader &&
   previous.onEditImageAttachment === next.onEditImageAttachment &&
+  previous.onExtendVideoAttachment === next.onExtendVideoAttachment &&
   previous.onOpenCodeArtifact === next.onOpenCodeArtifact &&
   areChatAreaMessagesRenderEqual(previous.item, next.item)
 ));
@@ -234,50 +534,108 @@ export function ChatArea({
   starred,
   canOperateConversation,
   messages,
+  messagesReadOnly = false,
   busy,
-  messageViewportRef,
   messageContentRef,
-  messageEndRef,
   onScroll,
-  onScrollToLatest,
-  showScrollToLatestButton,
   onRetryUserMessage,
   onRetryAssistantMessage,
   onContinueAssistantMessage,
   onEditAssistantMessage,
   onEditUserMessage,
+  onForkMessage,
+  modelOptions,
+  selectedPlatformModelName,
+  onModelChange,
+  onModelCatalogRefresh,
+  attachmentContentLoader,
   onEditImageAttachment,
+  onExtendVideoAttachment,
   onOpenCodeArtifact,
   onCycleMessageBranch,
   onToggleStar,
   onRename,
+  onAutoRename,
+  labels,
+  onUpdateLabels,
   projectMenu,
   onShare,
   shareActive = false,
   onExport,
   onDelete,
   markdownRender = true,
+  autoExpandThinking = true,
+  autoExpandToolCalls = true,
   showModelInfo = true,
   showLatency = true,
   showTokenUsage = true,
   showBillingCost = false,
+  billingDisplayCurrency = "USD",
+  billingDisplayUsdToCnyRate = null,
   splitRightInset = false,
+  contentWidthClassName = "max-w-[1080px]",
+  onScreenshotLatest,
+  onScreenshotSelect,
+  screenshot,
 }: ChatAreaProps) {
   const t = useTranslations("chat");
-  const { getReaction, onReactAssistantMessage } = useMessageFeedback(messages);
+  const { getReaction, onReactAssistantMessage } = useChatMessageFeedback(messages);
   const stableOnRetryUserMessage = useStableEvent(onRetryUserMessage);
   const stableOnRetryAssistantMessage = useStableEvent(onRetryAssistantMessage);
-  const stableOnContinueAssistantMessage = useStableEvent(onContinueAssistantMessage ?? (() => undefined));
+  const stableOnContinueAssistantMessage = useStableEvent(onContinueAssistantMessage ?? ((): undefined => undefined));
   const stableOnEditAssistantMessage = useStableEvent(onEditAssistantMessage);
   const stableOnEditUserMessage = useStableEvent(onEditUserMessage);
+  const stableOnForkMessage = useStableEvent(onForkMessage ?? ((): undefined => undefined));
+  const stableOnModelChange = useStableEvent(onModelChange);
+  const stableOnModelCatalogRefresh = useStableEvent(onModelCatalogRefresh ?? ((): undefined => undefined));
   const stableOnEditImageAttachment = useStableEvent((attachment: MessageAttachment, sourceModelName?: string) => {
     onEditImageAttachment?.(attachment, sourceModelName);
+  });
+  const stableOnExtendVideoAttachment = useStableEvent((attachment: MessageAttachment, sourceModelName?: string) => {
+    onExtendVideoAttachment?.(attachment, sourceModelName);
   });
   const stableOnCycleMessageBranch = useStableEvent(onCycleMessageBranch);
   const stableOnReactAssistantMessage = useStableEvent(onReactAssistantMessage);
   const editImageAttachmentHandler = onEditImageAttachment ? stableOnEditImageAttachment : undefined;
+  const extendVideoAttachmentHandler = onExtendVideoAttachment ? stableOnExtendVideoAttachment : undefined;
   const shareLabel = shareActive ? t("manageShare") : t("shareConversation");
   const shareExportLabel = t("labelMenu.shareAndExport");
+  const tScreenshot = useTranslations("chat.screenshot");
+  const timeT = useTranslations("common.time");
+  const selectableMessagePublicIDs = React.useMemo(
+    () =>
+      messages
+        .filter((item) => !item.isPending && Boolean(item.publicID?.trim()))
+        .map((item) => item.publicID.trim()),
+    [messages],
+  );
+  const selectionMode = screenshot?.selectionMode ?? false;
+  const onSelectAllMessages = React.useCallback(() => {
+    screenshot?.onSelectAll(selectableMessagePublicIDs);
+  }, [screenshot, selectableMessagePublicIDs]);
+  const pruneScreenshotSelection = screenshot?.onPruneSelection;
+  React.useEffect(() => {
+    if (!selectionMode) {
+      return;
+    }
+    pruneScreenshotSelection?.(selectableMessagePublicIDs);
+  }, [pruneScreenshotSelection, selectableMessagePublicIDs, selectionMode]);
+  const messageViewportBoundaryRef = React.useRef<HTMLDivElement | null>(null);
+  const liveUserScrollKey = React.useMemo(() => {
+    let liveMessageIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.isPending || messages[index]?.isStreaming) {
+        liveMessageIndex = index;
+        break;
+      }
+    }
+    for (let index = liveMessageIndex; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user") {
+        return messages[index]?.key ?? "";
+      }
+    }
+    return "";
+  }, [messages]);
 
   return (
     <>
@@ -288,11 +646,18 @@ export function ChatArea({
             starred={starred}
             onToggleStar={canOperateConversation ? onToggleStar : undefined}
             onRename={canOperateConversation ? onRename : undefined}
+            onAutoRename={canOperateConversation ? onAutoRename : undefined}
+            labels={labels}
+            onUpdateLabels={canOperateConversation ? onUpdateLabels : undefined}
             projectMenu={canOperateConversation ? projectMenu : undefined}
             onShare={canOperateConversation ? onShare : undefined}
             shareActive={shareActive}
             onExport={canOperateConversation ? onExport : undefined}
             onDelete={canOperateConversation ? onDelete : undefined}
+            screenshotLatestLabel={tScreenshot("captureLatest")}
+            screenshotSelectLabel={tScreenshot("captureSelect")}
+            onScreenshotLatest={onScreenshotLatest}
+            onScreenshotSelect={onScreenshotSelect}
           />
           {canOperateConversation ? (
             <ConversationShareExportIconDropdown
@@ -302,101 +667,199 @@ export function ChatArea({
               active={shareActive}
               onShare={onShare}
               onExport={onExport}
+              screenshotLatestLabel={tScreenshot("captureLatest")}
+              screenshotSelectLabel={tScreenshot("captureSelect")}
+              onScreenshotLatest={onScreenshotLatest}
+              onScreenshotSelect={onScreenshotSelect}
             />
           ) : null}
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div
-          ref={messageViewportRef}
-          className="h-full min-h-0 overflow-y-auto px-3 pb-8 pt-2 [overflow-anchor:none] md:px-6"
-          onScroll={onScroll}
-        >
-          <div
-            ref={messageContentRef}
-            className="mx-auto w-full max-w-[760px]"
-            style={{ fontFamily: "var(--font-chat)", fontWeight: "var(--font-chat-weight)" }}
-          >
-            {messages.map((item, index) => {
-              const previousItem = index > 0 ? messages[index - 1] : null;
-              const spacingClass =
-                !previousItem
-                  ? ""
-                  : previousItem.role === "assistant" && item.role === "user"
-                    ? "mt-6 md:mt-12"
-                    : "mt-4";
-              const shouldAnimateLayout = !item.isPending && !item.isStreaming;
-
-              const row = (
-                <ChatMessageRow
-                  item={item}
-                  busy={busy}
-                  reaction={getReaction(item)}
-                  onRetryUserMessage={stableOnRetryUserMessage}
-                  onRetryAssistantMessage={stableOnRetryAssistantMessage}
-                  onContinueAssistantMessage={onContinueAssistantMessage ? stableOnContinueAssistantMessage : undefined}
-                  onEditAssistantMessage={stableOnEditAssistantMessage}
-                  onEditUserMessage={stableOnEditUserMessage}
-                  onEditImageAttachment={editImageAttachmentHandler}
-                  onCycleMessageBranch={stableOnCycleMessageBranch}
-                  onReactAssistantMessage={stableOnReactAssistantMessage}
-                  onOpenCodeArtifact={onOpenCodeArtifact}
-                  markdownRender={markdownRender}
-                  showModelInfo={showModelInfo}
-                  showLatency={showLatency}
-                  showTokenUsage={showTokenUsage}
-                  showBillingCost={showBillingCost}
-                />
-              );
-
-              const compactDivider = item.compactDone ? (
-                <CompactDivider summaryPreview={item.compactDone.summary_preview} />
-              ) : null;
-
-              if (!shouldAnimateLayout) {
-                return (
-                  <div key={item.key} className={spacingClass}>
-                    {compactDivider}
-                    {row}
-                  </div>
-                );
-              }
-
-              return (
-                <motion.div
-                  key={item.key}
-                  layout="position"
-                  className={spacingClass}
-                  transition={MESSAGE_SWITCH_TRANSITION}
-                  style={{ willChange: "transform" }}
-                >
-                  {compactDivider}
-                  {row}
-                </motion.div>
-              );
-            })}
-            <div ref={messageEndRef} aria-hidden="true" className="h-px" />
+      {selectionMode && screenshot ? (
+        <div className={cn("px-3 pb-1 md:px-6")} data-screenshot-exclude="true">
+          <div className={cn("mx-auto w-full", contentWidthClassName)}>
+            <ChatScreenshotSelectionBar
+              selectedCount={screenshot.selectedCount}
+              totalCount={selectableMessagePublicIDs.length}
+              maxSelectionCount={MAX_SCREENSHOT_MESSAGES}
+              capturing={screenshot.capturing}
+              onSelectAll={onSelectAllMessages}
+              onClearSelection={screenshot.onClearSelection}
+              onCapture={screenshot.onCapture}
+              onExit={screenshot.onExit}
+            />
           </div>
         </div>
+      ) : null}
 
-        {showScrollToLatestButton ? (
-          <button
-            type="button"
-            className="absolute bottom-4 left-1/2 z-20 inline-flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground shadow-md transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            aria-label={t("messages.scrollToBottom")}
-            title={t("messages.scrollToBottom")}
-            onClick={onScrollToLatest}
-          >
-            <ArrowDownToLine className="size-4" strokeWidth={1.8} />
-          </button>
-        ) : null}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <MessageScrollerProvider>
+          <MessageScroller>
+            <ScrollToLiveUser
+              scrollKey={liveUserScrollKey}
+              viewportRef={messageViewportBoundaryRef}
+            />
+            <MessageScrollerViewport
+              ref={messageViewportBoundaryRef}
+              className="px-3 pb-8 pt-2 md:px-6"
+              onScroll={onScroll}
+            >
+              <MessageScrollerContent
+                ref={messageContentRef}
+                className={cn("mx-auto w-full gap-0", contentWidthClassName)}
+                style={{ fontFamily: "var(--font-chat)", fontWeight: "var(--font-chat-weight)" }}
+              >
+                <ChatScreenshotBrandMark placement="top" />
+                {messages.map((item, index) => {
+                  const previousItem = index > 0 ? messages[index - 1] : null;
+                  const spacingClass =
+                    !previousItem
+                      ? ""
+                      : previousItem.role === "assistant" && item.role === "user"
+                        ? "mt-6 md:mt-12"
+                        : "mt-4";
+                  const publicID = item.publicID?.trim() ?? "";
+                  const selectable = selectionMode && Boolean(publicID) && !item.isPending;
+                  const isSelected = selectable && (screenshot?.selectedIDs.has(publicID) ?? false);
+                  const screenshotTimestamp = formatScreenshotMessageTimestamp(
+                    item.role === "assistant" ? item.updatedAt || item.createdAt : item.createdAt,
+                    (key, values) => timeT(key, values),
+                  );
+
+                  const row = (
+                    <ChatMessageRow
+                      item={item}
+                      busy={busy}
+                      readOnly={messagesReadOnly}
+                      reaction={getReaction(item)}
+                      onRetryUserMessage={stableOnRetryUserMessage}
+                      onRetryAssistantMessage={stableOnRetryAssistantMessage}
+                      onContinueAssistantMessage={onContinueAssistantMessage ? stableOnContinueAssistantMessage : undefined}
+                      onEditAssistantMessage={stableOnEditAssistantMessage}
+                      onEditUserMessage={stableOnEditUserMessage}
+                      onForkMessage={onForkMessage ? stableOnForkMessage : undefined}
+                      modelOptions={modelOptions}
+                      selectedPlatformModelName={selectedPlatformModelName}
+                      onModelChange={stableOnModelChange}
+                      onModelCatalogRefresh={onModelCatalogRefresh ? stableOnModelCatalogRefresh : undefined}
+                      attachmentContentLoader={attachmentContentLoader}
+                      onEditImageAttachment={editImageAttachmentHandler}
+                      onExtendVideoAttachment={extendVideoAttachmentHandler}
+                      onCycleMessageBranch={stableOnCycleMessageBranch}
+                      onReactAssistantMessage={stableOnReactAssistantMessage}
+                      onOpenCodeArtifact={onOpenCodeArtifact}
+                      markdownRender={markdownRender}
+                      autoExpandThinking={autoExpandThinking}
+                      autoExpandToolCalls={autoExpandToolCalls}
+                      showModelInfo={showModelInfo}
+                      showLatency={showLatency}
+                      showTokenUsage={showTokenUsage}
+                      showBillingCost={showBillingCost}
+                      billingDisplayCurrency={billingDisplayCurrency}
+                      billingDisplayUsdToCnyRate={billingDisplayUsdToCnyRate}
+                      contentWidthClassName={contentWidthClassName}
+                      screenshotMetaAlign={item.role === "user" ? "end" : "start"}
+                      screenshotMetaModelName={item.role === "assistant" ? item.platformModelName?.trim() || "" : ""}
+                      screenshotMetaTimestamp={screenshotTimestamp}
+                    />
+                  );
+
+                  const rowContent = selectable ? (
+                    <div
+                      data-screenshot-selectable="true"
+                      className="chat-screenshot-selectable group relative cursor-pointer rounded-lg outline-none"
+                      role="checkbox"
+                      tabIndex={0}
+                      aria-checked={isSelected}
+                      aria-label={tScreenshot("selectMessage")}
+                      onClick={() => screenshot?.onToggleSelection(publicID)}
+                      onKeyDown={(event) => {
+                        if (event.key !== " " && event.key !== "Enter") {
+                          return;
+                        }
+                        event.preventDefault();
+                        screenshot?.onToggleSelection(publicID);
+                      }}
+                    >
+                      <div
+                        className={cn(
+                          "pointer-events-none absolute -inset-y-1 left-0 right-0 z-0 rounded-lg transition-colors group-focus-visible:ring-2 group-focus-visible:ring-ring/35",
+                          isSelected ? "bg-muted/35" : "group-hover:bg-muted/20",
+                        )}
+                        data-screenshot-exclude="true"
+                        aria-hidden="true"
+                      />
+                      <div
+                        className="absolute left-2 top-1.5 z-10 flex items-center"
+                        data-screenshot-exclude="true"
+                        aria-hidden="true"
+                      >
+                        <span
+                          className={cn(
+                            "pointer-events-none inline-flex size-4 items-center justify-center rounded-[5px] border border-border/70 bg-background/80 text-background transition-colors",
+                            isSelected && "border-foreground bg-foreground",
+                          )}
+                        >
+                          {isSelected ? <Check className="size-3" strokeWidth={2} /> : null}
+                        </span>
+                      </div>
+                      <div className="chat-screenshot-selectable-content pointer-events-none relative z-[1] pl-8 pr-2" inert>
+                        {row}
+                      </div>
+                    </div>
+                  ) : (
+                    row
+                  );
+
+                  const compactDivider = item.compactDone ? (
+                    <CompactDivider summaryPreview={item.compactDone.summary_preview} />
+                  ) : null;
+
+                  return (
+                    <MessageScrollerItem
+                      key={item.key}
+                      messageId={chatMessageScrollerID(item)}
+                      className={spacingClass}
+                      data-screenshot-message-row="true"
+                      data-chat-message-id={chatMessageScrollerID(item)}
+                      data-chat-message-role={item.role}
+                      data-message-public-id={publicID || undefined}
+                    >
+                      <div>
+                        {compactDivider}
+                        {rowContent}
+                      </div>
+                    </MessageScrollerItem>
+                  );
+                })}
+                <ChatScreenshotBrandMark placement="bottom" />
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton
+              aria-label={t("messages.scrollToBottom")}
+              title={t("messages.scrollToBottom")}
+              className="z-20 size-8 text-muted-foreground shadow-md hover:text-foreground"
+            >
+              <ArrowDownToLine className="size-4" strokeWidth={1.8} />
+            </MessageScrollerButton>
+            <ChatMessagePositionRail messages={messages} boundaryRef={messageViewportBoundaryRef} />
+            <ChatResponseOutlineRail
+              boundaryRef={messageViewportBoundaryRef}
+              disabled={selectionMode || splitRightInset}
+            />
+          </MessageScroller>
+        </MessageScrollerProvider>
       </div>
     </>
   );
 }
 
-export function ChatAreaSkeleton() {
+export function ChatAreaSkeleton({
+  contentWidthClassName,
+}: {
+  contentWidthClassName: string;
+}) {
   return (
     <div aria-hidden="true" className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 px-3 py-2.5 md:px-0">
@@ -410,7 +873,7 @@ export function ChatAreaSkeleton() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden px-3 pb-8 pt-2 md:px-6">
-        <div className="mx-auto w-full max-w-[760px] space-y-6">
+        <div className={cn("mx-auto w-full space-y-6", contentWidthClassName)}>
           <ChatUserMessageSkeleton widthClassName="w-[min(26rem,70%)] max-sm:w-[88%]" />
 
           <ChatAssistantMessageSkeleton />

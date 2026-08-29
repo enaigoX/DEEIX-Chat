@@ -7,13 +7,14 @@ import (
 	"time"
 
 	model "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/domain/conversation"
-	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/pkg/traceid"
+	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"go.uber.org/zap"
 )
 
 type messageSendRunState struct {
 	service          *Service
+	conversation     *model.Conversation
 	run              *model.Run
 	startedAt        time.Time
 	userMessage      **model.Message
@@ -21,6 +22,7 @@ type messageSendRunState struct {
 	traceRecorder    **messageTraceRecorder
 	result           **SendMessageResult
 	traceContext     context.Context
+	reuseUserMessage bool
 }
 
 func newMessageSendRunState(
@@ -31,8 +33,9 @@ func newMessageSendRunState(
 	runID string,
 ) *messageSendRunState {
 	return &messageSendRunState{
-		service:   service,
-		startedAt: startedAt,
+		service:      service,
+		conversation: conversation,
+		startedAt:    startedAt,
 		run: &model.Run{
 			RunID:              runID,
 			RequestID:          strings.TrimSpace(input.RequestID),
@@ -93,8 +96,16 @@ func (r *messageSendRunState) finalize(ctx context.Context, retErr error) {
 
 	r.finalizeRun(retErr)
 	r.finalizeUserMessage(finalizeCtx, retErr)
+	userMessage := r.currentUserMessage()
+	if shouldPersistConversationFallbackTitleAfterSend(retErr, userMessage) && r.conversation != nil {
+		r.service.persistConversationFallbackTitle(finalizeCtx, *r.conversation, *userMessage)
+	}
 	r.finalizeAssistantMessage(finalizeCtx, retErr)
 	r.createRun(finalizeCtx)
+}
+
+func shouldPersistConversationFallbackTitleAfterSend(retErr error, userMessage *model.Message) bool {
+	return userMessage != nil && errors.Is(retErr, ErrMessageGenerationCanceled)
 }
 
 func (r *messageSendRunState) finalizeRun(retErr error) {
@@ -103,6 +114,10 @@ func (r *messageSendRunState) finalizeRun(retErr error) {
 	r.run.TotalLatencyMS = endedAt.Sub(r.startedAt).Milliseconds()
 	if r.run.TotalLatencyMS < 0 {
 		r.run.TotalLatencyMS = 0
+	}
+	if result := r.currentResult(); result != nil && result.IsModerationBlocked() {
+		applyBlockedRunFields(r.run, result)
+		return
 	}
 	switch {
 	case retErr == nil:
@@ -120,11 +135,22 @@ func (r *messageSendRunState) finalizeRun(retErr error) {
 		r.run.ErrorCode = classifyRunErrorCode(retErr)
 		r.run.ErrorMessage = truncateError(retErr.Error(), 255)
 	}
+	// Preserve barrier pass/fail-open state written mid-flight (do not default to not_required).
+	if result := r.currentResult(); result != nil {
+		applyModerationRunState(r.run, result)
+	}
 }
 
 func (r *messageSendRunState) finalizeUserMessage(ctx context.Context, retErr error) {
+	if r.reuseUserMessage {
+		return
+	}
 	userMessage := r.currentUserMessage()
 	if userMessage == nil {
+		return
+	}
+	if result := r.currentResult(); result != nil && result.IsModerationBlocked() {
+		// Block path already wrote message moderation state; do not overwrite.
 		return
 	}
 	messageStatus := "success"
@@ -156,6 +182,10 @@ func (r *messageSendRunState) finalizeUserMessage(ctx context.Context, retErr er
 
 func (r *messageSendRunState) finalizeAssistantMessage(ctx context.Context, retErr error) {
 	if retErr == nil {
+		return
+	}
+	if result := r.currentResult(); result != nil && result.IsModerationBlocked() {
+		// Block path already wrote assistant moderation state; do not overwrite.
 		return
 	}
 	assistantMessage := r.currentAssistantMessage()
@@ -191,8 +221,9 @@ func (r *messageSendRunState) finalizeAssistantMessage(ctx context.Context, retE
 }
 
 func (r *messageSendRunState) createRun(ctx context.Context) {
-	if err := r.service.repo.CreateConversationRun(ctx, r.run); err != nil {
-		r.service.logger.Error("create_conversation_run_failed",
+	// Upsert: mid-flight EnsureConversationRun may have already inserted the row.
+	if err := r.service.repo.UpsertConversationRun(ctx, r.run); err != nil {
+		r.service.logger.Error("upsert_conversation_run_failed",
 			zap.String("trace_id", traceid.FromContext(r.traceContext)),
 			zap.String("run_id", r.run.RunID),
 			zap.Error(err),
@@ -234,9 +265,16 @@ func applyRetainedGenerationRunUsage(run *model.Run, result *SendMessageResult, 
 		return
 	}
 	run.InputTokens = result.UserMessage.InputTokens
+	if sendMessageResultUsesAssistantSideInput(result) {
+		run.InputTokens = result.AssistantMessage.InputTokens
+	}
 	run.OutputTokens = result.AssistantMessage.OutputTokens
 	run.CacheReadTokens = result.UserMessage.CacheReadTokens
 	run.CacheWriteTokens = result.UserMessage.CacheWriteTokens
+	if sendMessageResultUsesAssistantSideInput(result) {
+		run.CacheReadTokens = result.AssistantMessage.CacheReadTokens
+		run.CacheWriteTokens = result.AssistantMessage.CacheWriteTokens
+	}
 	run.ReasoningTokens = result.AssistantMessage.ReasoningTokens
 	run.ToolCallsCount = toolCallsCount
 	run.FirstTokenLatencyMS = result.AssistantMessage.LatencyMS

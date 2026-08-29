@@ -1,7 +1,9 @@
-import type { ChatInputHeight, ChatSettings, FileMode, ModelVendorGroup, SendShortcut } from "@/features/settings/types/settings";
+import { parseChatContentWidth } from "@/shared/model/chat-content-width";
+import type { ChatInputHeight, ChatSettings, FileMode, ModelPresentationGroup, SendShortcut } from "@/features/settings/types/settings";
 import type { UserSettingsMap } from "@/shared/api/user-settings";
 import type { PublicModelDTO } from "@/shared/api/model.types";
 import { platformSendShortcut } from "@/shared/lib/platform-shortcuts";
+import { resolveModelPresentationGroup } from "@/shared/lib/model-presentation";
 
 const FILE_MODES: FileMode[] = ["auto", "full_context", "rag"];
 const INPUT_HEIGHTS: ChatInputHeight[] = ["compact", "standard", "loose"];
@@ -15,18 +17,25 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   showLatency: true,
   showBillingCost: true,
   markdownRender: true,
+  autoExpandThinking: true,
+  autoExpandToolCalls: true,
   autoGenerateTitle: true,
+  autoGenerateLabels: true,
   deleteFilesByDefault: false,
   contextCompactAuto: false,
   restoreDraftOnFailure: true,
   preserveConversationDrafts: true,
+  reuseModelOptions: true,
+  reasoningContentPassback: true,
   inputHeight: "standard",
+  contentWidth: "compact",
   fileMode: "auto",
 };
 
 export function parseChatSettings(map: UserSettingsMap): ChatSettings {
   const fileMode = map["chat.file_mode"];
   const inputHeight = map["chat.input_height"];
+  const contentWidth = map["chat.content_width"];
   const sendShortcut = map["chat.send_on_enter"];
 
   return {
@@ -37,12 +46,18 @@ export function parseChatSettings(map: UserSettingsMap): ChatSettings {
     showLatency: map["chat.show_latency"] !== "false",
     showBillingCost: map["chat.show_billing_cost"] !== "false",
     markdownRender: map["chat.markdown_render"] !== "false",
+    autoExpandThinking: map["chat.auto_expand_thinking"] !== "false",
+    autoExpandToolCalls: map["chat.auto_expand_tool_calls"] !== "false",
     autoGenerateTitle: map["chat.auto_generate_title"] !== "false",
+    autoGenerateLabels: map["chat.auto_generate_labels"] !== "false",
     deleteFilesByDefault: map["chat.delete_conversation_files_by_default"] === "true",
     contextCompactAuto: map["chat.context_compact_auto"] === "true",
     restoreDraftOnFailure: map["chat.restore_draft_on_failure"] !== "false",
     preserveConversationDrafts: map["chat.preserve_conversation_drafts"] !== "false",
+    reuseModelOptions: map["chat.reuse_model_options"] !== "false",
+    reasoningContentPassback: map["chat.reasoning_content_passback"] !== "false",
     inputHeight: INPUT_HEIGHTS.includes(inputHeight as ChatInputHeight) ? (inputHeight as ChatInputHeight) : "standard",
+    contentWidth: parseChatContentWidth(contentWidth),
     fileMode: FILE_MODES.includes(fileMode as FileMode) ? (fileMode as FileMode) : "auto",
   };
 }
@@ -57,14 +72,14 @@ export function parseSendShortcut(value: string | undefined): SendShortcut {
   return "enter";
 }
 
-export function groupModelsByVendor(models: PublicModelDTO[]): ModelVendorGroup[] {
+export function groupModelsForPresentation(models: PublicModelDTO[]): ModelPresentationGroup[] {
   const groups = new Map<string, PublicModelDTO[]>();
 
   for (const model of models) {
-    const vendor = model.vendor || "other";
-    const items = groups.get(vendor) ?? [];
+    const groupKey = resolveModelPresentationGroup(model).key;
+    const items = groups.get(groupKey) ?? [];
     items.push(model);
-    groups.set(vendor, items);
+    groups.set(groupKey, items);
   }
 
   return Array.from(groups.entries());

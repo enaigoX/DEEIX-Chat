@@ -1,15 +1,23 @@
-import { clearSessionSnapshot, readAccessToken, readSessionRevision, writeSessionSnapshot } from "@/shared/auth/session";
-import { apiRequest, ApiError, resolveApiBaseURL, type ApiRequestOptions } from "@/shared/api/http-client";
-import type { ApiEnvelope } from "@/shared/api/common.types";
 import type { LoginData } from "@/shared/api/auth.types";
+import {
+  ApiError,
+  ApiNetworkError,
+  type ApiRequestOptions,
+  apiRequest,
+  resolveAbortError,
+  resolveApiBaseURL,
+  toApiError,
+} from "@/shared/api/http-client";
+import { clearSessionSnapshot, readAccessToken, readSessionRevision, writeSessionSnapshot } from "@/shared/auth/session";
 
 type AuthedRequestOptions = Omit<ApiRequestOptions, "accessToken"> & {
   accessToken: string;
 };
 
-type AuthedFetchOptions = Omit<RequestInit, "headers"> & {
+type AuthedFetchOptions = Omit<RequestInit, "headers" | "signal"> & {
   accessToken: string;
   headers?: HeadersInit;
+  signal?: AbortSignal;
 };
 
 type NavigatorWithLocks = Navigator & {
@@ -57,8 +65,9 @@ async function requestAccessTokenRefresh(): Promise<string> {
       if (readSessionRevision() === startedRevision) {
         clearSessionSnapshot({ syncPeers: false });
       }
+      return "";
     }
-    return "";
+    throw error;
   }
 }
 
@@ -104,12 +113,20 @@ export async function authedRequest<T>(
   try {
     return await apiRequest<T>(path, options);
   } catch (error) {
+    const abortError = resolveAbortError(error, options.signal);
+    if (abortError) {
+      throw abortError;
+    }
     const isUnauthorized = error instanceof ApiError && error.status === 401;
     if (!allowRefresh || !isUnauthorized) {
       throw error;
     }
 
     const refreshedToken = await recoverAccessToken(options.accessToken);
+    const refreshAbortError = resolveAbortError(undefined, options.signal);
+    if (refreshAbortError) {
+      throw refreshAbortError;
+    }
     if (!refreshedToken) {
       throw error;
     }
@@ -141,39 +158,22 @@ function buildAuthedFetchInit(options: AuthedFetchOptions): RequestInit {
   };
 }
 
-async function toApiError(response: Response): Promise<ApiError> {
-  const contentType = response.headers.get("content-type") || "";
-  const requestId = response.headers.get("x-request-id") || undefined;
-  if (contentType.includes("application/json")) {
-    try {
-      const payload = (await response.json()) as Partial<ApiEnvelope<unknown>>;
-      return new ApiError(
-        payload?.errorMsg || `request failed: ${response.status}`,
-        response.status,
-        payload?.details,
-        payload?.errorCode,
-        payload?.requestId || requestId,
-      );
-    } catch {
-      return new ApiError(`request failed: ${response.status}`, response.status, undefined, undefined, requestId);
-    }
-  }
-
-  try {
-    const text = (await response.text()).trim();
-    return new ApiError(text || `request failed: ${response.status}`, response.status, undefined, undefined, requestId);
-  } catch {
-    return new ApiError(`request failed: ${response.status}`, response.status, undefined, undefined, requestId);
-  }
-}
-
 export async function authedFetch(
   path: string,
   options: AuthedFetchOptions,
   allowRefresh = true,
 ): Promise<Response> {
   const endpoint = `${resolveApiBaseURL()}${path}`;
-  const response = await fetch(endpoint, buildAuthedFetchInit(options));
+  let response: Response;
+  try {
+    response = await fetch(endpoint, buildAuthedFetchInit(options));
+  } catch (error) {
+    const abortError = resolveAbortError(error, options.signal);
+    if (abortError) {
+      throw abortError;
+    }
+    throw new ApiNetworkError(error);
+  }
   if (response.ok) {
     return response;
   }
@@ -183,18 +183,36 @@ export async function authedFetch(
     throw await toApiError(response);
   }
 
+  const responseAbortError = resolveAbortError(undefined, options.signal);
+  if (responseAbortError) {
+    throw responseAbortError;
+  }
+
   const refreshedToken = await recoverAccessToken(options.accessToken);
+  const refreshAbortError = resolveAbortError(undefined, options.signal);
+  if (refreshAbortError) {
+    throw refreshAbortError;
+  }
   if (!refreshedToken) {
     throw await toApiError(response);
   }
 
-  const retryResponse = await fetch(
-    endpoint,
-    buildAuthedFetchInit({
-      ...options,
-      accessToken: refreshedToken,
-    }),
-  );
+  let retryResponse: Response;
+  try {
+    retryResponse = await fetch(
+      endpoint,
+      buildAuthedFetchInit({
+        ...options,
+        accessToken: refreshedToken,
+      }),
+    );
+  } catch (error) {
+    const abortError = resolveAbortError(error, options.signal);
+    if (abortError) {
+      throw abortError;
+    }
+    throw new ApiNetworkError(error);
+  }
   if (!retryResponse.ok) {
     const retryError = await toApiError(retryResponse);
     if (isSessionTerminatingAuthError(retryError)) {

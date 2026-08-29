@@ -6,7 +6,6 @@ import { AnimatePresence, motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
-import { TaskModelField, type ModelOption } from "../shared/model-field";
 import {
   SettingsFieldEditor,
   type ServiceRuntimeActionName,
@@ -32,10 +31,13 @@ import {
   isEmbeddingServiceConfigured,
   isServiceDirty,
   isSettingsValueField,
+  mergeAllowedMIMETypes,
+  normalizeMinerUFileTypes,
   OCR_ENGINES,
+  resolveMissingMinerUMIMETypes,
   resolveActiveServices,
-  resolveErrorMessage,
   resolveFieldID,
+  resolveMinerUFileTypeFormats,
   resolveMinerUSource,
   resolveOCREngine,
   resolveVisibleFieldBlocks,
@@ -43,7 +45,6 @@ import {
   SERVICE_LABELS,
   SERVICE_NAMES,
   SETTINGS_GROUPS,
-  TASK_MODEL_FOLLOW,
   TIKA_SERVICE_SOURCES,
   usesTika,
   type ServiceName,
@@ -51,13 +52,12 @@ import {
   type ServiceState,
   type SettingsField,
   type SettingsGroup,
-} from "@/features/admin/model/chat-files";
+} from "@/features/admin/model/files-settings";
 import {
   type AdminEmbeddingIndexStatus,
   getAdminDoclingRuntime,
   getAdminEmbeddingRuntime,
   getAdminEmbeddingStatus,
-  getAdminReferenceData,
   getAdminMinerURuntime,
   getAdminRapidOCRRuntime,
   getAdminTesseractRuntime,
@@ -66,45 +66,47 @@ import {
   patchAdminSettings,
   triggerAdminEmbeddingReindex,
 } from "@/features/admin/api";
-import { buildTaskModelOptions } from "@/features/admin/model/task-model-options";
+import { resolveAdminErrorMessage } from "@/features/admin/utils/admin-error";
 import { cn } from "@/lib/utils";
 import type { PatchSettingItem } from "@/shared/api/settings.types";
 import { configuredSettingsMap, settingHasValue } from "@/shared/lib/settings-meta";
 
 const SERVICE_LOADERS: Record<ServiceName, (token: string) => Promise<ServiceRuntimeData>> = {
-  tika: getAdminTikaRuntime as (token: string) => Promise<ServiceRuntimeData>,
-  docling: getAdminDoclingRuntime as (token: string) => Promise<ServiceRuntimeData>,
-  mineru: getAdminMinerURuntime as (token: string) => Promise<ServiceRuntimeData>,
-  tesseract: getAdminTesseractRuntime as (token: string) => Promise<ServiceRuntimeData>,
-  rapidocr: getAdminRapidOCRRuntime as (token: string) => Promise<ServiceRuntimeData>,
-  embedding: getAdminEmbeddingRuntime as (token: string) => Promise<ServiceRuntimeData>,
+  tika: getAdminTikaRuntime,
+  docling: getAdminDoclingRuntime,
+  mineru: getAdminMinerURuntime,
+  tesseract: getAdminTesseractRuntime,
+  rapidocr: getAdminRapidOCRRuntime,
+  embedding: getAdminEmbeddingRuntime,
 };
 
-function translateOptional(
-  translate: (key: string, values?: Record<string, string | number>) => string,
-  key: string,
-  fallback: string,
-): string {
-  try {
-    return translate(key);
-  } catch {
-    return fallback;
-  }
+function resolveMinerUFileTypeOptionMeta(value: string, label: string, settingsMap: Record<string, string>) {
+  const meta = resolveMinerUFileTypeFormats(value, settingsMap["extract.mineru_source"] ?? "").join("/");
+  return meta && meta !== label ? meta : undefined;
 }
 
-function toEditorField(field: SettingsField, translate: (key: string) => string) {
+function toEditorField(field: SettingsField, translate: (key: string) => string, settingsMap: Record<string, string>) {
   const fieldKey = `fields.${field.namespace}.${field.key}`;
+  const fieldID = resolveFieldID(field);
   return {
-    id: resolveFieldID(field),
-    label: translateOptional(translate, `${fieldKey}.label`, field.label),
-    description: translateOptional(translate, `${fieldKey}.description`, field.description),
+    id: fieldID,
+    label: translate(`${fieldKey}.label`),
+    description: translate(`${fieldKey}.description`),
     type: field.type,
-    placeholder: field.placeholder ? translateOptional(translate, `${fieldKey}.placeholder`, field.placeholder) : undefined,
+    placeholder: field.placeholder ? translate(`${fieldKey}.placeholder`) : undefined,
     valueUnit: field.valueUnit,
-    options: field.options?.map((option) => ({
-      ...option,
-      label: translateOptional(translate, `${fieldKey}.options.${option.value}`, option.label),
-    })),
+    options: field.options?.map((option) => {
+      const label = translate(`${fieldKey}.options.${option.value}`);
+      const meta =
+        fieldID === "extract.mineru_file_types"
+          ? resolveMinerUFileTypeOptionMeta(option.value, label, settingsMap)
+          : undefined;
+      return {
+        ...option,
+        label,
+        meta,
+      };
+    }),
   } as const;
 }
 
@@ -120,29 +122,60 @@ export function AdminFilesSettingsPage() {
   const [embeddingStatus, setEmbeddingStatus] = React.useState<AdminEmbeddingIndexStatus | null>(null);
   const [embeddingStatusLoading, setEmbeddingStatusLoading] = React.useState(false);
   const [reindexing, setReindexing] = React.useState(false);
-  const [modelOptions, setModelOptions] = React.useState<ModelOption[]>(() =>
-    buildTaskModelOptions({
-      models: [],
-      followLabel: t("model.followCurrent"),
-      followValue: TASK_MODEL_FOLLOW,
-    }),
+  const embeddingRefreshTimerRef = React.useRef<number | null>(null);
+  const embeddingStatusRequestRef = React.useRef<AbortController | null>(null);
+  const embeddingStatusRequestVersionRef = React.useRef(0);
+
+  const cancelEmbeddingStatusRefresh = React.useCallback(() => {
+    if (embeddingRefreshTimerRef.current !== null) {
+      window.clearTimeout(embeddingRefreshTimerRef.current);
+      embeddingRefreshTimerRef.current = null;
+    }
+    embeddingStatusRequestVersionRef.current += 1;
+    embeddingStatusRequestRef.current?.abort();
+    embeddingStatusRequestRef.current = null;
+  }, []);
+
+  const clearEmbeddingStatus = React.useCallback(() => {
+    cancelEmbeddingStatusRefresh();
+    setEmbeddingStatus(null);
+    setEmbeddingStatusLoading(false);
+  }, [cancelEmbeddingStatusRefresh]);
+
+  React.useEffect(
+    () => cancelEmbeddingStatusRefresh,
+    [cancelEmbeddingStatusRefresh],
   );
 
   const loadEmbeddingStatus = React.useCallback(async () => {
+    cancelEmbeddingStatusRefresh();
+    const requestVersion = embeddingStatusRequestVersionRef.current;
+    const requestController = new AbortController();
+    embeddingStatusRequestRef.current = requestController;
     setEmbeddingStatusLoading(true);
     try {
       const token = await resolveAccessToken();
-      if (!token) return;
-      const status = await getAdminEmbeddingStatus(token);
+      if (!token || requestController.signal.aborted) return;
+      const status = await getAdminEmbeddingStatus(token, requestController.signal);
+      if (embeddingStatusRequestVersionRef.current !== requestVersion) return;
       setEmbeddingStatus(status);
     } catch {
-      setEmbeddingStatus(null);
+      if (
+        !requestController.signal.aborted &&
+        embeddingStatusRequestVersionRef.current === requestVersion
+      ) setEmbeddingStatus(null);
     } finally {
-      setEmbeddingStatusLoading(false);
+      if (embeddingStatusRequestRef.current === requestController) {
+        embeddingStatusRequestRef.current = null;
+      }
+      if (embeddingStatusRequestVersionRef.current === requestVersion) {
+        setEmbeddingStatusLoading(false);
+      }
     }
-  }, []);
+  }, [cancelEmbeddingStatusRefresh]);
 
   const handleReindex = React.useCallback(async () => {
+    const refreshVersion = embeddingStatusRequestVersionRef.current;
     setReindexing(true);
     try {
       const token = await resolveAccessToken();
@@ -154,9 +187,16 @@ export function AdminFilesSettingsPage() {
       toast.success(t("toast.reindexSubmitted"), {
         description: t("toast.reindexSubmittedDescription", { count: result.submitted }),
       });
-      setTimeout(() => { void loadEmbeddingStatus(); }, 1500);
+      if (embeddingStatusRequestVersionRef.current !== refreshVersion) return;
+      if (embeddingRefreshTimerRef.current !== null) {
+        window.clearTimeout(embeddingRefreshTimerRef.current);
+      }
+      embeddingRefreshTimerRef.current = window.setTimeout(() => {
+        embeddingRefreshTimerRef.current = null;
+        void loadEmbeddingStatus();
+      }, 1500);
     } catch (error) {
-      toast.error(t("toast.reindexFailed"), { description: resolveErrorMessage(error, t("toast.unknownError")) });
+      toast.error(t("toast.reindexFailed"), { description: resolveAdminErrorMessage(error, t("toast.unknownError")) });
     } finally {
       setReindexing(false);
     }
@@ -181,7 +221,7 @@ export function AdminFilesSettingsPage() {
         await loadServiceRuntime(name);
       } catch (error) {
         toast.error(t("toast.serviceTestFailed", { service: SERVICE_LABELS[name] }), {
-          description: resolveErrorMessage(error, t("toast.unknownError")),
+          description: resolveAdminErrorMessage(error, t("toast.unknownError")),
         });
       } finally {
         setServiceStates((prev) => ({ ...prev, [name]: { ...prev[name], action: "" } }));
@@ -212,32 +252,23 @@ export function AdminFilesSettingsPage() {
         toast.error(t("toast.sessionExpired"), { description: t("toast.sessionExpiredDescription") });
         return;
       }
-      const [grouped, referenceData] = await Promise.all([
-        listAdminSettings(token),
-        getAdminReferenceData(token).catch(() => null),
-      ]);
-      const nextModelOptions = buildTaskModelOptions({
-        models: referenceData?.models ?? [],
-        followLabel: t("model.followCurrent"),
-        followValue: TASK_MODEL_FOLLOW,
-      });
+      const grouped = await listAdminSettings(token);
       const flattened = applySettingsDefaults(flattenSettings(SETTINGS_GROUPS, grouped));
       setConfiguredMap(configuredSettingsMap(grouped));
-      setModelOptions(nextModelOptions);
       setSettingsMap(flattened);
       setSavedMap(flattened);
       syncServiceRuntimes(flattened);
       if (flattened["file.embedding_enabled"] === EMBEDDING_MODES.ON) {
         void loadEmbeddingStatus();
       } else {
-        setEmbeddingStatus(null);
+        clearEmbeddingStatus();
       }
     } catch (error) {
-      toast.error(t("toast.loadFailed"), { description: resolveErrorMessage(error, t("toast.unknownError")) });
+      toast.error(t("toast.loadFailed"), { description: resolveAdminErrorMessage(error, t("toast.unknownError")) });
     } finally {
       setLoading(false);
     }
-  }, [loadEmbeddingStatus, syncServiceRuntimes, t]);
+  }, [clearEmbeddingStatus, loadEmbeddingStatus, syncServiceRuntimes, t]);
 
   React.useEffect(() => {
     void loadSettings();
@@ -257,11 +288,28 @@ export function AdminFilesSettingsPage() {
   }, [savedMap, settingsMap]);
 
   const handleFieldChange = React.useCallback((fieldID: string, value: string) => {
+    if (fieldID === "file.embedding_enabled" && value !== EMBEDDING_MODES.ON) {
+      clearEmbeddingStatus();
+    }
     setSettingsMap((prev) => {
-      let next =
-        fieldID === "extract.mineru_source"
-          ? { ...prev, [fieldID]: value }
-          : { ...prev, [fieldID]: value };
+      let next = { ...prev, [fieldID]: value };
+      if (fieldID === "extract.engine" && value === EXTRACT_ENGINE_POLICIES.MINERU) {
+        next["extract.mineru_file_types"] = normalizeMinerUFileTypes(next["extract.mineru_file_types"] ?? "");
+      }
+      if (fieldID === "extract.mineru_file_types") {
+        next["extract.mineru_file_types"] = normalizeMinerUFileTypes(value);
+      }
+      if (fieldID === "extract.ocr_engine" && value === OCR_ENGINES.MISTRAL) {
+        if (!(next["extract.mistral_ocr_base_url"] ?? "").trim()) {
+          next["extract.mistral_ocr_base_url"] = "https://api.mistral.ai/v1/ocr";
+        }
+        if (!(next["extract.mistral_ocr_model"] ?? "").trim()) {
+          next["extract.mistral_ocr_model"] = "mistral-ocr-latest";
+        }
+        if (!(next["extract.mistral_ocr_timeout_seconds"] ?? "").trim()) {
+          next["extract.mistral_ocr_timeout_seconds"] = "60";
+        }
+      }
       if ((fieldID === "file.embedding_enabled" || fieldID === "file.embedding_host" || fieldID === "file.rag_model") && !isEmbeddingServiceConfigured(next)) {
         next = {
           ...next,
@@ -290,7 +338,38 @@ export function AdminFilesSettingsPage() {
       }
       return next;
     });
-  }, [t]);
+  }, [clearEmbeddingStatus, t]);
+
+  const handleSaveAllowedMIMETypes = React.useCallback(
+    async (nextValue: string) => {
+      setSaving(true);
+      try {
+        const token = await resolveAccessToken();
+        if (!token) {
+          toast.error(t("toast.sessionExpired"), { description: t("toast.sessionExpiredDescription") });
+          return;
+        }
+        const grouped = await patchAdminSettings(token, {
+          items: [{ namespace: "file", key: "allowed_mime_types", value: nextValue }],
+        });
+        const flattened = applySettingsDefaults(flattenSettings(SETTINGS_GROUPS, grouped));
+        const savedValue = flattened["file.allowed_mime_types"] ?? nextValue;
+        setConfiguredMap(configuredSettingsMap(grouped));
+        setSettingsMap((current) => ({
+          ...current,
+          "file.allowed_mime_types": savedValue,
+        }));
+        setSavedMap(flattened);
+        syncServiceRuntimes(flattened);
+        toast.success(t("toast.mimeTypesUpdated"));
+      } catch (error) {
+        toast.error(t("toast.saveFailed"), { description: resolveAdminErrorMessage(error, t("toast.unknownError")) });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [syncServiceRuntimes, t],
+  );
 
   const resolveServiceRuntime = React.useCallback(
     (name: ServiceName): SettingsFieldServiceRuntime => {
@@ -352,6 +431,18 @@ export function AdminFilesSettingsPage() {
       }
       if (ocrEnabled && ocrEngine === OCR_ENGINES.ALIYUN && (!draftSettingsMap["extract.aliyun_ocr_access_key_id"]?.trim() || !settingHasValue(draftSettingsMap, configuredMap, "extract.aliyun_ocr_access_key_secret") || !draftSettingsMap["extract.aliyun_ocr_region"]?.trim())) {
         toast.error(t("toast.saveFailed"), { description: t("validation.aliyunOCRRequired") });
+        return;
+      }
+      if (ocrEnabled && ocrEngine === OCR_ENGINES.MISTRAL && !draftSettingsMap["extract.mistral_ocr_base_url"]?.trim()) {
+        toast.error(t("toast.saveFailed"), { description: t("validation.mistralOCRBaseURLRequired") });
+        return;
+      }
+      if (ocrEnabled && ocrEngine === OCR_ENGINES.MISTRAL && !settingHasValue(draftSettingsMap, configuredMap, "extract.mistral_ocr_auth_token")) {
+        toast.error(t("toast.saveFailed"), { description: t("validation.mistralOCRAPIKeyRequired") });
+        return;
+      }
+      if (ocrEnabled && ocrEngine === OCR_ENGINES.MISTRAL && !draftSettingsMap["extract.mistral_ocr_model"]?.trim()) {
+        toast.error(t("toast.saveFailed"), { description: t("validation.mistralOCRModelRequired") });
         return;
       }
       if (ocrEnabled && ocrEngine === OCR_ENGINES.LLM && !draftSettingsMap["extract.llm_ocr_base_url"]?.trim()) {
@@ -431,6 +522,7 @@ export function AdminFilesSettingsPage() {
         for (const item of [
           { namespace: "extract", key: "mineru_source", value: resolveMinerUSource(nextSettingsMap["extract.mineru_source"] ?? "") },
           { namespace: "extract", key: "mineru_base_url", value: nextSettingsMap["extract.mineru_base_url"] ?? "" },
+          { namespace: "extract", key: "mineru_file_types", value: nextSettingsMap["extract.mineru_file_types"] ?? "" },
           { namespace: "extract", key: "mineru_timeout_seconds", value: nextSettingsMap["extract.mineru_timeout_seconds"] ?? "180" },
         ] as PatchSettingItem[]) {
           if (!existingKeys.has(`${item.namespace}.${item.key}`)) items.push(item);
@@ -465,6 +557,12 @@ export function AdminFilesSettingsPage() {
                   { namespace: "extract", key: "aliyun_ocr_region", value: nextSettingsMap["extract.aliyun_ocr_region"] ?? "cn-hangzhou" },
                   { namespace: "extract", key: "aliyun_ocr_endpoint", value: nextSettingsMap["extract.aliyun_ocr_endpoint"] ?? "ocr-api.cn-hangzhou.aliyuncs.com" },
                   { namespace: "extract", key: "aliyun_ocr_timeout_seconds", value: nextSettingsMap["extract.aliyun_ocr_timeout_seconds"] ?? "60" },
+                ]
+            : ocrEngine === OCR_ENGINES.MISTRAL
+              ? [
+                  { namespace: "extract", key: "mistral_ocr_base_url", value: nextSettingsMap["extract.mistral_ocr_base_url"] ?? "https://api.mistral.ai/v1/ocr" },
+                  { namespace: "extract", key: "mistral_ocr_model", value: nextSettingsMap["extract.mistral_ocr_model"] ?? "mistral-ocr-latest" },
+                  { namespace: "extract", key: "mistral_ocr_timeout_seconds", value: nextSettingsMap["extract.mistral_ocr_timeout_seconds"] ?? "60" },
                 ]
             : ocrEngine === OCR_ENGINES.LLM
               ? [
@@ -503,33 +601,59 @@ export function AdminFilesSettingsPage() {
             description: t("toast.embeddingModelChangedDescription"),
             duration: 8000,
           });
+        } else {
+          toast.success(t("toast.groupUpdated", { group: t(`groups.${group.key}.title`) }));
+        }
+        if (
+          embeddingModelWillChange ||
+          group.fields.some((field) =>
+            field.namespace === "file" &&
+            (field.key === "embedding_enabled" || field.key === "rag_model" || field.key === "embedding_host")
+          )
+        ) {
           if (flattened["file.embedding_enabled"] === EMBEDDING_MODES.ON) {
             void loadEmbeddingStatus();
           } else {
-            setEmbeddingStatus(null);
-          }
-        } else {
-          toast.success(t("toast.groupUpdated", { group: translateOptional(t, `groups.${group.key}.title`, group.title) }));
-          if (group.fields.some((f) => f.namespace === "file" && (f.key === "embedding_enabled" || f.key === "rag_model" || f.key === "embedding_host"))) {
-            if (flattened["file.embedding_enabled"] === EMBEDDING_MODES.ON) {
-              void loadEmbeddingStatus();
-            } else {
-              setEmbeddingStatus(null);
-            }
+            clearEmbeddingStatus();
           }
         }
       } catch (error) {
-        toast.error(t("toast.saveFailed"), { description: resolveErrorMessage(error, t("toast.unknownError")) });
+        toast.error(t("toast.saveFailed"), { description: resolveAdminErrorMessage(error, t("toast.unknownError")) });
       } finally {
         setSaving(false);
       }
     },
-    [configuredMap, dirtyFieldIDs, loadEmbeddingStatus, savedMap, settingsMap, syncServiceRuntimes, t],
+    [clearEmbeddingStatus, configuredMap, dirtyFieldIDs, loadEmbeddingStatus, savedMap, settingsMap, syncServiceRuntimes, t],
   );
 
   const requestSaveGroup = React.useCallback((group: SettingsGroup) => {
     void handleSaveGroup(group);
   }, [handleSaveGroup]);
+
+  const minerUMIMEHint = React.useMemo(() => {
+    if ((settingsMap["extract.engine"] ?? "") !== EXTRACT_ENGINE_POLICIES.MINERU) {
+      return null;
+    }
+    const missing = resolveMissingMinerUMIMETypes(settingsMap);
+    if (missing.length === 0) {
+      return null;
+    }
+    const labels = missing.map((item) => item.format).join(", ");
+    const nextAllowlist = mergeAllowedMIMETypes(settingsMap["file.allowed_mime_types"] ?? "", missing);
+    return (
+      <p className="min-w-0 text-[11px] leading-5 text-muted-foreground">
+        {t("mineruMimeHint.missing", { formats: labels })}
+        <button
+          type="button"
+          className="ml-2 inline-flex text-foreground/70 underline underline-offset-4 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={loading || saving}
+          onClick={() => void handleSaveAllowedMIMETypes(nextAllowlist)}
+        >
+          {t("mineruMimeHint.addAndSave")}
+        </button>
+      </p>
+    );
+  }, [handleSaveAllowedMIMETypes, loading, saving, settingsMap, t]);
 
   const embeddingEnabled = settingsMap["file.embedding_enabled"] === EMBEDDING_MODES.ON;
 
@@ -542,7 +666,7 @@ export function AdminFilesSettingsPage() {
           <React.Fragment key={group.title}>
             {visibleFields.length > 0 && (
               <SettingsSection
-                title={translateOptional(t, `groups.${group.key}.title`, group.title)}
+                title={t(`groups.${group.key}.title`)}
                 actions={
                   visibleFields.some((field) => dirtyFieldIDs.has(resolveFieldID(field))) ? (
                     <Button type="button" size="sm" disabled={loading || saving} onClick={() => requestSaveGroup(group)}>
@@ -558,28 +682,11 @@ export function AdminFilesSettingsPage() {
                     {visibleBlocks.map((block, blockIndex) => {
                       if (block.kind === "field") {
                         const fieldID = resolveFieldID(block.field);
-                        if (fieldID === "chat.compact_task_model") {
-                          return (
-                            <SettingsFieldItem key={fieldID} index={blockIndex}>
-                              <TaskModelField
-                                id={fieldID}
-                                label={translateOptional(t, `fields.${block.field.namespace}.${block.field.key}.label`, block.field.label)}
-                                description={translateOptional(t, `fields.${block.field.namespace}.${block.field.key}.description`, block.field.description)}
-                                value={settingsMap[fieldID] ?? ""}
-                                fallbackValue={TASK_MODEL_FOLLOW}
-                                dirty={(settingsMap[fieldID] ?? "") !== (savedMap[fieldID] ?? "")}
-                                disabled={loading || saving}
-                                modelOptions={modelOptions}
-                                onChange={(value) => handleFieldChange(fieldID, value)}
-                              />
-                            </SettingsFieldItem>
-                          );
-                        }
                         return (
                           <SettingsFieldItem key={fieldID} index={blockIndex}>
                             <SettingsFieldEditor
                               field={{
-                                ...toEditorField(block.field, t),
+                                ...toEditorField(block.field, t, settingsMap),
                                 ...(block.field.runtimeService
                                   ? { serviceRuntime: resolveServiceRuntime(block.field.runtimeService) }
                                   : {}),
@@ -588,6 +695,8 @@ export function AdminFilesSettingsPage() {
                               configured={configuredMap[fieldID]}
                               dirty={(settingsMap[fieldID] ?? "") !== (savedMap[fieldID] ?? "")}
                               disabled={loading || saving}
+                              afterControl={fieldID === "extract.mineru_file_types" ? minerUMIMEHint : undefined}
+                              animateLayout={fieldID !== "extract.mineru_file_types"}
                               onChange={(value) => handleFieldChange(fieldID, value)}
                             />
                           </SettingsFieldItem>
@@ -610,27 +719,11 @@ export function AdminFilesSettingsPage() {
                                 <SettingsFieldList className="gap-3 md:gap-4">
                                   {block.fields.map((field) => {
                                     const fieldID = resolveFieldID(field);
-                                    if (fieldID === "chat.compact_task_model") {
-                                      return (
-                                        <TaskModelField
-                                          key={fieldID}
-                                          id={fieldID}
-                                          label={translateOptional(t, `fields.${field.namespace}.${field.key}.label`, field.label)}
-                                          description={translateOptional(t, `fields.${field.namespace}.${field.key}.description`, field.description)}
-                                          value={settingsMap[fieldID] ?? ""}
-                                          fallbackValue={TASK_MODEL_FOLLOW}
-                                          dirty={(settingsMap[fieldID] ?? "") !== (savedMap[fieldID] ?? "")}
-                                          disabled={loading || saving}
-                                          modelOptions={modelOptions}
-                                          onChange={(value) => handleFieldChange(fieldID, value)}
-                                        />
-                                      );
-                                    }
                                     return (
                                       <SettingsFieldEditor
                                         key={fieldID}
                                         field={{
-                                          ...toEditorField(field, t),
+                                          ...toEditorField(field, t, settingsMap),
                                           ...(field.runtimeService
                                             ? { serviceRuntime: resolveServiceRuntime(field.runtimeService) }
                                             : {}),
@@ -639,6 +732,8 @@ export function AdminFilesSettingsPage() {
                                         configured={configuredMap[fieldID]}
                                         dirty={(settingsMap[fieldID] ?? "") !== (savedMap[fieldID] ?? "")}
                                         disabled={loading || saving}
+                                        afterControl={fieldID === "extract.mineru_file_types" ? minerUMIMEHint : undefined}
+                                        animateLayout={fieldID !== "extract.mineru_file_types"}
                                         onChange={(value) => handleFieldChange(fieldID, value)}
                                       />
                                     );
@@ -654,20 +749,23 @@ export function AdminFilesSettingsPage() {
                 </SettingsFieldList>
 
                 {group.key === "embedding" && embeddingEnabled && (
-                  <div className="min-w-0 space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                  <SettingsFieldInset className="min-w-0 space-y-3">
                     <div className="flex min-w-0 items-center justify-between gap-3">
                       <div className="min-w-0 space-y-0.5">
                         <p className="text-xs font-medium">{t("embeddingStatus.title")}</p>
                         {embeddingStatus?.modelSignature ? (
-                          <p className="min-w-0 break-all font-mono text-[11px] text-muted-foreground">{embeddingStatus.modelSignature}</p>
+                          <p className="min-w-0 truncate font-mono text-[10px] text-muted-foreground" title={embeddingStatus.modelSignature}>
+                            {embeddingStatus.modelSignature}
+                          </p>
                         ) : (
-                          <p className="text-[11px] text-muted-foreground">{t("embeddingStatus.noSignature")}</p>
+                          <p className="text-[10px] text-muted-foreground">{t("embeddingStatus.noSignature")}</p>
                         )}
                       </div>
                       <Button
                         type="button"
                         size="sm"
-                        variant="default"
+                        variant="outline"
+                        className="h-7 shrink-0 px-2 text-xs shadow-none"
                         disabled={reindexing || embeddingStatusLoading || loading || saving}
                         onClick={() => void handleReindex()}
                       >
@@ -675,24 +773,24 @@ export function AdminFilesSettingsPage() {
                       </Button>
                     </div>
                     {embeddingStatus ? (
-                      <div className="grid min-w-0 grid-cols-2 gap-2 text-center sm:grid-cols-4">
+                      <div className="grid min-w-0 grid-cols-2 overflow-hidden rounded-md bg-muted/30 text-center sm:grid-cols-4">
                         {[
                           { label: t("embeddingStatus.ready"), value: embeddingStatus.readyCount, color: "text-green-600 dark:text-green-400" },
                           { label: t("embeddingStatus.stale"), value: embeddingStatus.staleCount, color: embeddingStatus.staleCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground" },
                           { label: t("embeddingStatus.pending"), value: embeddingStatus.pendingCount, color: "text-muted-foreground" },
                           { label: t("embeddingStatus.failed"), value: embeddingStatus.failedCount, color: embeddingStatus.failedCount > 0 ? "text-destructive" : "text-muted-foreground" },
                         ].map(({ label, value, color }) => (
-                          <div key={label} className="rounded-md bg-background/60 py-2 px-1 border border-border/40">
-                            <p className={cn("text-base font-semibold tabular-nums", color)}>{value}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
+                          <div key={label} className="px-3 py-2.5">
+                            <p className={cn("text-sm font-semibold tabular-nums", color)}>{value}</p>
+                            <p className="mt-0.5 text-[10px] text-muted-foreground">{label}</p>
                           </div>
                         ))}
                       </div>
                     ) : embeddingStatusLoading ? (
-                      <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4" aria-hidden="true">
+                      <div className="grid min-w-0 grid-cols-2 overflow-hidden rounded-md bg-muted/30 sm:grid-cols-4" aria-hidden="true">
                         {Array.from({ length: 4 }).map((_, index) => (
-                          <div key={`embedding-status-skeleton-${index}`} className="rounded-md border border-border/40 bg-background/60 px-2 py-2">
-                            <div className="mx-auto h-5 w-8 animate-pulse rounded-sm bg-muted/70" />
+                          <div key={`embedding-status-skeleton-${index}`} className="px-3 py-2.5">
+                            <div className="mx-auto h-4 w-8 animate-pulse rounded-sm bg-muted/70" />
                             <div className="mx-auto mt-1.5 h-2.5 w-10 animate-pulse rounded-sm bg-muted/60" />
                           </div>
                         ))}
@@ -707,7 +805,7 @@ export function AdminFilesSettingsPage() {
                         {t("embeddingStatus.needsReindex")}
                       </p>
                     )}
-                  </div>
+                  </SettingsFieldInset>
                 )}
               </SettingsSection>
             )}

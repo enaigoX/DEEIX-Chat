@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SpinnerLabel } from "@/components/ui/spinner";
 import { PASSWORD_MIN_LENGTH } from "@/shared/auth/account-policy";
-import { useLoginPage } from "@/features/auth/hooks/use-login-page";
+import { useLoginPage } from "@/features/auth/hooks/use-auth-login-page";
 import { AppLogo } from "@/shared/components/app-logo";
 import { IdentityProviderIcon } from "@/shared/components/identity-provider-icon";
+import { CustomBrandAttribution } from "@/shared/components/powered-by-deeix";
 import { TurnstileWidget } from "@/features/auth/components/turnstile-widget";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +46,7 @@ export function LoginPage({ nextPath }: LoginPageProps) {
     options,
     password,
     passwordLoginEnabled,
+    passwordResetEnabled,
     registerCode,
     registerCodeCooldownSeconds,
     registerDebugCode,
@@ -55,12 +57,20 @@ export function LoginPage({ nextPath }: LoginPageProps) {
     registerTurnstileSiteKey,
     registerTurnstileToken,
     requestRegisterCode,
+    requestPasswordResetCode,
     requestTwoFactorEmailCode,
+    resetCode,
+    resetCodeCooldownSeconds,
+    resetCodeSent,
+    resetEmail,
+    resetPassword,
     sendingCode,
     setPassword,
     setRegisterCode,
     setRegisterPassword,
     setRegisterTurnstileToken,
+    setResetCode,
+    setResetPassword,
     setTwoFactorCode,
     switchTwoFactorVerificationMethod,
     setUsername,
@@ -72,8 +82,10 @@ export function LoginPage({ nextPath }: LoginPageProps) {
     twoFactorEmailDebugCode,
     twoFactorVerificationMethod,
     twoFactorVerificationMethods,
+    updateResetEmail,
     updateRegisterEmail,
     username,
+    onPasswordResetSubmit,
   } = loginPage;
 
   const accountLabel = options.emailEnabled && options.usernameEnabled
@@ -187,9 +199,23 @@ export function LoginPage({ nextPath }: LoginPageProps) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium leading-none text-foreground" htmlFor="password">
-                    {t("password")}
-                  </label>
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm font-medium leading-none text-foreground" htmlFor="password">
+                      {t("password")}
+                    </label>
+                    {passwordResetEnabled ? (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline focus-visible:outline-none"
+                        onClick={() => {
+                          updateResetEmail(username.includes("@") ? username : "");
+                          loginPage.setMode("reset-password");
+                        }}
+                      >
+                        {t("forgotPassword")}
+                      </button>
+                    ) : null}
+                  </div>
                   <Input
                     id="password"
                     name="password"
@@ -203,13 +229,96 @@ export function LoginPage({ nextPath }: LoginPageProps) {
                   />
                 </div>
                 <Button
-                  className="mt-1 h-9 w-full rounded-md bg-foreground text-sm font-semibold text-background shadow-none hover:bg-foreground/90"
+                  className="mt-2 h-9 w-full rounded-md bg-foreground text-sm font-semibold text-background shadow-none hover:bg-foreground/90"
                   type="submit"
                   disabled={submitting}
                 >
                   {submitting ? <SpinnerLabel>{t("signingIn")}</SpinnerLabel> : t("signIn")}
                 </Button>
               </form>
+            ) : null}
+
+            {mode === "reset-password" && passwordResetEnabled ? (
+              <>
+                <form className="mt-7 space-y-4" onSubmit={onPasswordResetSubmit}>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium leading-none text-foreground" htmlFor="reset-email">
+                      {t("email")}
+                    </label>
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      autoComplete="email"
+                      className="h-9 border-input/50"
+                      placeholder={t("email")}
+                      value={resetEmail}
+                      onChange={(event) => updateResetEmail(event.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium leading-none text-foreground" htmlFor="reset-password">
+                      {t("newPassword")}
+                    </label>
+                    <Input
+                      id="reset-password"
+                      type="password"
+                      autoComplete="new-password"
+                      className="h-9 border-input/50"
+                      placeholder={t("newPasswordPlaceholder")}
+                      value={resetPassword}
+                      onChange={(event) => setResetPassword(event.target.value)}
+                      minLength={PASSWORD_MIN_LENGTH}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium leading-none text-foreground" htmlFor="reset-code">
+                      {t("verificationCode")}
+                    </label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="reset-code"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        className="h-9 border-input/50"
+                        placeholder={t("verificationCodePlaceholder")}
+                        value={resetCode}
+                        onChange={(event) => setResetCode(event.target.value)}
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-9 min-w-[4.5rem] shrink-0 rounded-md border-0 bg-muted px-3 text-sm font-semibold text-foreground shadow-none hover:bg-muted/80"
+                        disabled={sendingCode || resetCodeCooldownSeconds > 0 || !resetEmail.trim()}
+                        onClick={() => {
+                          void requestPasswordResetCode();
+                        }}
+                      >
+                        {sendingCode ? <SpinnerLabel>{t("sending")}</SpinnerLabel> : resetCodeCooldownSeconds > 0 ? t("resendIn", { seconds: resetCodeCooldownSeconds }) : resetCodeSent ? t("resend") : t("send")}
+                      </Button>
+                    </div>
+                  </div>
+                  <Button
+                    className="mt-1 h-9 w-full rounded-md bg-foreground text-sm font-semibold text-background shadow-none hover:bg-foreground/90"
+                    type="submit"
+                    disabled={submitting || resetCode.length !== 6}
+                  >
+                    {submitting ? <SpinnerLabel>{t("resettingPassword")}</SpinnerLabel> : t("resetPassword")}
+                  </Button>
+                </form>
+                <div className="mt-6 text-center text-sm font-normal leading-5 text-muted-foreground">
+                  {t("rememberPassword")}{" "}
+                  <button
+                    type="button"
+                    className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+                    onClick={() => loginPage.setMode("login")}
+                  >
+                    {t("back")}
+                  </button>
+                </div>
+              </>
             ) : null}
 
             {mode === "register" && emailRegistrationEnabled ? (
@@ -286,7 +395,7 @@ export function LoginPage({ nextPath }: LoginPageProps) {
                 <Button
                   className="mt-1 h-9 w-full rounded-md bg-foreground text-sm font-semibold text-background shadow-none hover:bg-foreground/90"
                   type="submit"
-                  disabled={submitting || (emailVerificationEnabled && registerCode.length !== 6) || (!emailVerificationEnabled && registerTurnstileRequired && !registerTurnstileToken)}
+                  disabled={submitting || (emailVerificationEnabled && registerCode.length !== 6) || (registerTurnstileRequired && !registerTurnstileToken)}
                 >
                   {submitting ? <SpinnerLabel>{t("registering")}</SpinnerLabel> : t("register")}
                 </Button>
@@ -321,12 +430,12 @@ export function LoginPage({ nextPath }: LoginPageProps) {
               </div>
             ) : null}
 
-            {canShowRegisterSwitch ? (
+            {canShowRegisterSwitch && mode !== "reset-password" ? (
               <div className="mt-6 text-center text-sm font-normal leading-5 text-muted-foreground">
                 {mode === "register" ? t("alreadyHaveAccount") : t("noAccount")}{" "}
                 <button
                   type="button"
-                  className="font-semibold text-foreground"
+                  className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
                   onClick={toggleLoginMode}
                 >
                   {mode === "register" ? t("signIn") : t("register")}
@@ -336,7 +445,10 @@ export function LoginPage({ nextPath }: LoginPageProps) {
             </div>
           ) : null}
         </div>
+
       </div>
+
+      <CustomBrandAttribution className="fixed bottom-4 right-4" />
     </main>
   );
 }

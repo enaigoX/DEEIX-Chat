@@ -29,10 +29,12 @@ const (
 	CodeBillingPricingRequired   = "billing.pricing_required"
 	CodeRateLimitExceeded        = "rate_limit.exceeded"
 	CodeQuotaExceeded            = "quota.exceeded"
+	CodeFileInUse                = "file.in_use"
 	CodeFileTooLarge             = "file.too_large"
 	CodeFileNotReady             = "file.not_ready"
 	CodeFileTypeBlocked          = "file.type_blocked"
 	CodeUpstreamUnavailable      = "upstream.unavailable"
+	CodeUpstreamRateLimited      = "upstream.rate_limited"
 	CodeServiceUnavailable       = "service.unavailable"
 	CodeInternal                 = "internal.error"
 )
@@ -63,6 +65,7 @@ var exactErrorSpecs = map[string]errorSpec{
 	"two factor setup was not persisted":                         {Code: CodeInternal, Message: "internal server error"},
 	"two factor authentication is already enabled":               {Code: "auth.two_factor_already_enabled", Message: "two factor authentication is already enabled"},
 	"password reset required":                                    {Code: "auth.password_reset_required", Message: "password reset required"},
+	"password reset failed":                                      {Code: "auth.password_reset_failed", Message: "password reset failed"},
 	"username change required":                                   {Code: "auth.username_change_required", Message: "username change required"},
 	"password length must be between 6 and 128":                  {Code: "auth.invalid_password", Message: "password length must be between 6 and 128"},
 	"invalid password":                                           {Code: "auth.invalid_password", Message: "password must be at least 8 characters and not digits only"},
@@ -73,8 +76,8 @@ var exactErrorSpecs = map[string]errorSpec{
 	"email registration is disabled":                                        {Code: "auth.email_registration_disabled", Message: "email registration is disabled"},
 	"email verification is disabled":                                        {Code: "auth.email_verification_disabled", Message: "email verification is disabled"},
 	"email already exists":                                                  {Code: "auth.email_already_exists", Message: "email already exists"},
-	"email already exists; bind the provider before login":                  {Code: "auth.provider_email_conflict", Message: "email already exists; bind the provider before login"},
 	"user email is invalid":                                                 {Code: "auth.invalid_email", Message: "invalid email"},
+	"verification method is unavailable":                                    {Code: "auth.verification_method_unavailable", Message: "verification method is unavailable"},
 	"admin email is invalid":                                                {Code: "auth.invalid_email", Message: "invalid email"},
 	"invalid email":                                                         {Code: "auth.invalid_email", Message: "invalid email"},
 	"user email is not verified":                                            {Code: "auth.email_not_verified", Message: "email is not verified"},
@@ -140,6 +143,8 @@ var exactErrorSpecs = map[string]errorSpec{
 	"empty admin user patch":                  {Code: "user.empty_patch", Message: "at least one user field is required"},
 
 	"invalid conversation title":                              {Code: "conversation.invalid_title", Message: "invalid conversation title"},
+	"conversation has no titleable content":                   {Code: "conversation.no_titleable_content", Message: "conversation has no titleable content"},
+	"conversation project limit exceeded":                     {Code: "conversation.project_limit_exceeded", Message: "conversation project limit exceeded"},
 	"invalid conversation share":                              {Code: "conversation_share.invalid", Message: "invalid conversation share"},
 	"conversation share schema outdated":                      {Code: "conversation_share.schema_outdated", Message: "conversation share schema is outdated"},
 	"conversation share schema is outdated, rebuild database": {Code: "conversation_share.schema_outdated", Message: "conversation share schema is outdated"},
@@ -152,14 +157,21 @@ var exactErrorSpecs = map[string]errorSpec{
 	"message generation canceled":                             {Code: "conversation_run.canceled", Message: "message generation canceled"},
 	"too many files in one message":                           {Code: "message.too_many_files", Message: "too many files in one message"},
 	"too many selected tools":                                 {Code: "message.too_many_selected_tools", Message: "too many selected tools"},
+	"multiple image attachment processors selected":           {Code: "message.multiple_image_processors", Message: "select only one image attachment processor"},
+	"image attachment processing failed":                      {Code: "mcp.image_processing_failed", Message: "image processing tool failed"},
+	"too many selected skills":                                {Code: "message.too_many_selected_skills", Message: "too many selected skills"},
 	"generation stream not found":                             {Code: "conversation_run.stream_not_found", Message: "generation stream not found"},
 	"image prompt is required":                                {Code: "media.image_prompt_required", Message: "image prompt is required"},
 	"image generation does not accept input images":           {Code: "media.image_generation_rejects_inputs", Message: "image generation does not accept input images"},
 	"image edit requires at least one input image":            {Code: "media.image_edit_input_required", Message: "image edit requires at least one input image"},
 	"too many image edit input images":                        {Code: "media.image_edit_too_many_inputs", Message: "too many image edit input images"},
 	"image edit input image is invalid":                       {Code: "media.image_edit_input_invalid", Message: "image edit input image is invalid"},
+	"video prompt is required":                                {Code: "media.video_prompt_required", Message: "video prompt is required"},
+	"video generation input is invalid":                       {Code: "media.video_input_invalid", Message: "video generation input is invalid"},
+	"too many video generation input images":                  {Code: "media.video_too_many_inputs", Message: "too many video generation input images"},
 	"media route protocol does not match task":                {Code: "media.route_protocol_mismatch", Message: "media route protocol does not match task"},
 	"invalid media generation task":                           {Code: "media.invalid_task", Message: "invalid media generation task"},
+	"invalid mcp tool attachment configuration":               {Code: "mcp.invalid_attachment_configuration", Message: "invalid MCP tool attachment configuration"},
 
 	"file is required":                                     {Code: "file.required", Message: "file is required"},
 	"invalid file stream":                                  {Code: "file.invalid_stream", Message: "invalid file stream"},
@@ -171,13 +183,27 @@ var exactErrorSpecs = map[string]errorSpec{
 	"embedding unavailable":                                {Code: "file.embedding_unavailable", Message: "embedding is unavailable"},
 	"embedding unavailable for this file size":             {Code: "file.embedding_unavailable", Message: "embedding is unavailable for this file size"},
 	"embedding unavailable for current file capability":    {Code: "file.embedding_unavailable", Message: "embedding is unavailable for current file capability"},
+	"file is in use":                                       {Code: CodeFileInUse, Message: "file is in use"},
 	"file too large":                                       {Code: CodeFileTooLarge, Message: "file too large"},
 	"file processing not ready":                            {Code: CodeFileNotReady, Message: "file processing is not ready"},
 	"file extract not ready":                               {Code: "file.extract_not_ready", Message: "file extract is not ready"},
 	"file too large for full context":                      {Code: "file.too_large_for_context", Message: "file is too large for full context"},
 	"at least one of file_name or rag_opt_out is required": {Code: CodeRequestRequired, Message: "at least one of file_name or rag_opt_out is required"},
 
+	"invalid billing plan":                           {Code: "billing.invalid_plan", Message: "invalid billing plan"},
+	"billing plan not found":                         {Code: "billing.plan_not_found", Message: "billing plan not found"},
+	"invalid permission group":                       {Code: "billing.invalid_permission_group", Message: "invalid permission group"},
+	"permission group not found":                     {Code: "admin.permission_group_not_found", Message: "permission group not found"},
+	"invalid permission group name":                  {Code: "admin.invalid_permission_group_name", Message: "invalid permission group name"},
+	"invalid permission group rate multiplier":       {Code: "admin.invalid_permission_group_rate_multiplier", Message: "invalid permission group rate multiplier"},
+	"invalid permission group models":                {Code: "admin.invalid_permission_group_models", Message: "invalid permission group models"},
+	"invalid permission group users":                 {Code: "admin.invalid_permission_group_users", Message: "invalid permission group users"},
+	"default permission group delete not allowed":    {Code: "admin.default_permission_group_delete_not_allowed", Message: "default permission group cannot be deleted"},
+	"default permission group users are implicit":    {Code: "admin.default_permission_group_users_implicit", Message: "default permission group users are implicit"},
+	"permission group is referenced by billing plan": {Code: "admin.permission_group_referenced_by_plan", Message: "permission group is referenced by a billing plan"},
+
 	"model route not configured":                  {Code: "llm.model_route_not_configured", Message: "model route is not configured"},
+	"model access denied by group policy":         {Code: "llm.model_access_denied", Message: "you do not have access to this model"},
 	"model returned empty response":               {Code: "llm.empty_response", Message: "model returned empty response"},
 	"upstream returned empty response":            {Code: "llm.empty_response", Message: "model returned empty response"},
 	"remote models unavailable":                   {Code: "llm.remote_models_unavailable", Message: "remote models unavailable"},
@@ -185,6 +211,7 @@ var exactErrorSpecs = map[string]errorSpec{
 	"invalid adapter":                             {Code: "llm.invalid_adapter", Message: "invalid adapter"},
 	"invalid compatible":                          {Code: "llm.invalid_compatible", Message: "invalid compatible"},
 	"invalid json config":                         {Code: "config.invalid_json", Message: "invalid json config"},
+	"invalid model capability limits":             {Code: "llm.invalid_model_capabilities", Message: "invalid model capability limits"},
 	"invalid headers config":                      {Code: "llm.invalid_headers_config", Message: "invalid headers json config"},
 	"invalid headers json config":                 {Code: "llm.invalid_headers_config", Message: "invalid headers json config"},
 	"invalid api keys config":                     {Code: "llm.invalid_api_keys_config", Message: "invalid api keys config"},
@@ -201,8 +228,18 @@ var exactErrorSpecs = map[string]errorSpec{
 	"upstream source unavailable":                 {Code: "llm.upstream_source_unavailable", Message: "upstream source unavailable"},
 	"route not found":                             {Code: "route.not_found", Message: "route not found"},
 	"api_keys is required":                        {Code: "llm.api_keys_required", Message: "api_keys is required"},
+	"invalid model icon":                          {Code: "llm.model_icon_invalid", Message: "invalid model icon"},
+	"invalid model icon file":                     {Code: "llm.model_icon_file_invalid", Message: "invalid model icon file"},
+	"model icon file too large":                   {Code: "llm.model_icon_file_too_large", Message: "model icon file too large"},
+	"model icon asset not found":                  {Code: "llm.model_icon_asset_not_found", Message: "model icon asset not found"},
+	"model icon asset is in use":                  {Code: "llm.model_icon_asset_in_use", Message: "model icon asset is in use"},
+	"built-in model vendor cannot be deleted":     {Code: "llm.model_vendor_builtin", Message: "built-in model vendor cannot be deleted"},
+	"model vendor is in use":                      {Code: "llm.model_vendor_in_use", Message: "model vendor is in use"},
+	"circuit breaker is disabled":                 {Code: "llm.circuit_breaker_disabled", Message: "circuit breaker is disabled"},
 
 	"usage balance is insufficient":                                {Code: CodeBillingInsufficientFunds, Message: "insufficient balance"},
+	"usage concurrency limit exceeded":                             {Code: "billing.concurrency_limit_exceeded", Message: "too many concurrent paid requests"},
+	"usage reservation already exists":                             {Code: "billing.reservation_conflict", Message: "usage request already exists"},
 	"model pricing is required":                                    {Code: CodeBillingPricingRequired, Message: "model pricing is required"},
 	"period usage credit exceeded":                                 {Code: "billing.period_credit_exceeded", Message: "period usage credit exceeded"},
 	"invalid subscription tier":                                    {Code: "billing.invalid_subscription_tier", Message: "invalid subscription tier"},
@@ -221,6 +258,7 @@ var exactErrorSpecs = map[string]errorSpec{
 	"redemption user limit exceeded":                               {Code: "billing.redemption_user_limit_exceeded", Message: "redemption user limit exceeded"},
 	"payment is required":                                          {Code: CodeBillingPaymentRequired, Message: "payment is required"},
 	"payment provider is unavailable":                              {Code: "payment.provider_unavailable", Message: "payment provider is unavailable"},
+	"epay gateway url is invalid":                                  {Code: "payment.epay_gateway_invalid", Message: "epay gateway url is invalid"},
 	"create checkout failed":                                       {Code: "payment.checkout_failed", Message: "create checkout failed"},
 	"provider mismatch":                                            {Code: "payment.notification_mismatch", Message: "payment notification does not match the order"},
 	"checkout id mismatch":                                         {Code: "payment.notification_mismatch", Message: "payment notification does not match the order"},
@@ -233,6 +271,7 @@ var exactErrorSpecs = map[string]errorSpec{
 	"stripe webhook is not configured":                             {Code: "payment.webhook_not_configured", Message: "stripe webhook is not configured"},
 	"read webhook body failed":                                     {Code: "payment.invalid_webhook_body", Message: "invalid webhook body"},
 	"webhook body too large":                                       {Code: "payment.webhook_body_too_large", Message: "webhook body too large"},
+	"temporary chat context is too large":                          {Code: "temporary_chat.context_too_large", Message: "temporary chat context is too large"},
 	"invalid stripe signature":                                     {Code: "payment.invalid_signature", Message: "invalid stripe signature"},
 	"invalid stripe event":                                         {Code: "payment.invalid_event", Message: "invalid stripe event"},
 	"missing order_no":                                             {Code: "payment.order_no_required", Message: "order_no is required"},
@@ -251,6 +290,8 @@ var exactErrorSpecs = map[string]errorSpec{
 	"mineru runtime service unavailable":    {Code: "runtime.mineru_unavailable", Message: "mineru runtime service unavailable"},
 
 	"memory_key is required":          {Code: "memory.key_required", Message: "memory_key is required"},
+	"user memory limit exceeded":      {Code: "memory.limit_exceeded", Message: "user memory limit exceeded"},
+	"mcp server limit exceeded":       {Code: "mcp.server_limit_exceeded", Message: "mcp server limit exceeded"},
 	"invalid mcp server id":           {Code: "mcp.server.invalid_id", Message: "invalid mcp server id"},
 	"invalid mcp tool id":             {Code: "mcp.tool.invalid_id", Message: "invalid mcp tool id"},
 	"invalid mcp server name":         {Code: "mcp.invalid_server_name", Message: "invalid mcp server name"},
@@ -266,6 +307,14 @@ var exactErrorSpecs = map[string]errorSpec{
 	"rate limit exceeded":              {Code: CodeRateLimitExceeded, Message: "rate limit exceeded"},
 	"too many refresh attempts":        {Code: "rate_limit.refresh_exceeded", Message: "too many refresh attempts"},
 	"too many authentication attempts": {Code: "rate_limit.authentication_exceeded", Message: "too many authentication attempts"},
+
+	"content moderation event not found":                                     {Code: "content_moderation.event_not_found", Message: "content moderation event not found"},
+	"content moderation service config and policy are required when enabled": {Code: "content_moderation.config_required", Message: "content moderation service config and policy are required when enabled"},
+	"invalid content moderation config":                                      {Code: "content_moderation.invalid_config", Message: "invalid content moderation config"},
+	"invalid content moderation base url":                                    {Code: "content_moderation.invalid_config", Message: "invalid content moderation base url"},
+	"invalid content moderation model":                                       {Code: "content_moderation.invalid_config", Message: "invalid content moderation model"},
+	"content moderation probe failed":                                        {Code: "content_moderation.probe_failed", Message: "content moderation probe failed"},
+	"content blocked by moderation":                                          {Code: "content_moderation.blocked", Message: "content blocked by moderation"},
 
 	"deleting this identity provider would remove the only login method for some users": {Code: "identity_provider.delete_conflict", Message: "deleting this identity provider would remove the only login method for some users"},
 }
@@ -310,6 +359,8 @@ func InferErrorCode(status int, msg string) string {
 		return CodeFileNotReady
 	case strings.Contains(text, "mime blocked") || strings.Contains(text, "dangerous file type"):
 		return CodeFileTypeBlocked
+	case strings.Contains(text, "model access denied by group policy"):
+		return "llm.model_access_denied"
 	case strings.Contains(text, "remote models unavailable") || strings.Contains(text, "model route not configured"):
 		return CodeUpstreamUnavailable
 	case strings.Contains(text, "verification code"):
@@ -343,37 +394,13 @@ func InferErrorCode(status int, msg string) string {
 	}
 }
 
-// PublicErrorMessage normalizes legacy handler messages into a safe API fallback.
-// It intentionally preserves client-side validation context while hiding 5xx
-// internals behind requestId + server logs.
+// PublicErrorMessage 返回可对外展示的错误文案：命中白名单则用规范文本，否则用该状态码的通用文案。
 func PublicErrorMessage(status int, code string, msg string) string {
 	msg = strings.TrimSpace(msg)
 	if spec, ok := resolveErrorSpec(status, msg); ok {
 		return spec.Message
 	}
-	if msg == "" {
-		msg = fallbackMessage(status, code)
-	}
-
-	switch {
-	case status >= http.StatusInternalServerError:
-		return fallbackMessage(status, code)
-	case status == http.StatusBadGateway:
-		return fallbackMessage(status, code)
-	case status == http.StatusServiceUnavailable:
-		return fallbackMessage(status, code)
-	}
-
-	switch code {
-	case CodeAuthUnauthorized:
-		return "unauthorized"
-	case CodeAuthForbidden:
-		return "forbidden"
-	case CodeRateLimitExceeded:
-		return "rate limit exceeded"
-	default:
-		return msg
-	}
+	return fallbackMessage(status, code)
 }
 
 func fallbackMessage(status int, code string) string {
@@ -429,6 +456,8 @@ func fallbackMessage(status int, code string) string {
 		return "file type is not allowed"
 	case CodeUpstreamUnavailable:
 		return "upstream service unavailable"
+	case CodeUpstreamRateLimited:
+		return "upstream rate limited"
 	case CodeServiceUnavailable:
 		return "service unavailable"
 	}
@@ -460,137 +489,158 @@ func fallbackMessage(status int, code string) string {
 }
 
 var fallbackMessages = map[string]string{
-	CodeRequestInvalidQuery:                           "invalid query parameter",
-	"auth.admin_required":                             "admin permission required",
-	"auth.superadmin_required":                        "superadmin permission required",
-	"auth.password_reset_required":                    "password reset required",
-	"auth.username_change_required":                   "username change required",
-	"auth.invalid_password":                           "invalid password",
-	"auth.password_reuse_not_allowed":                 "new password must be different",
-	"auth.provider_callback_misconfigured":            "configure the provider callback URL to the frontend callback endpoint",
-	"auth.verification_code_invalid":                  "verification code is invalid or expired",
-	"auth.verification_code_recent":                   "verification code was sent recently",
-	"auth.email_registration_disabled":                "email registration is disabled",
-	"auth.email_verification_disabled":                "email verification is disabled",
-	"auth.email_already_exists":                       "email already exists",
-	"auth.email_not_verified":                         "email is not verified",
-	"auth.email_unchanged":                            "new email must be different",
-	"auth.email_alias_not_allowed":                    "email aliases are not allowed",
-	"auth.email_domain_not_allowed":                   "email domain is not allowed",
-	"auth.email_bootstrap_not_allowed":                "email bootstrap is not allowed",
-	"auth.provider_login_disabled":                    "provider login is disabled",
-	"auth.provider_registration_disabled":             "provider registration is disabled",
-	"auth.authorization_code_required":                "authorization code is required",
-	"auth.two_factor_already_enabled":                 "two factor authentication is already enabled",
-	"auth.provider_bind_endpoint_required":            "provider bind must use account binding endpoint",
-	"auth.provider_email_conflict":                    "provider email belongs to another account",
-	"auth.provider_invalid":                           "provider authentication failed",
-	"auth.provider_upstream_failed":                   "provider authentication failed",
-	"auth.provider_subject_missing":                   "provider subject is missing",
-	"auth.provider_identity_conflict":                 "provider identity is already bound to another account",
-	"auth.provider_already_bound":                     "provider is already bound",
-	"auth.provider_account_not_registered":            "provider account is not registered",
-	"auth.oauth_intent_mismatch":                      "oauth intent mismatch",
-	"auth.oauth_state_invalid":                        "invalid oauth state",
-	"auth.oauth_state_expired":                        "oauth state expired",
-	"auth.invalid_redirect_uri":                       "invalid redirect uri",
-	"auth.invalid_pkce":                               "invalid pkce parameters",
-	"auth.provider_id_required":                       "provider id is required",
-	"auth.provider_order_invalid":                     "provider ids must be unique",
-	"auth.provider_type_invalid":                      "provider type must be oidc or oauth2",
-	"auth.provider_name_required":                     "provider name is required",
-	"auth.provider_slug_required":                     "provider slug is required",
-	"auth.provider_default_role_invalid":              "default role must be user, admin or superadmin",
-	"auth.provider_superadmin_default_role_protected": "only superadmin can set superadmin default role",
-	"auth.provider_logo_url_invalid":                  "logo url must be a valid http(s) or absolute path",
-	"auth.provider_registration_requires_login":       "provider registration requires provider login to be enabled",
-	"auth.provider_client_id_required":                "client id is required",
-	"auth.provider_client_secret_required":            "client secret is required",
-	"auth.provider_oidc_issuer_required":              "OIDC issuer url or discovery url is required",
-	"auth.provider_oauth_urls_required":               "OAuth2 auth url, token url and userinfo url are required",
-	"auth.provider_auth_url_not_configured":           "provider auth url is not configured",
-	"user.invalid_time_zone":                          "invalid time zone",
-	"user.invalid_avatar_url":                         "invalid avatar url",
-	"user.invalid_username":                           "invalid username",
-	"user.invalid_location":                           "invalid location",
-	"user.invalid_email":                              "invalid user email",
-	"user.invalid_phone":                              "invalid user phone",
-	"user.invalid_locale":                             "invalid user locale",
-	"user.invalid_status":                             "invalid user status",
-	"user.invalid_role":                               "invalid user role",
-	"user.username_already_exists":                    "username already exists",
-	"user.username_change_used":                       "username change already used",
-	"user.superadmin_management_protected":            "superadmin management is not allowed",
-	"conversation.invalid_id":                         "invalid conversation id",
-	"conversation.not_found":                          "conversation not found",
-	"conversation.invalid_title":                      "invalid conversation title",
-	"conversation_share.invalid":                      "invalid conversation share",
-	"conversation_share.not_found":                    "conversation share not found",
-	"conversation_share.invalid_id":                   "invalid share id",
-	"message.invalid_id":                              "invalid message id",
-	"message.not_found":                               "message not found",
-	"file.invalid_id":                                 "invalid file id",
-	"file.not_found":                                  "file not found",
-	"file.required":                                   "file is required",
-	"file.invalid_stream":                             "invalid file stream",
-	"file.invalid_reference":                          "invalid file reference",
-	"context_artifact.invalid_id":                     "invalid context artifact id",
-	"context_artifact.not_found":                      "context artifact not found",
-	"llm.model_route_not_configured":                  "model route is not configured",
-	"llm.remote_models_unavailable":                   "remote models unavailable",
-	"llm.no_active_api_key":                           "no active api key",
-	"llm.invalid_adapter":                             "invalid adapter",
-	"llm.invalid_compatible":                          "invalid compatible",
-	"llm.invalid_platform_model_name":                 "invalid platform model name",
-	"llm.invalid_route_protocol_combination":          "invalid route protocol combination",
-	"llm.system_prompt_too_long":                      "system prompt too long",
-	"llm.platform_model_name_required":                "platform model name is required",
-	"llm.protocol_required":                           "protocol is required",
-	"media.image_stream_unsupported":                  "upstream may not support image streaming; disable image.stream for this model",
-	"billing.period_credit_exceeded":                  "period usage credit exceeded",
-	"billing.invalid_subscription_tier":               "invalid subscription tier",
-	"billing.subscription_expiry_required":            "subscription expiry required",
-	"billing.invalid_subscription_expiry":             "invalid subscription expiry",
-	"billing.subscription_entitlement_active":         "subscription entitlement is active",
-	"billing.invalid_model_pricing":                   "invalid model pricing",
-	"billing.invalid_daily_usage_date_range":          "invalid daily usage date range",
-	"billing.invalid_daily_usage_days":                "invalid daily usage days",
-	"billing.redemption_secret_unavailable":           "redemption code service is unavailable",
-	"billing.invalid_redemption_code":                 "invalid redemption code",
-	"billing.redemption_code_conflict":                "redemption code already exists",
-	"billing.redemption_code_unavailable":             "redemption code is unavailable",
-	"billing.redemption_code_plaintext_unavailable":   "redemption code plaintext unavailable",
-	"billing.redemption_code_exhausted":               "redemption code exhausted",
-	"billing.redemption_user_limit_exceeded":          "redemption user limit exceeded",
-	"payment.provider_unavailable":                    "payment provider is unavailable",
-	"payment.checkout_failed":                         "create checkout failed",
-	"payment.notification_mismatch":                   "payment notification does not match the order",
-	"payment.epay_type_unsupported":                   "epay payment type is not supported",
-	"payment.return_url_invalid":                      "payment return url is invalid",
-	"payment.return_url_cross_origin":                 "payment return url must use the configured public web origin",
-	"payment.webhook_not_configured":                  "stripe webhook is not configured",
-	"payment.invalid_webhook_body":                    "invalid webhook body",
-	"payment.webhook_body_too_large":                  "webhook body too large",
-	"payment.invalid_signature":                       "invalid stripe signature",
-	"payment.invalid_event":                           "invalid stripe event",
-	"payment.order_no_required":                       "order_no is required",
-	"settings.invalid_namespace":                      "invalid namespace",
-	"settings.invalid_key":                            "invalid setting key",
-	"settings.not_found":                              "setting not found",
-	"settings.invalid_value":                          "invalid setting value",
-	"settings.smtp_invalid":                           "invalid smtp settings",
-	"settings.billing_payment_invalid":                "invalid billing payment settings",
-	"settings.model_option_policy_invalid":            "invalid model option policy settings",
-	"settings.embedding_invalid":                      "invalid embedding settings",
-	"settings.extract_invalid":                        "invalid file extraction settings",
-	"embedding.service_unavailable":                   "embedding service is not available",
-	"embedding.service_not_configured":                "embedding service is not configured",
-	"user_settings.unknown_key":                       "unknown setting key",
-	"user_settings.invalid_value":                     "invalid user setting value",
-	"memory.key_required":                             "memory_key is required",
-	"rate_limit.refresh_exceeded":                     "too many refresh attempts",
-	"rate_limit.authentication_exceeded":              "too many authentication attempts",
-	"cors.origin_forbidden":                           "origin is not allowed",
+	CodeRequestInvalidQuery:                             "invalid query parameter",
+	"auth.admin_required":                               "admin permission required",
+	"auth.superadmin_required":                          "superadmin permission required",
+	"auth.password_reset_required":                      "password reset required",
+	"auth.password_reset_failed":                        "password reset failed",
+	"auth.username_change_required":                     "username change required",
+	"auth.invalid_password":                             "invalid password",
+	"auth.password_reuse_not_allowed":                   "new password must be different",
+	"auth.provider_callback_misconfigured":              "configure the provider callback URL to the frontend callback endpoint",
+	"auth.verification_code_invalid":                    "verification code is invalid or expired",
+	"auth.verification_code_recent":                     "verification code was sent recently",
+	"auth.email_registration_disabled":                  "email registration is disabled",
+	"auth.email_verification_disabled":                  "email verification is disabled",
+	"auth.email_already_exists":                         "email already exists",
+	"auth.email_not_verified":                           "email is not verified",
+	"auth.email_unchanged":                              "new email must be different",
+	"auth.email_alias_not_allowed":                      "email aliases are not allowed",
+	"auth.email_domain_not_allowed":                     "email domain is not allowed",
+	"auth.email_bootstrap_not_allowed":                  "email bootstrap is not allowed",
+	"auth.provider_login_disabled":                      "provider login is disabled",
+	"auth.provider_registration_disabled":               "provider registration is disabled",
+	"auth.authorization_code_required":                  "authorization code is required",
+	"auth.two_factor_already_enabled":                   "two factor authentication is already enabled",
+	"auth.provider_bind_endpoint_required":              "provider bind must use account binding endpoint",
+	"auth.provider_email_conflict":                      "provider email belongs to another account",
+	"auth.provider_invalid":                             "provider authentication failed",
+	"auth.provider_upstream_failed":                     "provider authentication failed",
+	"auth.provider_subject_missing":                     "provider subject is missing",
+	"auth.provider_identity_conflict":                   "provider identity is already bound to another account",
+	"auth.provider_already_bound":                       "provider is already bound",
+	"auth.provider_account_not_registered":              "provider account is not registered",
+	"auth.oauth_intent_mismatch":                        "oauth intent mismatch",
+	"auth.oauth_state_invalid":                          "invalid oauth state",
+	"auth.oauth_state_expired":                          "oauth state expired",
+	"auth.invalid_redirect_uri":                         "invalid redirect uri",
+	"auth.invalid_pkce":                                 "invalid pkce parameters",
+	"auth.provider_id_required":                         "provider id is required",
+	"auth.provider_order_invalid":                       "provider ids must be unique",
+	"auth.provider_type_invalid":                        "provider type must be oidc or oauth2",
+	"auth.provider_name_required":                       "provider name is required",
+	"auth.provider_slug_required":                       "provider slug is required",
+	"auth.provider_default_role_invalid":                "default role must be user, admin or superadmin",
+	"auth.provider_superadmin_default_role_protected":   "only superadmin can set superadmin default role",
+	"auth.provider_logo_url_invalid":                    "logo url must be a valid http(s) or absolute path",
+	"auth.provider_registration_requires_login":         "provider registration requires provider login to be enabled",
+	"auth.provider_client_id_required":                  "client id is required",
+	"auth.provider_client_secret_required":              "client secret is required",
+	"auth.provider_oidc_issuer_required":                "OIDC issuer url or discovery url is required",
+	"auth.provider_oauth_urls_required":                 "OAuth2 auth url, token url and userinfo url are required",
+	"auth.provider_auth_url_not_configured":             "provider auth url is not configured",
+	"user.invalid_time_zone":                            "invalid time zone",
+	"user.invalid_avatar_url":                           "invalid avatar url",
+	"user.invalid_username":                             "invalid username",
+	"user.invalid_location":                             "invalid location",
+	"user.invalid_email":                                "invalid user email",
+	"user.invalid_phone":                                "invalid user phone",
+	"user.invalid_locale":                               "invalid user locale",
+	"user.invalid_status":                               "invalid user status",
+	"user.invalid_role":                                 "invalid user role",
+	"user.username_already_exists":                      "username already exists",
+	"user.username_change_used":                         "username change already used",
+	"user.superadmin_management_protected":              "superadmin management is not allowed",
+	"conversation.invalid_id":                           "invalid conversation id",
+	"conversation.not_found":                            "conversation not found",
+	"conversation.invalid_title":                        "invalid conversation title",
+	"conversation.no_titleable_content":                 "conversation has no titleable content",
+	"conversation_share.invalid":                        "invalid conversation share",
+	"conversation_share.not_found":                      "conversation share not found",
+	"conversation_share.invalid_id":                     "invalid share id",
+	"message.invalid_id":                                "invalid message id",
+	"message.not_found":                                 "message not found",
+	"file.invalid_id":                                   "invalid file id",
+	"file.not_found":                                    "file not found",
+	"file.required":                                     "file is required",
+	"file.invalid_stream":                               "invalid file stream",
+	"file.invalid_reference":                            "invalid file reference",
+	"context_artifact.invalid_id":                       "invalid context artifact id",
+	"context_artifact.not_found":                        "context artifact not found",
+	"billing.invalid_plan":                              "invalid billing plan",
+	"billing.plan_not_found":                            "billing plan not found",
+	"billing.invalid_permission_group":                  "invalid permission group",
+	"admin.permission_group_not_found":                  "permission group not found",
+	"admin.invalid_permission_group_name":               "invalid permission group name",
+	"admin.invalid_permission_group_rate_multiplier":    "invalid permission group rate multiplier",
+	"admin.invalid_permission_group_models":             "invalid permission group models",
+	"admin.invalid_permission_group_users":              "invalid permission group users",
+	"admin.default_permission_group_delete_not_allowed": "default permission group cannot be deleted",
+	"admin.default_permission_group_users_implicit":     "default permission group users are implicit",
+	"admin.permission_group_referenced_by_plan":         "permission group is referenced by a billing plan",
+	"llm.model_route_not_configured":                    "model route is not configured",
+	"llm.model_access_denied":                           "you do not have access to this model",
+	"llm.remote_models_unavailable":                     "remote models unavailable",
+	"llm.no_active_api_key":                             "no active api key",
+	"llm.model_vendor_builtin":                          "built-in model vendor cannot be deleted",
+	"llm.model_vendor_in_use":                           "model vendor is in use",
+	"llm.circuit_breaker_disabled":                      "circuit breaker is disabled",
+	"llm.invalid_adapter":                               "invalid adapter",
+	"llm.invalid_compatible":                            "invalid compatible",
+	"llm.invalid_platform_model_name":                   "invalid platform model name",
+	"llm.invalid_model_capabilities":                    "invalid model capability limits",
+	"llm.invalid_route_protocol_combination":            "invalid route protocol combination",
+	"llm.system_prompt_too_long":                        "system prompt too long",
+	"llm.platform_model_name_required":                  "platform model name is required",
+	"llm.protocol_required":                             "protocol is required",
+	"media.artifact_unavailable":                        "generated media artifact is temporarily unavailable",
+	"media.image_stream_unsupported":                    "upstream may not support image streaming; disable image.stream for this model",
+	"billing.period_credit_exceeded":                    "period usage credit exceeded",
+	"billing.invalid_subscription_tier":                 "invalid subscription tier",
+	"billing.subscription_expiry_required":              "subscription expiry required",
+	"billing.invalid_subscription_expiry":               "invalid subscription expiry",
+	"billing.subscription_entitlement_active":           "subscription entitlement is active",
+	"billing.invalid_model_pricing":                     "invalid model pricing",
+	"billing.invalid_daily_usage_date_range":            "invalid daily usage date range",
+	"billing.invalid_daily_usage_days":                  "invalid daily usage days",
+	"billing.redemption_secret_unavailable":             "redemption code service is unavailable",
+	"billing.invalid_redemption_code":                   "invalid redemption code",
+	"billing.redemption_code_conflict":                  "redemption code already exists",
+	"billing.redemption_code_unavailable":               "redemption code is unavailable",
+	"billing.redemption_code_plaintext_unavailable":     "redemption code plaintext unavailable",
+	"billing.redemption_code_exhausted":                 "redemption code exhausted",
+	"billing.redemption_user_limit_exceeded":            "redemption user limit exceeded",
+	"payment.provider_unavailable":                      "payment provider is unavailable",
+	"payment.epay_gateway_invalid":                      "epay gateway url is invalid",
+	"payment.checkout_failed":                           "create checkout failed",
+	"payment.notification_mismatch":                     "payment notification does not match the order",
+	"payment.epay_type_unsupported":                     "epay payment type is not supported",
+	"payment.return_url_invalid":                        "payment return url is invalid",
+	"payment.return_url_cross_origin":                   "payment return url must use the configured public web origin",
+	"payment.webhook_not_configured":                    "stripe webhook is not configured",
+	"payment.invalid_webhook_body":                      "invalid webhook body",
+	"payment.webhook_body_too_large":                    "webhook body too large",
+	"payment.invalid_signature":                         "invalid stripe signature",
+	"payment.invalid_event":                             "invalid stripe event",
+	"payment.order_no_required":                         "order_no is required",
+	"temporary_chat.context_too_large":                  "temporary chat context is too large",
+	"settings.invalid_namespace":                        "invalid namespace",
+	"settings.invalid_key":                              "invalid setting key",
+	"settings.not_found":                                "setting not found",
+	"settings.invalid_value":                            "invalid setting value",
+	"settings.smtp_invalid":                             "invalid smtp settings",
+	"settings.billing_payment_invalid":                  "invalid billing payment settings",
+	"settings.model_option_policy_invalid":              "invalid model option policy settings",
+	"settings.embedding_invalid":                        "invalid embedding settings",
+	"settings.extract_invalid":                          "invalid file extraction settings",
+	"embedding.service_unavailable":                     "embedding service is not available",
+	"embedding.service_not_configured":                  "embedding service is not configured",
+	"user_settings.unknown_key":                         "unknown setting key",
+	"user_settings.invalid_value":                       "invalid user setting value",
+	"memory.key_required":                               "memory_key is required",
+	"rate_limit.refresh_exceeded":                       "too many refresh attempts",
+	"rate_limit.authentication_exceeded":                "too many authentication attempts",
+	"cors.origin_forbidden":                             "origin is not allowed",
 }
 
 func resolveErrorSpec(status int, msg string) (errorSpec, bool) {
@@ -610,7 +660,7 @@ func resolveErrorSpec(status int, msg string) (errorSpec, bool) {
 			return errorSpec{Code: "settings.invalid_key", Message: detail}, true
 		case strings.Contains(detail, "smtp"):
 			return errorSpec{Code: "settings.smtp_invalid", Message: detail}, true
-		case strings.Contains(detail, "payment_providers"):
+		case strings.Contains(detail, "payment_providers") || strings.Contains(detail, "billing:epay_"):
 			return errorSpec{Code: "settings.billing_payment_invalid", Message: detail}, true
 		case strings.Contains(detail, "model_option_"):
 			return errorSpec{Code: "settings.model_option_policy_invalid", Message: detail}, true

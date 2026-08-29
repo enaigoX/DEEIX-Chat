@@ -1,60 +1,66 @@
+import type {
+  ConversationRuns,
+  MessageProcessTraceResponse,
+  MessageTraceBlockResponse,
+  MessageTraceEventResponse,
+} from "@deeix/api-contract";
 import { authedFetch, authedRequest } from "@/shared/api/authed-client";
-import { apiRequest, ApiError, pathParam } from "@/shared/api/http-client";
 import type { PagePayload } from "@/shared/api/common.types";
 import type {
+  ActiveConversationRunEvent,
+  ConversationRunStatusDTO,
+  BatchSetConversationProjectRequest,
+  BatchSetConversationProjectResult,
+  ContextArtifactDTO,
+  ConversationDefaultModelCandidateDTO,
   ConversationDTO,
   ConversationExportDTO,
+  ConversationPreviewMessageDTO,
   ConversationProjectDTO,
   ConversationProjectFilter,
   ConversationProjectStatusFilter,
-  ConversationShareDTO,
   ConversationRunDTO,
+  ConversationSearchPageDTO,
+  ConversationShareDTO,
   ConversationShareFilter,
   ConversationStarredFilter,
   ConversationStatusFilter,
-  ContextArtifactDTO,
   CreateConversationProjectRequest,
   CreateConversationRequest,
   CreateConversationShareRequest,
-  BatchSetConversationProjectRequest,
-  BatchSetConversationProjectResult,
   DeleteConversationData,
+  MediaImageRequest,
+  MediaVideoExtensionRequest,
+  MediaVideoRequest,
   MessageDTO,
   MessageFeedbackResult,
   MessageProcessTraceDTO,
   PublicSharedConversationDTO,
   RenameConversationRequest,
+  ReorderConversationProjectsRequest,
   RevokeConversationSharesRequest,
   RevokeConversationSharesResult,
-  ReorderConversationProjectsRequest,
   SendMessageRequest,
-  MediaImageRequest,
   SendMessageResult,
   SetConversationArchiveRequest,
   SetConversationProjectRequest,
   SetConversationStarRequest,
   SetMessageFeedbackRequest,
-  UpdateMessageRequest,
-  UpdateConversationProjectRequest,
   StreamMessageEvent,
+  TemporaryChatMessageRequest,
   TraceBlockDTO,
+  UpdateConversationLabelsRequest,
+  UpdateConversationProjectRequest,
+  UpdateMessageRequest,
 } from "@/shared/api/conversation.types";
+import { ApiError, apiRequest, pathParam } from "@/shared/api/http-client";
 
-type RawTraceBlock = {
-  title?: string;
-  summary?: string;
-  contentMarkdown?: string;
-  status?: string;
-  stage?: string;
-  roundID?: string;
-  parentEventID?: string;
-  updatedAt?: string;
-  payloadJSON?: string;
-};
+type RawTraceBlock = MessageTraceBlockResponse;
 
-type RawProcessTrace = {
-  enabled?: boolean;
-  status?: string;
+type RawProcessTrace = Omit<
+  MessageProcessTraceResponse,
+  "events" | "process" | "promptTrace" | "tools" | "upstreamThink"
+> & {
   process?: RawTraceBlock;
   tools?: RawTraceBlock;
   upstreamThink?: RawTraceBlock;
@@ -62,23 +68,7 @@ type RawProcessTrace = {
   events?: RawTraceEvent[];
 };
 
-type RawTraceEvent = {
-  eventID?: string;
-  eventType?: string;
-  phase?: string;
-  stage?: string;
-  roundID?: string;
-  parentEventID?: string;
-  title?: string;
-  summary?: string;
-  contentMarkdown?: string;
-  status?: string;
-  seq?: number;
-  startedAt?: string;
-  endedAt?: string;
-  updatedAt?: string;
-  payloadJSON?: string;
-};
+type RawTraceEvent = MessageTraceEventResponse;
 
 function normalizeTraceBlock(block: unknown): TraceBlockDTO | undefined {
   if (!block || typeof block !== "object") {
@@ -93,6 +83,7 @@ function normalizeTraceBlock(block: unknown): TraceBlockDTO | undefined {
     stage: raw.stage,
     roundID: raw.roundID,
     parentEventID: raw.parentEventID,
+    startedAt: raw.startedAt,
     updatedAt: raw.updatedAt ?? "",
     payloadJSON: raw.payloadJSON,
   };
@@ -272,7 +263,11 @@ function handleStreamEvent(event: StreamMessageEvent, options: ConversationStrea
   }
 
   if (event.type === "delta") {
-    options.onDelta?.(event.delta);
+    if (event.replace) {
+      options.onTextSnapshot?.(event.delta);
+    } else {
+      options.onDelta?.(event.delta);
+    }
     return null;
   }
 
@@ -291,16 +286,32 @@ function handleStreamEvent(event: StreamMessageEvent, options: ConversationStrea
     return null;
   }
 
+  if (event.type === "moderation_checking") {
+    options.onModerationChecking?.(event);
+    return null;
+  }
+
+  if (event.type === "moderation_blocked") {
+    options.onTerminal?.(event);
+    options.onModerationBlocked?.(event);
+    // Terminal event for blocked rounds; synthetic result is optional.
+    return null;
+  }
+
   if (event.type === "completed") {
+    options.onTerminal?.(event);
     return event.data;
   }
 
-  if (event.type === "error" && event.data) {
-    options.onInterrupted?.(event);
-    return event.data;
+  if (event.type === "error") {
+    options.onTerminal?.(event);
+    if (event.data) {
+      options.onInterrupted?.(event);
+      return event.data;
+    }
   }
 
-  throw new ApiError(event.message || "stream failed", responseStatus, event.debug, event.errorCode);
+  throw new ApiError(event.message || "stream failed", event.status ?? responseStatus, event.debug, event.errorCode);
 }
 
 type ListConversationsOptions = {
@@ -310,6 +321,14 @@ type ListConversationsOptions = {
   starred?: ConversationStarredFilter;
   share?: ConversationShareFilter;
   project?: ConversationProjectFilter;
+  query?: string;
+};
+
+type SearchConversationsOptions = {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  signal?: AbortSignal;
 };
 
 type ListConversationProjectsOptions = {
@@ -341,6 +360,7 @@ export async function listConversations(
   const starred = options.starred?.trim() || "all";
   const share = options.share?.trim() || "all";
   const project = options.project?.trim() || "all";
+  const query = options.query?.trim() || "";
   const params = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
@@ -349,6 +369,9 @@ export async function listConversations(
     share,
     project,
   });
+  if (query) {
+    params.set("q", query);
+  }
   const data = await authedRequest<PagePayload<ConversationDTO>>(
     `/api/v1/conversations?${params.toString()}`,
     {
@@ -360,6 +383,55 @@ export async function listConversations(
     total: data.total ?? 0,
     results: data.results ?? [],
   };
+}
+
+export async function searchConversations(
+  accessToken: string,
+  options: SearchConversationsOptions = {},
+): Promise<ConversationSearchPageDTO> {
+  const page = options.page && options.page > 0 ? options.page : 1;
+  const pageSize = options.pageSize && options.pageSize > 0 ? options.pageSize : 20;
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  const query = options.query?.trim() || "";
+  if (query) {
+    params.set("q", query);
+  }
+  const data = await authedRequest<ConversationSearchPageDTO>(
+    `/api/v1/conversations/search?${params.toString()}`,
+    { accessToken, signal: options.signal },
+    true,
+  );
+  return {
+    hasMore: data.hasMore ?? false,
+    results: data.results ?? [],
+  };
+}
+
+export async function getConversationPreviewMessages(
+  accessToken: string,
+  conversationPublicID: string,
+  signal?: AbortSignal,
+): Promise<ConversationPreviewMessageDTO[]> {
+  return authedRequest<ConversationPreviewMessageDTO[]>(
+    `/api/v1/conversations/${pathParam(conversationPublicID)}/messages/preview`,
+    { accessToken, signal },
+    true,
+  );
+}
+
+export async function getConversationDefaultModelCandidate(
+  accessToken: string,
+): Promise<ConversationDefaultModelCandidateDTO> {
+  return authedRequest<ConversationDefaultModelCandidateDTO>(
+    "/api/v1/conversations/default-model-candidate",
+    {
+      accessToken,
+    },
+    true,
+  );
 }
 
 export async function listConversationProjects(
@@ -517,6 +589,14 @@ export async function exportConversation(
   );
 }
 
+export async function exportAllConversations(accessToken: string): Promise<Blob> {
+  const response = await authedFetch("/api/v1/conversations/export", { accessToken });
+  if (!response.ok) {
+    throw new Error(`export failed: ${response.status}`);
+  }
+  return response.blob();
+}
+
 export async function renameConversation(
   accessToken: string,
   conversationPublicID: string,
@@ -528,6 +608,36 @@ export async function renameConversation(
       method: "PATCH",
       accessToken,
       body: payload,
+    },
+    true,
+  );
+}
+
+export async function updateConversationLabels(
+  accessToken: string,
+  conversationPublicID: string,
+  payload: UpdateConversationLabelsRequest,
+): Promise<ConversationDTO> {
+  return authedRequest<ConversationDTO>(
+    `/api/v1/conversations/${pathParam(conversationPublicID)}/labels`,
+    {
+      method: "PATCH",
+      accessToken,
+      body: payload,
+    },
+    true,
+  );
+}
+
+export async function regenerateConversationTitle(
+  accessToken: string,
+  conversationPublicID: string,
+): Promise<ConversationDTO> {
+  return authedRequest<ConversationDTO>(
+    `/api/v1/conversations/${pathParam(conversationPublicID)}/title/regenerate`,
+    {
+      method: "POST",
+      accessToken,
     },
     true,
   );
@@ -703,6 +813,91 @@ export async function listConversationRuns(
   };
 }
 
+export async function getConversationRunStatuses(
+  accessToken: string,
+  runIDs: string[],
+  signal?: AbortSignal,
+): Promise<ConversationRunStatusDTO[]> {
+  const normalizedRunIDs = Array.from(new Set(runIDs.map((runID) => runID.trim()).filter(Boolean)));
+  if (normalizedRunIDs.length === 0) {
+    return [];
+  }
+  const requests: Promise<ConversationRunStatusDTO[]>[] = [];
+  for (let index = 0; index < normalizedRunIDs.length; index += 100) {
+    requests.push(authedRequest<ConversationRunStatusDTO[]>(
+      "/api/v1/conversation-runs/statuses",
+      {
+        method: "POST",
+        accessToken,
+        body: { runIDs: normalizedRunIDs.slice(index, index + 100) },
+        signal,
+      },
+      true,
+    ));
+  }
+  return (await Promise.all(requests)).flat();
+}
+
+export async function streamActiveConversationRuns(
+  accessToken: string,
+  options: {
+    signal?: AbortSignal;
+    onEvent: (event: ActiveConversationRunEvent) => void;
+  },
+): Promise<void> {
+  const response = await authedFetch(
+    "/api/v1/conversation-runs/stream",
+    {
+      accessToken,
+      headers: { Accept: "text/event-stream" },
+      signal: options.signal,
+    },
+    true,
+  );
+  if (!response.body) {
+    throw new ApiError("active conversation run stream is unavailable", response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const consumeFrames = (flush: boolean) => {
+    buffer += flush ? decoder.decode() : "";
+    const frames = buffer.split(/\r?\n\r?\n/);
+    buffer = flush ? "" : (frames.pop() ?? "");
+    for (const frame of frames) {
+      const data = frame
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n")
+        .trim();
+      if (!data) {
+        continue;
+      }
+      try {
+        options.onEvent(JSON.parse(data) as ActiveConversationRunEvent);
+      } catch {
+        // Ignore malformed events and keep the long-lived connection healthy.
+      }
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        consumeFrames(true);
+        return;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      consumeFrames(false);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export async function getContextArtifact(
   accessToken: string,
   artifactID: number,
@@ -804,9 +999,16 @@ export async function resumeMessageGenerationStream(
   options: ConversationStreamOptions = {},
 ): Promise<SendMessageResult | null> {
   const afterSeq = options.afterSeq && options.afterSeq > 0 ? Math.floor(options.afterSeq) : 0;
-  const afterQuery = afterSeq > 0 ? `?after=${afterSeq}` : "";
+  const requestQuery = {
+    snapshot: true,
+    ...(afterSeq > 0 ? { after: afterSeq } : {}),
+  } satisfies ConversationRuns.StreamList.RequestQuery;
+  const query = new URLSearchParams({ snapshot: String(requestQuery.snapshot) });
+  if (requestQuery.after !== undefined) {
+    query.set("after", String(requestQuery.after));
+  }
   const response = await authedFetch(
-    `/api/v1/conversation-runs/${pathParam(runID)}/stream${afterQuery}`,
+    `/api/v1/conversation-runs/${pathParam(runID)}/stream?${query.toString()}`,
     {
       method: "GET",
       accessToken,
@@ -819,7 +1021,20 @@ export async function resumeMessageGenerationStream(
     return null;
   }
 
-  return readConversationStream(response, options);
+  const { completed, moderationBlocked } = await readConversationStream(response, options);
+  if (moderationBlocked) {
+    throw new ApiError(
+      "content blocked by moderation",
+      response.status,
+      {
+        eventID: moderationBlocked.eventID,
+        direction: moderationBlocked.direction,
+        categories: moderationBlocked.categories,
+      },
+      "content_moderation.blocked",
+    );
+  }
+  return completed;
 }
 
 export async function setMessageFeedback(
@@ -854,6 +1069,21 @@ export async function updateMessage(
   );
 }
 
+export async function forkConversationFromMessage(
+  accessToken: string,
+  conversationPublicID: string,
+  messagePublicID: string,
+): Promise<ConversationDTO> {
+  return authedRequest<ConversationDTO>(
+    `/api/v1/conversations/${pathParam(conversationPublicID)}/messages/${pathParam(messagePublicID)}/fork`,
+    {
+      method: "POST",
+      accessToken,
+    },
+    true,
+  );
+}
+
 export type CompactDoneEvent = {
   method: string;
   freed_tokens: number;
@@ -866,6 +1096,7 @@ export type ConversationStreamOptions = {
   afterSeq?: number;
   onEventSeq?: (seq: number) => void;
   onDelta?: (delta: string) => void;
+  onTextSnapshot?: (content: string) => void;
   onFileProc?: (message: string) => void;
   onRagSearch?: (message: string) => void;
   onMediaStatus?: (event: Extract<StreamMessageEvent, { type: "media_status" }>) => void;
@@ -875,20 +1106,39 @@ export type ConversationStreamOptions = {
   onUpstreamThinkDelta?: (event: Extract<StreamMessageEvent, { type: "upstream_think_delta" }>) => void;
   onUsage?: (event: Extract<StreamMessageEvent, { type: "usage" }>) => void;
   onInterrupted?: (event: Extract<StreamMessageEvent, { type: "error" }>) => void;
+  onTerminal?: (event: Extract<StreamMessageEvent, { type: "completed" | "error" | "moderation_blocked" }>) => void;
+  onModerationChecking?: (event: Extract<StreamMessageEvent, { type: "moderation_checking" }>) => void;
+  onModerationBlocked?: (event: Extract<StreamMessageEvent, { type: "moderation_blocked" }>) => void;
+};
+
+type StreamReadResult = {
+  completed: SendMessageResult | null;
+  moderationBlocked: Extract<StreamMessageEvent, { type: "moderation_blocked" }> | null;
 };
 
 async function readConversationStream(
   response: Response,
   options: ConversationStreamOptions,
-): Promise<SendMessageResult | null> {
+): Promise<StreamReadResult> {
   if (!response.body) {
-    return null;
+    return { completed: null, moderationBlocked: null };
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let completed: SendMessageResult | null = null;
+  let moderationBlocked: Extract<StreamMessageEvent, { type: "moderation_blocked" }> | null = null;
+
+  const consumeEvent = (event: StreamMessageEvent) => {
+    if (event.type === "moderation_blocked") {
+      moderationBlocked = event;
+    }
+    const nextCompleted = handleStreamEvent(event, options, response.status);
+    if (nextCompleted) {
+      completed = nextCompleted;
+    }
+  };
 
   while (true) {
     let readResult: ReadableStreamReadResult<Uint8Array>;
@@ -908,11 +1158,7 @@ async function readConversationStream(
     buffer = remainder;
 
     for (const document of documents) {
-      const event = normalizeStreamEvent(JSON.parse(document));
-      const nextCompleted = handleStreamEvent(event, options, response.status);
-      if (nextCompleted) {
-        completed = nextCompleted;
-      }
+      consumeEvent(normalizeStreamEvent(JSON.parse(document)));
     }
 
     if (done) {
@@ -922,14 +1168,51 @@ async function readConversationStream(
 
   const tail = buffer.trim();
   if (tail) {
-    const event = normalizeStreamEvent(JSON.parse(tail));
-    const nextCompleted = handleStreamEvent(event, options, response.status);
-    if (nextCompleted) {
-      completed = nextCompleted;
-    }
+    consumeEvent(normalizeStreamEvent(JSON.parse(tail)));
   }
 
-  return completed;
+  return { completed, moderationBlocked };
+}
+
+async function postMessageStream<TPayload>(
+  accessToken: string,
+  endpoint: string,
+  payload: TPayload,
+  options: ConversationStreamOptions,
+  cache?: RequestCache,
+): Promise<SendMessageResult> {
+  const response = await authedFetch(endpoint, {
+    method: "POST",
+    accessToken,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal: options.signal,
+    cache,
+  }, true);
+
+  if (!response.body) {
+    throw new ApiError("stream body is empty", response.status);
+  }
+
+  const { completed, moderationBlocked } = await readConversationStream(response, options);
+  if (moderationBlocked) {
+    throw new ApiError(
+      "content blocked by moderation",
+      response.status,
+      {
+        eventID: moderationBlocked.eventID,
+        direction: moderationBlocked.direction,
+        categories: moderationBlocked.categories,
+      },
+      "content_moderation.blocked",
+    );
+  }
+  if (completed) {
+    return completed;
+  }
+  throw new ApiError("stream completed without final payload", response.status);
 }
 
 async function postConversationStream<TPayload>(
@@ -939,29 +1222,12 @@ async function postConversationStream<TPayload>(
   payload: TPayload,
   options: ConversationStreamOptions,
 ): Promise<SendMessageResult> {
-  const response = await authedFetch(
+  return postMessageStream(
+    accessToken,
     `/api/v1/conversations/${pathParam(conversationPublicID)}${endpointSuffix}`,
-    {
-      method: "POST",
-      accessToken,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-      signal: options.signal,
-    },
-    true,
+    payload,
+    options,
   );
-
-  if (!response.body) {
-    throw new ApiError("stream body is empty", response.status);
-  }
-
-  const completed = await readConversationStream(response, options);
-  if (!completed) {
-    throw new ApiError("stream completed without final payload", response.status);
-  }
-  return completed;
 }
 
 export async function streamMessage(
@@ -971,6 +1237,20 @@ export async function streamMessage(
   options: ConversationStreamOptions = {},
 ): Promise<SendMessageResult> {
   return postConversationStream(accessToken, conversationPublicID, "/messages/stream", payload, options);
+}
+
+export async function streamTemporaryChatMessage(
+  accessToken: string,
+  payload: TemporaryChatMessageRequest,
+  options: ConversationStreamOptions = {},
+): Promise<SendMessageResult> {
+  return postMessageStream(
+    accessToken,
+    "/api/v1/temporary-chat/messages/stream",
+    payload,
+    options,
+    "no-store",
+  );
 }
 
 export async function streamImageGeneration(
@@ -998,6 +1278,36 @@ export async function streamImageEdit(
     accessToken,
     conversationPublicID,
     "/media/images/edits/stream",
+    payload,
+    options,
+  );
+}
+
+export async function streamVideoGeneration(
+  accessToken: string,
+  conversationPublicID: string,
+  payload: MediaVideoRequest,
+  options: ConversationStreamOptions = {},
+): Promise<SendMessageResult> {
+  return postConversationStream(
+    accessToken,
+    conversationPublicID,
+    "/media/videos/generations/stream",
+    payload,
+    options,
+  );
+}
+
+export async function streamVideoExtension(
+  accessToken: string,
+  conversationPublicID: string,
+  payload: MediaVideoExtensionRequest,
+  options: ConversationStreamOptions = {},
+): Promise<SendMessageResult> {
+  return postConversationStream(
+    accessToken,
+    conversationPublicID,
+    "/media/videos/extensions/stream",
     payload,
     options,
   );

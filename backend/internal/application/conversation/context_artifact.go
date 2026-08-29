@@ -53,14 +53,15 @@ type snapshotContextArtifactInput struct {
 }
 
 type historicalContextArtifactInput struct {
-	CurrentMessageID uint
-	Query            string
-	Candidates       []domainconversation.ContextArtifact
-	CurrentRAGChunks []domainconversation.RAGChunk
-	CurrentFallbacks []AttachmentInput
-	CurrentRecall    []domainconversation.MessageChunk
-	MaxItems         int
-	MaxTokens        int64
+	CurrentMessageID   uint
+	HasCurrentSnapshot bool
+	Query              string
+	Candidates         []domainconversation.ContextArtifact
+	CurrentRAGChunks   []domainconversation.RAGChunk
+	CurrentFallbacks   []AttachmentInput
+	CurrentRecall      []domainconversation.MessageChunk
+	MaxItems           int
+	MaxTokens          int64
 }
 
 type historicalScoredArtifact struct {
@@ -164,14 +165,14 @@ func (s *Service) applyContextArtifactRetention(items []domainconversation.Conte
 // recallHistoricalContextArtifacts 读取近期上下文证据并按当前问题筛选。
 func (s *Service) recallHistoricalContextArtifacts(
 	ctx context.Context,
-	conversationID uint,
-	currentMessageID uint,
+	scope repository.HistoricalMessageScope,
+	hasCurrentSnapshot bool,
 	query string,
 	currentRAGChunks []domainconversation.RAGChunk,
 	currentFallbacks []AttachmentInput,
 	currentRecall []domainconversation.MessageChunk,
 ) []domainconversation.ContextArtifact {
-	if strings.TrimSpace(query) == "" {
+	if !scope.Valid() || strings.TrimSpace(query) == "" {
 		return nil
 	}
 	kinds := []domainconversation.ContextArtifactKind{
@@ -179,26 +180,34 @@ func (s *Service) recallHistoricalContextArtifacts(
 		domainconversation.ContextArtifactFileRAGFallback,
 		domainconversation.ContextArtifactToolResult,
 		domainconversation.ContextArtifactNativeTool,
-		domainconversation.ContextArtifactSummary,
+		domainconversation.ContextArtifactImageAnalysis,
 	}
-	candidates, err := s.repo.ListRecentContextArtifacts(ctx, conversationID, kinds, historicalArtifactScanLimit)
+	if !hasCurrentSnapshot {
+		kinds = append(kinds, domainconversation.ContextArtifactSummary)
+	}
+	candidates, err := s.repo.ListRecentContextArtifacts(ctx, repository.ContextArtifactListFilter{
+		Scope: scope,
+		Kinds: kinds,
+		Limit: historicalArtifactScanLimit,
+	})
 	if err != nil {
 		if s.logger != nil {
 			s.logger.Warn("historical_context_artifact_recall_failed",
 				zap.String("trace_id", traceid.FromContext(ctx)),
-				zap.Uint("conversation_id", conversationID),
+				zap.Uint("conversation_id", scope.ConversationID),
 				zap.Error(err),
 			)
 		}
 		return nil
 	}
 	return selectHistoricalContextArtifacts(historicalContextArtifactInput{
-		CurrentMessageID: currentMessageID,
-		Query:            query,
-		Candidates:       candidates,
-		CurrentRAGChunks: currentRAGChunks,
-		CurrentFallbacks: currentFallbacks,
-		CurrentRecall:    currentRecall,
+		CurrentMessageID:   scope.LeafMessageID,
+		HasCurrentSnapshot: hasCurrentSnapshot,
+		Query:              query,
+		Candidates:         candidates,
+		CurrentRAGChunks:   currentRAGChunks,
+		CurrentFallbacks:   currentFallbacks,
+		CurrentRecall:      currentRecall,
 	})
 }
 
@@ -328,7 +337,8 @@ func buildPromptContextArtifacts(input promptContextArtifactInput) []domainconve
 func buildToolContextArtifacts(input toolContextArtifactInput) []domainconversation.ContextArtifact {
 	items := make([]domainconversation.ContextArtifact, 0, len(input.Rows))
 	for _, row := range input.Rows {
-		content := toolArtifactContent(row)
+		rawContent := toolArtifactContent(row)
+		content, truncated := toolArtifactEvidenceContent(rawContent, contextArtifactExcerptChars)
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
@@ -346,8 +356,8 @@ func buildToolContextArtifacts(input toolContextArtifactInput) []domainconversat
 			SourceType:     "tool_call",
 			SourceID:       sourceID,
 			SourceTitle:    strings.TrimSpace(row.ToolName),
-			Content:        contextArtifactExcerpt(content, contextArtifactExcerptChars),
-			ContentHash:    contextArtifactHash(kind, sourceID, content),
+			Content:        content,
+			ContentHash:    contextArtifactHash(kind, sourceID, rawContent),
 			TokenEstimate:  estimateTokens(content),
 			Score:          1,
 			MetadataJSON: contextArtifactMetadata(map[string]interface{}{
@@ -357,6 +367,8 @@ func buildToolContextArtifacts(input toolContextArtifactInput) []domainconversat
 				"status":       strings.TrimSpace(row.Status),
 				"latency_ms":   row.LatencyMS,
 				"input":        strings.TrimSpace(row.InputJSON),
+				"output_chars": len([]rune(rawContent)),
+				"truncated":    truncated,
 			}),
 		})
 	}
@@ -423,6 +435,9 @@ func selectHistoricalContextArtifacts(input historicalContextArtifactInput) []do
 
 	scored := make([]historicalScoredArtifact, 0, len(input.Candidates))
 	for index, item := range input.Candidates {
+		if input.HasCurrentSnapshot && item.Kind == domainconversation.ContextArtifactSummary {
+			continue
+		}
 		content := strings.TrimSpace(item.Content)
 		if content == "" || item.MessageID == input.CurrentMessageID {
 			continue
@@ -543,6 +558,11 @@ func ragFallbackEvidenceAttachments(items []ragFallbackEvidence) []AttachmentInp
 }
 
 func toolArtifactContent(row domainconversation.ToolCall) string {
+	if strings.EqualFold(strings.TrimSpace(row.ToolType), "mcp_attachment") {
+		if content := imageAttachmentAnalysisText(row.OutputJSON); content != "" {
+			return content
+		}
+	}
 	switch strings.TrimSpace(row.Status) {
 	case "error", "failed":
 		return firstNonEmptyString(row.ErrorJSON, row.OutputJSON)
@@ -551,11 +571,24 @@ func toolArtifactContent(row domainconversation.ToolCall) string {
 	}
 }
 
+func toolArtifactEvidenceContent(raw string, maxChars int) (string, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", false
+	}
+	if maxChars <= 0 || len([]rune(value)) <= maxChars {
+		return value, false
+	}
+	return headTailToolOutput(value, maxChars), true
+}
+
 func toolContextArtifactKind(row domainconversation.ToolCall) domainconversation.ContextArtifactKind {
 	toolType := strings.ToLower(strings.TrimSpace(row.ToolType))
 	switch toolType {
 	case "", "function", "mcp":
 		return domainconversation.ContextArtifactToolResult
+	case "mcp_attachment":
+		return domainconversation.ContextArtifactImageAnalysis
 	default:
 		return domainconversation.ContextArtifactNativeTool
 	}

@@ -165,7 +165,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 	page, pageSize := messagePageParams(c)
 	var beforeID uint
 	if rawBeforeID := strings.TrimSpace(c.Query("before_id")); rawBeforeID != "" {
-		parsed, parseErr := strconv.ParseUint(rawBeforeID, 10, 64)
+		parsed, parseErr := strconv.ParseUint(rawBeforeID, 10, strconv.IntSize)
 		if parseErr != nil || parsed == 0 {
 			response.Error(c, http.StatusBadRequest, "invalid before message id")
 			return
@@ -222,6 +222,43 @@ func (h *Handler) ListMessages(c *gin.Context) {
 		msgResults = append(msgResults, toMessageResponseWithRunAndFallback(m, runModels[strings.TrimSpace(m.RunID)], conversation.Model))
 	}
 	response.SuccessPage(c, total, msgResults)
+}
+
+// ListConversationPreviewMessages godoc
+// @Summary 查询会话预览消息
+// @Description 返回当前用户会话最新分支最近 10 条用户或助手消息
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "会话 public_id"
+// @Success 200 {object} ConversationPreviewMessageListResponseDoc
+// @Failure 400 {object} ErrorDoc
+// @Failure 404 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /conversations/{id}/messages/preview [get]
+// ListConversationPreviewMessages 查询搜索预览所需的轻量消息。
+func (h *Handler) ListConversationPreviewMessages(c *gin.Context) {
+	userID := middleware.MustUserID(c)
+	publicID, err := stringParam(c, "id")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid conversation id")
+		return
+	}
+	items, err := h.service.ListConversationPreviewMessages(c.Request.Context(), userID, publicID)
+	if err != nil {
+		if errors.Is(err, appconversation.ErrConversationNotFound) {
+			response.Error(c, http.StatusNotFound, "conversation not found")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "list conversation preview messages failed")
+		return
+	}
+	results := make([]ConversationPreviewMessageResponse, 0, len(items))
+	for _, item := range items {
+		results = append(results, toConversationPreviewMessageResponse(item))
+	}
+	response.Success(c, results)
 }
 
 // collectMessageRunIDs 提取消息列表中的运行 ID，并保持首次出现顺序。
@@ -291,4 +328,42 @@ func (h *Handler) ListConversationRuns(c *gin.Context) {
 		runResults = append(runResults, toRunResponse(r))
 	}
 	response.SuccessPage(c, total, runResults)
+}
+
+// GetConversationRunStatuses godoc
+// @Summary 批量查询会话运行状态
+// @Description 按运行 ID 一次查询当前用户多个会话任务的最小状态快照
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body GetConversationRunStatusesRequest true "运行ID，最多100个"
+// @Success 200 {array} ConversationRunStatusResponse
+// @Failure 400 {object} ErrorDoc
+// @Failure 500 {object} ErrorDoc
+// @Router /conversation-runs/statuses [post]
+func (h *Handler) GetConversationRunStatuses(c *gin.Context) {
+	var req GetConversationRunStatusesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid run ids")
+		return
+	}
+
+	items, err := h.service.ListConversationRunStatusesByRunIDs(
+		c.Request.Context(),
+		middleware.MustUserID(c),
+		req.RunIDs,
+	)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "get conversation run statuses failed")
+		return
+	}
+	statuses := make([]ConversationRunStatusResponse, 0, len(items))
+	for _, item := range items {
+		statuses = append(statuses, ConversationRunStatusResponse{
+			RunID:  item.RunID,
+			Status: item.Status,
+		})
+	}
+	response.Success(c, statuses)
 }
