@@ -7,6 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	stddraw "image/draw"
+	"image/jpeg"
+	_ "image/png"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,6 +24,8 @@ import (
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/ports/llm"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 	"github.com/google/uuid"
+	"golang.org/x/image/draw"
+	_ "golang.org/x/image/webp"
 )
 
 func isRepoNotFound(err error) bool {
@@ -346,8 +354,19 @@ func (s *Service) readGeneratedImage(ctx context.Context, image llm.GeneratedIma
 	return validateImageBytes(data, mimeType)
 }
 
-func (s *Service) uploadGeneratedImage(ctx context.Context, userID uint, modelName string, trustedProviderEndpoint string, capturedAt time.Time, index int, total int, image llm.GeneratedImage) (*domainconversation.FileObject, error) {
-	data, mimeType, err := s.readGeneratedImage(ctx, image, trustedProviderEndpoint)
+type generatedImageUpload struct {
+	Original        domainconversation.FileObject
+	Thumbnail       domainconversation.FileObject
+	ThumbnailWidth  int
+	ThumbnailHeight int
+}
+
+func (s *Service) uploadGeneratedImage(ctx context.Context, userID uint, modelName string, trustedProviderEndpoint string, capturedAt time.Time, index int, total int, generated llm.GeneratedImage) (*generatedImageUpload, error) {
+	data, mimeType, err := s.readGeneratedImage(ctx, generated, trustedProviderEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	thumbnailData, thumbnailWidth, thumbnailHeight, err := makeImageThumbnail(data, 480)
 	if err != nil {
 		return nil, err
 	}
@@ -363,5 +382,57 @@ func (s *Service) uploadGeneratedImage(ctx context.Context, userID uint, modelNa
 	if err != nil {
 		return nil, err
 	}
-	return &result.File, nil
+	thumbnailName := strings.TrimSuffix(fileName, filepath.Ext(fileName)) + "-thumb.jpg"
+	thumbnailResult, err := s.uploadSvc.UploadFile(ctx, appupload.UploadFileInput{
+		UserID:       userID,
+		Purpose:      "image_studio_thumbnail",
+		FileName:     thumbnailName,
+		MimeType:     "image/jpeg",
+		DeclaredSize: int64(len(thumbnailData)),
+		Reader:       bytes.NewReader(thumbnailData),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &generatedImageUpload{
+		Original:        result.File,
+		Thumbnail:       thumbnailResult.File,
+		ThumbnailWidth:  thumbnailWidth,
+		ThumbnailHeight: thumbnailHeight,
+	}, nil
+}
+
+func makeImageThumbnail(data []byte, maxDimension int) ([]byte, int, int, error) {
+	if maxDimension <= 0 {
+		return nil, 0, 0, fmt.Errorf("thumbnail dimension must be positive")
+	}
+	source, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	width, height := thumbnailDimensions(source.Bounds().Dx(), source.Bounds().Dy(), maxDimension)
+	if width <= 0 || height <= 0 {
+		return nil, 0, 0, fmt.Errorf("invalid image dimensions")
+	}
+	target := image.NewRGBA(image.Rect(0, 0, width, height))
+	stddraw.Draw(target, target.Bounds(), &image.Uniform{C: color.White}, image.Point{}, stddraw.Src)
+	draw.CatmullRom.Scale(target, target.Bounds(), source, source.Bounds(), draw.Over, nil)
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, target, &jpeg.Options{Quality: 82}); err != nil {
+		return nil, 0, 0, err
+	}
+	return encoded.Bytes(), width, height, nil
+}
+
+func thumbnailDimensions(width int, height int, maxDimension int) (int, int) {
+	if width <= 0 || height <= 0 || maxDimension <= 0 {
+		return 0, 0
+	}
+	if width <= maxDimension && height <= maxDimension {
+		return width, height
+	}
+	if width >= height {
+		return maxDimension, max(1, height*maxDimension/width)
+	}
+	return max(1, width*maxDimension/height), maxDimension
 }

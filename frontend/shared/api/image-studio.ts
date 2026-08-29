@@ -3,6 +3,7 @@ import { ApiError, pathParam } from "@/shared/api/http-client";
 import type { PagePayload } from "@/shared/api/common.types";
 import type {
   ImageStudioListParams,
+  BatchDeleteImageStudioTasksResult,
   ImageStudioStreamEvent,
   ImageStudioTaskDTO,
   StreamImageStudioTaskRequest,
@@ -123,12 +124,30 @@ export async function setImageStudioTaskFavorite(
   );
 }
 
-export async function deleteImageStudioTask(accessToken: string, taskID: string): Promise<{ deleted: boolean }> {
-  return authedRequest<{ deleted: boolean }>(
+export async function deleteImageStudioTask(
+  accessToken: string,
+  taskID: string,
+): Promise<{ deleted: boolean; cleanupFailedFileIDs: string[] }> {
+  return authedRequest<{ deleted: boolean; cleanupFailedFileIDs: string[] }>(
     `/api/v1/image-studio/tasks/${pathParam(taskID)}`,
     {
       method: "DELETE",
       accessToken,
+    },
+    true,
+  );
+}
+
+export async function batchDeleteImageStudioTasks(
+  accessToken: string,
+  taskIDs: string[],
+): Promise<BatchDeleteImageStudioTasksResult> {
+  return authedRequest<BatchDeleteImageStudioTasksResult>(
+    "/api/v1/image-studio/tasks/batch-delete",
+    {
+      method: "POST",
+      accessToken,
+      body: { taskIDs },
     },
     true,
   );

@@ -60,22 +60,35 @@ type Task struct {
 
 // Asset links Image Studio task history to DEEIX file objects.
 type Asset struct {
-	ID               uint
-	TaskID           uint
-	TaskPublicID     string
-	UserID           uint
-	FileID           string
-	Role             string
-	SortOrder        int
-	FileName         string
-	MimeType         string
-	FileSize         int64
-	SHA256           string
-	StoragePath      string
-	FileSnapshotJSON string
-	MetadataJSON     string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                uint
+	TaskID            uint
+	TaskPublicID      string
+	UserID            uint
+	FileID            string
+	Role              string
+	SortOrder         int
+	FileName          string
+	MimeType          string
+	FileSize          int64
+	SHA256            string
+	StoragePath       string
+	ThumbnailFileID   string
+	ThumbnailFileName string
+	ThumbnailMimeType string
+	ThumbnailFileSize int64
+	ThumbnailWidth    int
+	ThumbnailHeight   int
+	FileSnapshotJSON  string
+	MetadataJSON      string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+// DeletePlan contains task rows hidden by a delete operation and file objects
+// that no longer have an active Image Studio output reference.
+type DeletePlan struct {
+	DeletedTaskIDs []string
+	CleanupFileIDs []string
 }
 
 // TaskListFilter describes task history filters.

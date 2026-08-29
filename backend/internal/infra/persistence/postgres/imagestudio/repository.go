@@ -3,6 +3,7 @@ package imagestudio
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	models "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/models"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/repository"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Repo implements Image Studio persistence.
@@ -197,23 +199,97 @@ func (r *Repo) SetTaskFavorite(ctx context.Context, userID uint, taskID string, 
 	return r.GetTaskByPublicID(ctx, userID, taskID)
 }
 
-// DeleteTask marks a task deleted without touching file objects.
-func (r *Repo) DeleteTask(ctx context.Context, userID uint, taskID string) error {
-	now := time.Now()
-	result := r.db.WithContext(ctx).
-		Model(&models.ImageStudioTask{}).
-		Where("user_id = ? AND task_id = ? AND status <> ?", userID, strings.TrimSpace(taskID), domainimagestudio.TaskStatusDeleted).
-		Updates(map[string]interface{}{
-			"status":       domainimagestudio.TaskStatusDeleted,
-			"completed_at": &now,
-		})
-	if result.Error != nil {
-		return translateError(result.Error)
+// DeleteTasks marks matching tasks deleted and returns output files that have
+// no remaining active Image Studio references.
+func (r *Repo) DeleteTasks(ctx context.Context, userID uint, taskIDs []string) (*domainimagestudio.DeletePlan, error) {
+	plan := &domainimagestudio.DeletePlan{
+		DeletedTaskIDs: make([]string, 0, len(taskIDs)),
+		CleanupFileIDs: make([]string, 0),
 	}
-	if result.RowsAffected == 0 {
-		return repository.ErrNotFound
+	if len(taskIDs) == 0 {
+		return plan, nil
 	}
-	return nil
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		items := make([]models.ImageStudioTask, 0, len(taskIDs))
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("user_id = ? AND task_id IN ? AND status <> ?", userID, taskIDs, domainimagestudio.TaskStatusDeleted).
+			Find(&items).Error; err != nil {
+			return translateError(err)
+		}
+		if len(items) == 0 {
+			return nil
+		}
+
+		internalIDs := make([]uint, 0, len(items))
+		for _, item := range items {
+			internalIDs = append(internalIDs, item.ID)
+			plan.DeletedTaskIDs = append(plan.DeletedTaskIDs, item.TaskID)
+		}
+		assets := make([]models.ImageStudioTaskAsset, 0)
+		if err := tx.Where("task_id IN ?", internalIDs).
+			Find(&assets).Error; err != nil {
+			return translateError(err)
+		}
+		now := time.Now()
+		if err := tx.Model(&models.ImageStudioTask{}).
+			Where("id IN ?", internalIDs).
+			Updates(map[string]interface{}{
+				"status":       domainimagestudio.TaskStatusDeleted,
+				"completed_at": &now,
+			}).Error; err != nil {
+			return translateError(err)
+		}
+
+		candidates := make(map[string]struct{}, len(assets)*2)
+		inputFileIDs := make([]string, 0)
+		for _, asset := range assets {
+			if value := strings.TrimSpace(asset.FileID); value != "" {
+				if asset.Role == domainimagestudio.AssetRoleOutput {
+					candidates[value] = struct{}{}
+				} else {
+					inputFileIDs = append(inputFileIDs, value)
+				}
+			}
+			if asset.Role == domainimagestudio.AssetRoleOutput {
+				if value := strings.TrimSpace(asset.ThumbnailFileID); value != "" {
+					candidates[value] = struct{}{}
+				}
+			}
+		}
+		if len(inputFileIDs) > 0 {
+			generatedInputFileIDs := make([]string, 0)
+			if err := tx.Table("image_studio_task_assets AS assets").
+				Joins("JOIN image_studio_tasks AS tasks ON tasks.id = assets.task_id").
+				Distinct("assets.file_id").
+				Where("tasks.user_id = ? AND assets.role = ? AND assets.file_id IN ?", userID, domainimagestudio.AssetRoleOutput, inputFileIDs).
+				Pluck("assets.file_id", &generatedInputFileIDs).Error; err != nil {
+				return translateError(err)
+			}
+			for _, value := range generatedInputFileIDs {
+				candidates[value] = struct{}{}
+			}
+		}
+		for fileID := range candidates {
+			var remaining int64
+			if err := tx.Table("image_studio_task_assets AS assets").
+				Joins("JOIN image_studio_tasks AS tasks ON tasks.id = assets.task_id").
+				Where("tasks.user_id = ? AND tasks.status <> ?", userID, domainimagestudio.TaskStatusDeleted).
+				Where("assets.file_id = ? OR assets.thumbnail_file_id = ?", fileID, fileID).
+				Count(&remaining).Error; err != nil {
+				return translateError(err)
+			}
+			if remaining == 0 {
+				plan.CleanupFileIDs = append(plan.CleanupFileIDs, fileID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(plan.DeletedTaskIDs)
+	sort.Strings(plan.CleanupFileIDs)
+	return plan, nil
 }
 
 func (r *Repo) listAssetsByTaskIDs(ctx context.Context, taskIDs []uint) (map[uint][]domainimagestudio.Asset, error) {
@@ -369,40 +445,52 @@ func toTaskDomain(item models.ImageStudioTask, assets []domainimagestudio.Asset)
 
 func toAssetModel(item domainimagestudio.Asset) models.ImageStudioTaskAsset {
 	return models.ImageStudioTaskAsset{
-		TaskID:           item.TaskID,
-		TaskPublicID:     strings.TrimSpace(item.TaskPublicID),
-		UserID:           item.UserID,
-		FileID:           strings.TrimSpace(item.FileID),
-		Role:             strings.TrimSpace(item.Role),
-		SortOrder:        item.SortOrder,
-		FileName:         strings.TrimSpace(item.FileName),
-		MimeType:         strings.TrimSpace(item.MimeType),
-		FileSize:         item.FileSize,
-		SHA256:           strings.TrimSpace(item.SHA256),
-		StoragePath:      strings.TrimSpace(item.StoragePath),
-		FileSnapshotJSON: defaultJSON(item.FileSnapshotJSON),
-		MetadataJSON:     defaultJSON(item.MetadataJSON),
+		TaskID:            item.TaskID,
+		TaskPublicID:      strings.TrimSpace(item.TaskPublicID),
+		UserID:            item.UserID,
+		FileID:            strings.TrimSpace(item.FileID),
+		Role:              strings.TrimSpace(item.Role),
+		SortOrder:         item.SortOrder,
+		FileName:          strings.TrimSpace(item.FileName),
+		MimeType:          strings.TrimSpace(item.MimeType),
+		FileSize:          item.FileSize,
+		SHA256:            strings.TrimSpace(item.SHA256),
+		StoragePath:       strings.TrimSpace(item.StoragePath),
+		ThumbnailFileID:   strings.TrimSpace(item.ThumbnailFileID),
+		ThumbnailFileName: strings.TrimSpace(item.ThumbnailFileName),
+		ThumbnailMimeType: strings.TrimSpace(item.ThumbnailMimeType),
+		ThumbnailFileSize: item.ThumbnailFileSize,
+		ThumbnailWidth:    item.ThumbnailWidth,
+		ThumbnailHeight:   item.ThumbnailHeight,
+		FileSnapshotJSON:  defaultJSON(item.FileSnapshotJSON),
+		MetadataJSON:      defaultJSON(item.MetadataJSON),
 	}
 }
 
 func toAssetDomain(item models.ImageStudioTaskAsset) domainimagestudio.Asset {
 	return domainimagestudio.Asset{
-		ID:               item.ID,
-		TaskID:           item.TaskID,
-		TaskPublicID:     item.TaskPublicID,
-		UserID:           item.UserID,
-		FileID:           item.FileID,
-		Role:             item.Role,
-		SortOrder:        item.SortOrder,
-		FileName:         item.FileName,
-		MimeType:         item.MimeType,
-		FileSize:         item.FileSize,
-		SHA256:           item.SHA256,
-		StoragePath:      item.StoragePath,
-		FileSnapshotJSON: defaultJSON(item.FileSnapshotJSON),
-		MetadataJSON:     defaultJSON(item.MetadataJSON),
-		CreatedAt:        item.CreatedAt,
-		UpdatedAt:        item.UpdatedAt,
+		ID:                item.ID,
+		TaskID:            item.TaskID,
+		TaskPublicID:      item.TaskPublicID,
+		UserID:            item.UserID,
+		FileID:            item.FileID,
+		Role:              item.Role,
+		SortOrder:         item.SortOrder,
+		FileName:          item.FileName,
+		MimeType:          item.MimeType,
+		FileSize:          item.FileSize,
+		SHA256:            item.SHA256,
+		StoragePath:       item.StoragePath,
+		ThumbnailFileID:   item.ThumbnailFileID,
+		ThumbnailFileName: item.ThumbnailFileName,
+		ThumbnailMimeType: item.ThumbnailMimeType,
+		ThumbnailFileSize: item.ThumbnailFileSize,
+		ThumbnailWidth:    item.ThumbnailWidth,
+		ThumbnailHeight:   item.ThumbnailHeight,
+		FileSnapshotJSON:  defaultJSON(item.FileSnapshotJSON),
+		MetadataJSON:      defaultJSON(item.MetadataJSON),
+		CreatedAt:         item.CreatedAt,
+		UpdatedAt:         item.UpdatedAt,
 	}
 }
 

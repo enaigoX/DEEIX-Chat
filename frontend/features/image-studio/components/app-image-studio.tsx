@@ -17,7 +17,18 @@ import {
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -56,6 +67,8 @@ export function AppImageStudio() {
   const t = useTranslations("imageStudio");
   const statusLabels = useImageStudioStatusLabels();
   const assetLabels = useImageStudioAssetLabels();
+  const [deleteTarget, setDeleteTarget] = React.useState<ImageStudioTaskDTO | null>(null);
+  const [batchDeleteOpen, setBatchDeleteOpen] = React.useState(false);
   const {
     fileInputRef,
     tasks,
@@ -67,6 +80,7 @@ export function AppImageStudio() {
     syncing,
     running,
     uploading,
+    deleting,
     taskType,
     model,
     params,
@@ -77,6 +91,8 @@ export function AppImageStudio() {
     selectedTask,
     streamStatus,
     partialImages: partialImageMap,
+    selectedTaskIDs,
+    allVisibleSelected,
     setTaskType,
     setModel,
     setParams,
@@ -90,6 +106,10 @@ export function AppImageStudio() {
     onSubmit,
     onToggleFavorite,
     onDeleteTask,
+    onToggleTaskSelection,
+    onToggleSelectAll,
+    clearTaskSelection,
+    onDeleteSelectedTasks,
     refresh,
   } = useImageStudioPage();
   const partialImages = Object.entries(partialImageMap)
@@ -179,6 +199,33 @@ export function AppImageStudio() {
         </header>
 
         <main className="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-4">
+          {!loading && tasks.length > 0 ? (
+            <div className="mb-3 flex min-h-8 items-center justify-between gap-3 border-b border-border/50 pb-3">
+              <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                <Checkbox
+                  checked={allVisibleSelected}
+                  onCheckedChange={onToggleSelectAll}
+                  aria-label={t("selection.selectAll")}
+                />
+                <span>
+                  {selectedTaskIDs.size > 0
+                    ? t("selection.selected", { count: selectedTaskIDs.size })
+                    : t("selection.selectAll")}
+                </span>
+              </label>
+              {selectedTaskIDs.size > 0 ? (
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button type="button" variant="ghost" size="sm" className="h-8" onClick={clearTaskSelection} disabled={deleting}>
+                    {t("selection.clear")}
+                  </Button>
+                  <Button type="button" variant="destructive" size="sm" className="h-8" onClick={() => setBatchDeleteOpen(true)} disabled={deleting}>
+                    {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                    <span>{t("selection.deleteSelected")}</span>
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {loading ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {Array.from({ length: 10 }).map((_, index) => (
@@ -212,11 +259,15 @@ export function AppImageStudio() {
                     asset: assetLabels,
                     favorite: t("card.favorite"),
                     delete: t("card.delete"),
+                    select: t("card.select"),
+                    deselect: t("card.deselect"),
                     imageCount: (count) => t("card.imageCount", { count }),
                   }}
                   onOpen={() => setSelectedTask(task)}
                   onToggleFavorite={() => void onToggleFavorite(task)}
-                  onDelete={() => void onDeleteTask(task)}
+                  onDelete={() => setDeleteTarget(task)}
+                  selected={selectedTaskIDs.has(task.taskID)}
+                  onToggleSelection={() => onToggleTaskSelection(task.taskID)}
                 />
               ))}
             </div>
@@ -306,9 +357,55 @@ export function AppImageStudio() {
           if (selectedTask) void onToggleFavorite(selectedTask);
         }}
         onDelete={() => {
-          if (selectedTask) void onDeleteTask(selectedTask);
+          if (selectedTask) setDeleteTarget(selectedTask);
         }}
       />
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("deleteDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("deleteDialog.description")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{t("deleteDialog.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => {
+                if (deleteTarget) void onDeleteTask(deleteTarget);
+                setDeleteTarget(null);
+              }}
+            >
+              {t("deleteDialog.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("batchDeleteDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("batchDeleteDialog.description", { count: selectedTaskIDs.size })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{t("deleteDialog.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => {
+                void onDeleteSelectedTasks();
+                setBatchDeleteOpen(false);
+              }}
+            >
+              {t("batchDeleteDialog.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -345,6 +442,8 @@ function TaskCard({
   onOpen,
   onToggleFavorite,
   onDelete,
+  selected,
+  onToggleSelection,
 }: {
   task: ImageStudioTaskDTO;
   statusLabels: ImageStudioStatusLabels;
@@ -352,21 +451,27 @@ function TaskCard({
     asset: ImageStudioAssetLabels;
     favorite: string;
     delete: string;
+    select: string;
+    deselect: string;
     imageCount: (count: number) => string;
   };
   onOpen: () => void;
   onToggleFavorite: () => void;
   onDelete: () => void;
+  selected: boolean;
+  onToggleSelection: () => void;
 }) {
   const outputs = outputAssets(task);
   const preview = outputs[0];
   return (
-    <article className="group relative overflow-hidden rounded-md border border-border/55 bg-card">
+    <article className={cn("group relative overflow-hidden rounded-md border border-border/55 bg-card", selected && "border-primary ring-1 ring-primary")}>
       <button type="button" className="block aspect-[4/5] w-full bg-muted/30 text-left" onClick={onOpen}>
         {preview ? (
           <ImageStudioAssetImage
             asset={preview}
             labels={labels.asset}
+            thumbnail
+            lazy
             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
           />
         ) : (
@@ -379,7 +484,15 @@ function TaskCard({
           </div>
         )}
       </button>
-      <div className="absolute left-2 top-2 flex gap-1">
+      <div className="absolute left-2 top-2 z-10 flex size-7 items-center justify-center rounded-md bg-background/92 shadow-sm">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onToggleSelection}
+          onClick={(event) => event.stopPropagation()}
+          aria-label={selected ? labels.deselect : labels.select}
+        />
+      </div>
+      <div className="absolute left-10 top-2 flex gap-1">
         <Badge variant={task.status === "success" ? "secondary" : task.status === "error" ? "destructive" : "outline"}>
           {statusLabels[task.status as keyof ImageStudioStatusLabels] ?? (task.status || statusLabels.unknown)}
         </Badge>
@@ -514,19 +627,48 @@ function ImageStudioAssetImage({
   asset,
   labels,
   className,
+  thumbnail = false,
+  lazy = false,
 }: {
   asset: ImageStudioAssetDTO;
   labels: ImageStudioAssetLabels;
   className?: string;
+  thumbnail?: boolean;
+  lazy?: boolean;
 }) {
-  const assetURL = useImageStudioAssetURL(asset.fileID);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = React.useState(!lazy);
+  const thumbnailFileID = thumbnail ? asset.thumbnailFileID?.trim() : "";
+  const thumbnailURL = useImageStudioAssetURL(visible && thumbnailFileID ? thumbnailFileID : null);
+  const shouldLoadOriginal = visible && (!thumbnailFileID || thumbnailURL.status === "error");
+  const originalURL = useImageStudioAssetURL(shouldLoadOriginal ? asset.fileID : null);
+  const assetURL = thumbnailFileID && thumbnailURL.status !== "error" ? thumbnailURL : originalURL;
+
+  React.useEffect(() => {
+    if (!lazy || visible) return;
+    const element = containerRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: "480px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [lazy, visible]);
 
   if (assetURL.status === "ready") {
-    return <img src={assetURL.url} alt={asset.fileName} className={className} />;
+    return <img src={assetURL.url} alt={asset.fileName} className={className} loading={lazy ? "lazy" : "eager"} />;
   }
 
   return (
-    <div className={cn("flex items-center justify-center bg-muted/30 text-muted-foreground", className)}>
+    <div ref={containerRef} className={cn("flex items-center justify-center bg-muted/30 text-muted-foreground", className)}>
       {assetURL.status === "loading" ? (
         <Loader2 className="size-5 animate-spin" />
       ) : (

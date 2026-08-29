@@ -48,19 +48,25 @@ func (ImageStudioTask) TableName() string {
 // ImageStudioTaskAsset links task history to file objects.
 type ImageStudioTaskAsset struct {
 	BaseModel
-	TaskID           uint   `gorm:"not null;default:0;index:idx_image_studio_task_assets_task_id;comment:任务内部ID"`
-	TaskPublicID     string `gorm:"size:64;not null;default:'';index:idx_image_studio_task_assets_task_public_id;comment:公开任务ID"`
-	UserID           uint   `gorm:"not null;default:0;index:idx_image_studio_task_assets_user_id;comment:用户ID"`
-	FileID           string `gorm:"size:64;not null;default:'';index:idx_image_studio_task_assets_file_id;comment:文件对象ID"`
-	Role             string `gorm:"size:32;not null;default:'';index:idx_image_studio_task_assets_role;comment:资产角色"`
-	SortOrder        int    `gorm:"not null;default:0;comment:展示顺序"`
-	FileName         string `gorm:"size:255;not null;default:'';comment:文件名快照"`
-	MimeType         string `gorm:"size:128;not null;default:'';comment:媒体类型快照"`
-	FileSize         int64  `gorm:"not null;default:0;comment:文件大小快照"`
-	SHA256           string `gorm:"size:64;not null;default:'';index:idx_image_studio_task_assets_sha256;comment:文件SHA256快照"`
-	StoragePath      string `gorm:"size:512;not null;default:'';comment:存储路径快照"`
-	FileSnapshotJSON string `gorm:"type:text;not null;default:'{}';comment:文件快照JSON"`
-	MetadataJSON     string `gorm:"type:text;not null;default:'{}';comment:上游或UI元数据JSON"`
+	TaskID            uint   `gorm:"not null;default:0;index:idx_image_studio_task_assets_task_id;comment:任务内部ID"`
+	TaskPublicID      string `gorm:"size:64;not null;default:'';index:idx_image_studio_task_assets_task_public_id;comment:公开任务ID"`
+	UserID            uint   `gorm:"not null;default:0;index:idx_image_studio_task_assets_user_id;comment:用户ID"`
+	FileID            string `gorm:"size:64;not null;default:'';index:idx_image_studio_task_assets_file_id;comment:文件对象ID"`
+	Role              string `gorm:"size:32;not null;default:'';index:idx_image_studio_task_assets_role;comment:资产角色"`
+	SortOrder         int    `gorm:"not null;default:0;comment:展示顺序"`
+	FileName          string `gorm:"size:255;not null;default:'';comment:文件名快照"`
+	MimeType          string `gorm:"size:128;not null;default:'';comment:媒体类型快照"`
+	FileSize          int64  `gorm:"not null;default:0;comment:文件大小快照"`
+	SHA256            string `gorm:"size:64;not null;default:'';index:idx_image_studio_task_assets_sha256;comment:文件SHA256快照"`
+	StoragePath       string `gorm:"size:512;not null;default:'';comment:存储路径快照"`
+	ThumbnailFileID   string `gorm:"size:64;not null;default:'';index:idx_image_studio_task_assets_thumbnail_file_id;comment:缩略图文件对象ID"`
+	ThumbnailFileName string `gorm:"size:255;not null;default:'';comment:缩略图文件名快照"`
+	ThumbnailMimeType string `gorm:"size:128;not null;default:'';comment:缩略图媒体类型快照"`
+	ThumbnailFileSize int64  `gorm:"not null;default:0;comment:缩略图大小快照"`
+	ThumbnailWidth    int    `gorm:"not null;default:0;comment:缩略图宽度"`
+	ThumbnailHeight   int    `gorm:"not null;default:0;comment:缩略图高度"`
+	FileSnapshotJSON  string `gorm:"type:text;not null;default:'{}';comment:文件快照JSON"`
+	MetadataJSON      string `gorm:"type:text;not null;default:'{}';comment:上游或UI元数据JSON"`
 }
 
 // TableName specifies the database table.

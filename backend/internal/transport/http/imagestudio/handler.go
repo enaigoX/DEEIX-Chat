@@ -129,7 +129,8 @@ func (h *Handler) SetFavorite(c *gin.Context) {
 // DeleteTask deletes task history.
 func (h *Handler) DeleteTask(c *gin.Context) {
 	userID := middleware.MustUserID(c)
-	if err := h.service.DeleteTask(c.Request.Context(), userID, c.Param("task_id")); err != nil {
+	result, err := h.service.DeleteTask(c.Request.Context(), userID, c.Param("task_id"))
+	if err != nil {
 		if errors.Is(err, appimagestudio.ErrTaskNotFound) {
 			response.Error(c, http.StatusNotFound, "image studio task not found")
 			return
@@ -137,7 +138,34 @@ func (h *Handler) DeleteTask(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, "delete image studio task failed")
 		return
 	}
-	response.Success(c, gin.H{"deleted": true})
+	response.Success(c, gin.H{
+		"deleted":              true,
+		"cleanupFailedFileIDs": result.CleanupFailedFileIDs,
+	})
+}
+
+// BatchDeleteTasks deletes multiple task histories and their generated files.
+func (h *Handler) BatchDeleteTasks(c *gin.Context) {
+	userID := middleware.MustUserID(c)
+	var req BatchDeleteTasksRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := h.service.DeleteTasks(c.Request.Context(), userID, req.TaskIDs)
+	if err != nil {
+		if errors.Is(err, appimagestudio.ErrInvalidTask) {
+			response.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "batch delete image studio tasks failed")
+		return
+	}
+	response.Success(c, BatchDeleteTasksResponse{
+		DeletedTaskIDs:       result.DeletedTaskIDs,
+		MissingTaskIDs:       result.MissingTaskIDs,
+		CleanupFailedFileIDs: result.CleanupFailedFileIDs,
+	})
 }
 
 func pageParams(c *gin.Context) (int, int) {

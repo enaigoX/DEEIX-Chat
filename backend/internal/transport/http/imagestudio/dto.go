@@ -23,6 +23,18 @@ type SetFavoriteRequest struct {
 	Favorite bool `json:"favorite"`
 }
 
+// BatchDeleteTasksRequest deletes a bounded set of Image Studio tasks.
+type BatchDeleteTasksRequest struct {
+	TaskIDs []string `json:"taskIDs" binding:"required,min=1,max=100,dive,required,max=64"`
+}
+
+// BatchDeleteTasksResponse reports database deletion and storage cleanup status.
+type BatchDeleteTasksResponse struct {
+	DeletedTaskIDs       []string `json:"deletedTaskIDs"`
+	MissingTaskIDs       []string `json:"missingTaskIDs"`
+	CleanupFailedFileIDs []string `json:"cleanupFailedFileIDs"`
+}
+
 // TaskResponse is the public Image Studio task DTO.
 type TaskResponse struct {
 	TaskID              string          `json:"taskID"`
@@ -63,17 +75,23 @@ type TaskResponse struct {
 
 // AssetResponse is the public Image Studio asset DTO.
 type AssetResponse struct {
-	FileID           string    `json:"fileID"`
-	Role             string    `json:"role"`
-	SortOrder        int       `json:"sortOrder"`
-	FileName         string    `json:"fileName"`
-	MimeType         string    `json:"mimeType"`
-	FileSize         int64     `json:"fileSize"`
-	SHA256           string    `json:"sha256"`
-	FileSnapshotJSON string    `json:"fileSnapshotJSON"`
-	MetadataJSON     string    `json:"metadataJSON"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	FileID            string    `json:"fileID"`
+	Role              string    `json:"role"`
+	SortOrder         int       `json:"sortOrder"`
+	FileName          string    `json:"fileName"`
+	MimeType          string    `json:"mimeType"`
+	FileSize          int64     `json:"fileSize"`
+	SHA256            string    `json:"sha256"`
+	ThumbnailFileID   string    `json:"thumbnailFileID"`
+	ThumbnailFileName string    `json:"thumbnailFileName"`
+	ThumbnailMimeType string    `json:"thumbnailMimeType"`
+	ThumbnailFileSize int64     `json:"thumbnailFileSize"`
+	ThumbnailWidth    int       `json:"thumbnailWidth"`
+	ThumbnailHeight   int       `json:"thumbnailHeight"`
+	FileSnapshotJSON  string    `json:"fileSnapshotJSON"`
+	MetadataJSON      string    `json:"metadataJSON"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 func toServiceInput(userID uint, requestID string, req StreamTaskRequest) appimagestudio.StreamTaskInput {
@@ -141,16 +159,22 @@ func toTaskResponse(item *domainimagestudio.Task) TaskResponse {
 
 func toAssetResponse(item domainimagestudio.Asset) AssetResponse {
 	return AssetResponse{
-		FileID:           item.FileID,
-		Role:             item.Role,
-		SortOrder:        item.SortOrder,
-		FileName:         item.FileName,
-		MimeType:         item.MimeType,
-		FileSize:         item.FileSize,
-		SHA256:           item.SHA256,
-		FileSnapshotJSON: item.FileSnapshotJSON,
-		MetadataJSON:     item.MetadataJSON,
-		CreatedAt:        item.CreatedAt,
-		UpdatedAt:        item.UpdatedAt,
+		FileID:            item.FileID,
+		Role:              item.Role,
+		SortOrder:         item.SortOrder,
+		FileName:          item.FileName,
+		MimeType:          item.MimeType,
+		FileSize:          item.FileSize,
+		SHA256:            item.SHA256,
+		ThumbnailFileID:   item.ThumbnailFileID,
+		ThumbnailFileName: item.ThumbnailFileName,
+		ThumbnailMimeType: item.ThumbnailMimeType,
+		ThumbnailFileSize: item.ThumbnailFileSize,
+		ThumbnailWidth:    item.ThumbnailWidth,
+		ThumbnailHeight:   item.ThumbnailHeight,
+		FileSnapshotJSON:  item.FileSnapshotJSON,
+		MetadataJSON:      item.MetadataJSON,
+		CreatedAt:         item.CreatedAt,
+		UpdatedAt:         item.UpdatedAt,
 	}
 }

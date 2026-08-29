@@ -1,8 +1,13 @@
 package imagestudio
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"testing"
 
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/config"
@@ -11,6 +16,41 @@ import (
 
 type imageStudioMediaDownloaderStub struct {
 	downloadImage func(context.Context, string, string, int64) ([]byte, string, error)
+}
+
+func TestMakeImageThumbnailLimitsLongestDimension(t *testing.T) {
+	source := image.NewRGBA(image.Rect(0, 0, 1200, 600))
+	for y := range 600 {
+		for x := range 1200 {
+			source.Set(x, y, color.RGBA{R: uint8(x % 255), G: uint8(y % 255), B: 120, A: 255})
+		}
+	}
+	var original bytes.Buffer
+	if err := png.Encode(&original, source); err != nil {
+		t.Fatalf("encode source PNG: %v", err)
+	}
+
+	thumbnail, width, height, err := makeImageThumbnail(original.Bytes(), 480)
+	if err != nil {
+		t.Fatalf("make thumbnail: %v", err)
+	}
+	if width != 480 || height != 240 {
+		t.Fatalf("thumbnail dimensions = %dx%d, want 480x240", width, height)
+	}
+	decoded, err := jpeg.Decode(bytes.NewReader(thumbnail))
+	if err != nil {
+		t.Fatalf("decode thumbnail JPEG: %v", err)
+	}
+	if decoded.Bounds().Dx() != width || decoded.Bounds().Dy() != height {
+		t.Fatalf("decoded dimensions = %dx%d, want %dx%d", decoded.Bounds().Dx(), decoded.Bounds().Dy(), width, height)
+	}
+}
+
+func TestThumbnailDimensionsDoesNotUpscale(t *testing.T) {
+	width, height := thumbnailDimensions(320, 200, 480)
+	if width != 320 || height != 200 {
+		t.Fatalf("thumbnail dimensions = %dx%d, want 320x200", width, height)
+	}
 }
 
 func (s imageStudioMediaDownloaderStub) DownloadImage(ctx context.Context, sourceURL string, trustedProviderEndpoint string, maxBytes int64) ([]byte, string, error) {

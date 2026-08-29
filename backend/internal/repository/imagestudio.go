@@ -15,5 +15,5 @@ type ImageStudioRepository interface {
 	AddTaskAssets(ctx context.Context, taskID uint, assets []domainimagestudio.Asset) error
 	ReplaceTaskAssetsByRole(ctx context.Context, taskID uint, role string, assets []domainimagestudio.Asset) error
 	SetTaskFavorite(ctx context.Context, userID uint, taskID string, favorite bool) (*domainimagestudio.Task, error)
-	DeleteTask(ctx context.Context, userID uint, taskID string) error
+	DeleteTasks(ctx context.Context, userID uint, taskIDs []string) (*domainimagestudio.DeletePlan, error)
 }

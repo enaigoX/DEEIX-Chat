@@ -201,14 +201,21 @@ func (s *Service) runUpstreamTask(ctx context.Context, task *domainimagestudio.T
 	uploadedAssets := make([]domainimagestudio.Asset, 0, len(output.GeneratedImages))
 	capturedAt := time.Now()
 	for i, image := range output.GeneratedImages {
-		file, uploadErr := s.uploadGeneratedImage(ctx, input.UserID, route.PlatformModelName, route.BaseURL, capturedAt, i, len(output.GeneratedImages), image)
+		uploaded, uploadErr := s.uploadGeneratedImage(ctx, input.UserID, route.PlatformModelName, route.BaseURL, capturedAt, i, len(output.GeneratedImages), image)
 		if uploadErr != nil {
 			return nil, uploadErr
 		}
-		uploadedAssets = append(uploadedAssets, fileAssetFromFile(*task, *file, domainimagestudio.AssetRoleOutput, i, map[string]interface{}{
+		asset := fileAssetFromFile(*task, uploaded.Original, domainimagestudio.AssetRoleOutput, i, map[string]interface{}{
 			"revised_prompt": strings.TrimSpace(image.RevisedPrompt),
 			"source":         "provider",
-		}))
+		})
+		asset.ThumbnailFileID = uploaded.Thumbnail.FileID
+		asset.ThumbnailFileName = uploaded.Thumbnail.FileName
+		asset.ThumbnailMimeType = uploaded.Thumbnail.DetectedMIME
+		asset.ThumbnailFileSize = uploaded.Thumbnail.SizeBytes
+		asset.ThumbnailWidth = uploaded.ThumbnailWidth
+		asset.ThumbnailHeight = uploaded.ThumbnailHeight
+		uploadedAssets = append(uploadedAssets, asset)
 	}
 	if err = s.repo.ReplaceTaskAssetsByRole(ctx, task.ID, domainimagestudio.AssetRoleOutput, uploadedAssets); err != nil {
 		return nil, err

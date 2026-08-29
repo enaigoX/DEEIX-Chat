@@ -10,6 +10,12 @@ export type ImageStudioAssetDTO = {
   mimeType: string;
   fileSize: number;
   sha256: string;
+  thumbnailFileID: string;
+  thumbnailFileName: string;
+  thumbnailMimeType: string;
+  thumbnailFileSize: number;
+  thumbnailWidth: number;
+  thumbnailHeight: number;
   fileSnapshotJSON: string;
   metadataJSON: string;
   createdAt: string;
@@ -75,4 +81,10 @@ export type ImageStudioListParams = {
   status?: string;
   favorite?: string;
   query?: string;
+};
+
+export type BatchDeleteImageStudioTasksResult = {
+  deletedTaskIDs: string[];
+  missingTaskIDs: string[];
+  cleanupFailedFileIDs: string[];
 };

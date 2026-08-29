@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import {
+  batchDeleteImageStudioTasks,
   deleteImageStudioTask,
   listImageStudioTasks,
   setImageStudioTaskFavorite,
@@ -40,6 +41,7 @@ export function useImageStudioPage() {
   const [syncing, setSyncing] = React.useState(false);
   const [running, setRunning] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const [taskType, setTaskType] = React.useState<ImageStudioTaskType>("image_generation");
   const [model, setModel] = React.useState("");
   const [params, setParams] = React.useState<ImageStudioParams>(() => defaultImageStudioParamsForModel(null, "image_generation"));
@@ -50,6 +52,7 @@ export function useImageStudioPage() {
   const [selectedTask, setSelectedTask] = React.useState<ImageStudioTaskDTO | null>(null);
   const [streamStatus, setStreamStatus] = React.useState("");
   const [partialImages, setPartialImages] = React.useState<Record<number, string>>({});
+  const [selectedTaskIDs, setSelectedTaskIDs] = React.useState<Set<string>>(() => new Set());
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const draftFilesRef = React.useRef<ImageStudioDraftFile[]>([]);
 
@@ -102,6 +105,8 @@ export function useImageStudioPage() {
       });
       setTasks(page.results);
       setTotal(page.total);
+      const visibleIDs = new Set(page.results.map((item) => item.taskID));
+      setSelectedTaskIDs((current) => new Set([...current].filter((taskID) => visibleIDs.has(taskID))));
     } finally {
       setLoading(false);
       setSyncing(false);
@@ -235,11 +240,77 @@ export function useImageStudioPage() {
   const onDeleteTask = React.useCallback(async (task: ImageStudioTaskDTO) => {
     const accessToken = await resolveAccessToken();
     if (!accessToken) return;
-    await deleteImageStudioTask(accessToken, task.taskID);
-    setTasks((current) => current.filter((item) => item.taskID !== task.taskID));
-    setSelectedTask((current) => current?.taskID === task.taskID ? null : current);
-    setTotal((current) => Math.max(0, current - 1));
+    setDeleting(true);
+    try {
+      const result = await deleteImageStudioTask(accessToken, task.taskID);
+      setTasks((current) => current.filter((item) => item.taskID !== task.taskID));
+      setSelectedTask((current) => current?.taskID === task.taskID ? null : current);
+      setSelectedTaskIDs((current) => {
+        const next = new Set(current);
+        next.delete(task.taskID);
+        return next;
+      });
+      setTotal((current) => Math.max(0, current - 1));
+      if (result.cleanupFailedFileIDs.length > 0) {
+        toast.warning(t("cleanupPartial", { count: result.cleanupFailedFileIDs.length }));
+      } else {
+        toast.success(t("deleted"));
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("deleteFailed"));
+    } finally {
+      setDeleting(false);
+    }
+  }, [t]);
+
+  const onToggleTaskSelection = React.useCallback((taskID: string) => {
+    setSelectedTaskIDs((current) => {
+      const next = new Set(current);
+      if (next.has(taskID)) {
+        next.delete(taskID);
+      } else {
+        next.add(taskID);
+      }
+      return next;
+    });
   }, []);
+
+  const allVisibleSelected = tasks.length > 0 && tasks.every((task) => selectedTaskIDs.has(task.taskID));
+  const onToggleSelectAll = React.useCallback(() => {
+    setSelectedTaskIDs((current) => {
+      if (tasks.length > 0 && tasks.every((task) => current.has(task.taskID))) {
+        return new Set();
+      }
+      return new Set(tasks.map((task) => task.taskID));
+    });
+  }, [tasks]);
+
+  const clearTaskSelection = React.useCallback(() => setSelectedTaskIDs(new Set()), []);
+
+  const onDeleteSelectedTasks = React.useCallback(async () => {
+    const taskIDs = [...selectedTaskIDs];
+    if (taskIDs.length === 0) return;
+    const accessToken = await resolveAccessToken();
+    if (!accessToken) return;
+    setDeleting(true);
+    try {
+      const result = await batchDeleteImageStudioTasks(accessToken, taskIDs);
+      const removedIDs = new Set([...result.deletedTaskIDs, ...result.missingTaskIDs]);
+      setTasks((current) => current.filter((item) => !removedIDs.has(item.taskID)));
+      setSelectedTask((current) => current && removedIDs.has(current.taskID) ? null : current);
+      setSelectedTaskIDs(new Set());
+      if (result.cleanupFailedFileIDs.length > 0) {
+        toast.warning(t("cleanupPartial", { count: result.cleanupFailedFileIDs.length }));
+      } else {
+        toast.success(t("batchDeleted", { count: result.deletedTaskIDs.length }));
+      }
+      await loadTasks(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("deleteFailed"));
+    } finally {
+      setDeleting(false);
+    }
+  }, [loadTasks, selectedTaskIDs, t]);
 
   return {
     fileInputRef,
@@ -253,6 +324,7 @@ export function useImageStudioPage() {
     syncing,
     running,
     uploading,
+    deleting,
     taskType,
     model,
     params,
@@ -263,6 +335,8 @@ export function useImageStudioPage() {
     selectedTask,
     streamStatus,
     partialImages,
+    selectedTaskIDs,
+    allVisibleSelected,
     setTaskType,
     setModel,
     setParams,
@@ -276,6 +350,10 @@ export function useImageStudioPage() {
     onSubmit,
     onToggleFavorite,
     onDeleteTask,
+    onToggleTaskSelection,
+    onToggleSelectAll,
+    clearTaskSelection,
+    onDeleteSelectedTasks,
     refresh: () => loadTasks(true),
   };
 }

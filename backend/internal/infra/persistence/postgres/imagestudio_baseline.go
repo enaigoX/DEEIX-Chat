@@ -18,6 +18,8 @@ func applyImageStudioBaselineIndexes(db *gorm.DB) error {
 			ON "image_studio_task_assets" ("task_id", "role", "sort_order")`,
 		`CREATE INDEX IF NOT EXISTS idx_image_studio_task_assets_user_file
 			ON "image_studio_task_assets" ("user_id", "file_id")`,
+		`CREATE INDEX IF NOT EXISTS idx_image_studio_task_assets_user_thumbnail_file
+			ON "image_studio_task_assets" ("user_id", "thumbnail_file_id")`,
 	}
 	for _, statement := range statements {
 		if err := db.Exec(statement).Error; err != nil {

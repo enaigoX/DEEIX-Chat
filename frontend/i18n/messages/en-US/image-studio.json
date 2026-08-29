@@ -106,7 +106,26 @@
   "card": {
     "favorite": "Favorite",
     "delete": "Delete",
+    "select": "Select task",
+    "deselect": "Deselect task",
     "imageCount": "{count} img"
+  },
+  "selection": {
+    "selectAll": "Select all shown",
+    "selected": "{count} selected",
+    "clear": "Clear",
+    "deleteSelected": "Delete"
+  },
+  "deleteDialog": {
+    "title": "Delete image task?",
+    "description": "The generated originals and thumbnails will be permanently deleted. Input images are not affected.",
+    "cancel": "Cancel",
+    "confirm": "Delete"
+  },
+  "batchDeleteDialog": {
+    "title": "Delete selected image tasks?",
+    "description": "This permanently deletes generated originals and thumbnails for {count} selected tasks. Input images are not affected.",
+    "confirm": "Delete selected"
   },
   "detail": {
     "title": "Image task",
@@ -124,6 +143,10 @@
   "toast": {
     "completed": "Image task completed",
     "failed": "Image task failed",
-    "uploadFailed": "Upload failed"
+    "uploadFailed": "Upload failed",
+    "deleted": "Image task deleted",
+    "batchDeleted": "Deleted {count} image tasks",
+    "deleteFailed": "Delete failed",
+    "cleanupPartial": "Tasks deleted; {count} stored files need cleanup retry"
   }
 }

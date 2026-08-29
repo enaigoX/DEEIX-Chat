@@ -106,7 +106,26 @@
   "card": {
     "favorite": "收藏",
     "delete": "删除",
+    "select": "选择任务",
+    "deselect": "取消选择任务",
     "imageCount": "{count} 张"
+  },
+  "selection": {
+    "selectAll": "全选当前列表",
+    "selected": "已选择 {count} 项",
+    "clear": "清除",
+    "deleteSelected": "删除"
+  },
+  "deleteDialog": {
+    "title": "删除生图任务？",
+    "description": "生成的原图和缩略图将被永久删除，输入图片不会受到影响。",
+    "cancel": "取消",
+    "confirm": "删除"
+  },
+  "batchDeleteDialog": {
+    "title": "删除选中的生图任务？",
+    "description": "将永久删除 {count} 个任务的生成原图和缩略图，输入图片不会受到影响。",
+    "confirm": "删除所选"
   },
   "detail": {
     "title": "生图任务",
@@ -124,6 +143,10 @@
   "toast": {
     "completed": "生图任务已完成",
     "failed": "生图任务失败",
-    "uploadFailed": "上传失败"
+    "uploadFailed": "上传失败",
+    "deleted": "生图任务已删除",
+    "batchDeleted": "已删除 {count} 个生图任务",
+    "deleteFailed": "删除失败",
+    "cleanupPartial": "任务已删除，仍有 {count} 个存储文件需要重试清理"
   }
 }
