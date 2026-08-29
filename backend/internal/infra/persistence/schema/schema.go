@@ -38,6 +38,8 @@ func Models() []interface{} {
 		&model.Attachment{},
 		&model.FileObject{},
 		&model.UserStorageQuota{},
+		&model.ImageStudioTask{},
+		&model.ImageStudioTaskAsset{},
 		&model.ConversationRun{},
 		&model.ContentModerationEvent{},
 		&model.ContentModerationDailyStat{},

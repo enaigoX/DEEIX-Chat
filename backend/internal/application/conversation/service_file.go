@@ -57,6 +57,14 @@ func (s *Service) UploadFile(ctx context.Context, input appupload.UploadFileInpu
 	return s.uploadSvc.UploadFile(ctx, input)
 }
 
+// UploadService exposes the shared upload service for sibling application modules.
+func (s *Service) UploadService() *appupload.Service {
+	if s == nil {
+		return nil
+	}
+	return s.uploadSvc
+}
+
 // DeleteFile 删除文件并回收配额。
 func (s *Service) DeleteFile(ctx context.Context, userID uint, fileID string) (*appupload.DeleteFileResult, error) {
 	return s.uploadSvc.DeleteFile(ctx, userID, fileID)

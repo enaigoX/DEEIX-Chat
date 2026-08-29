@@ -22,6 +22,7 @@ import (
 	channelhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/channel"
 	contentmoderationhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/contentmoderation"
 	conversationhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/conversation"
+	imagestudiohttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/imagestudio"
 	knowledgebasehttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/knowledgebase"
 	mcphttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/mcp"
 	memoryhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/memory"
@@ -57,6 +58,7 @@ type Modules struct {
 	AuthService       middleware.SessionValidator
 	Channel           *channelhttp.Module
 	Conversation      *conversationhttp.Module
+	ImageStudio       *imagestudiohttp.Module
 	MCP               *mcphttp.Module
 	Memory            *memoryhttp.Module
 	Billing           *billinghttp.Module
@@ -71,7 +73,7 @@ type Modules struct {
 	UserSettings      *usersettingshttp.Module
 	StartupLog        func(*zap.Logger)
 	// Shutdown 是进程关停排空信号；排空期间就绪探针返回 503，引导负载均衡摘除流量。
-	Shutdown 		  *lifecycle.Shutdown
+	Shutdown *lifecycle.Shutdown
 }
 
 // NewEngine 创建并注册 API 路由。
@@ -151,6 +153,9 @@ func NewEngine(cfg *config.Runtime, log *zap.Logger, modules Modules, hc HealthC
 	}
 	if modules.Conversation != nil {
 		modules.Conversation.RegisterRoutes(authRequired)
+	}
+	if modules.ImageStudio != nil {
+		modules.ImageStudio.RegisterRoutes(authRequired)
 	}
 	if modules.Channel != nil {
 		modules.Channel.RegisterRoutes(authRequired)

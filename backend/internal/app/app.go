@@ -20,6 +20,7 @@ import (
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/conversation"
 	appembedding "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/embedding"
 	"github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/extraction"
+	appimagestudio "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/imagestudio"
 	appknowledgebase "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/knowledgebase"
 	applogcleanup "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/logcleanup"
 	appmcp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/application/mcp"
@@ -58,6 +59,7 @@ import (
 	channelrepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/channel"
 	contentmoderationrepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/contentmoderation"
 	conversationrepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/conversation"
+	imagestudiorepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/imagestudio"
 	knowledgebaserepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/knowledgebase"
 	logcleanuprepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/logcleanup"
 	mcprepo "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/infra/persistence/postgres/mcp"
@@ -78,6 +80,7 @@ import (
 	channelhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/channel"
 	contentmoderationhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/contentmoderation"
 	conversationhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/conversation"
+	imagestudiohttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/imagestudio"
 	knowledgebasehttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/knowledgebase"
 	mcphttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/mcp"
 	memoryhttp "github.com/DEEIX-AI/DEEIX-Chat/backend/internal/transport/http/memory"
@@ -108,7 +111,7 @@ type App struct {
 	moderationClient       *moderationclient.Client
 	backgroundCancel       context.CancelFunc
 	// shutdown 是进程关停排空信号：翻转就绪探针并断开订阅型长连接。
-	shutdown 				*lifecycle.Shutdown
+	shutdown *lifecycle.Shutdown
 }
 
 type subscriptionGroupAdapter struct {
@@ -361,6 +364,11 @@ func NewApp() (*App, error) {
 	shutdownSignal := lifecycle.NewShutdown()
 	conversationHandler := conversationhttp.NewHandler(conversationService, runtimeCfg, shutdownSignal)
 	conversationModule := conversationhttp.NewModule(conversationHandler)
+	imageStudioRepo := imagestudiorepo.NewRepo(db)
+	imageStudioService := appimagestudio.NewServiceWithRuntime(runtimeCfg, imageStudioRepo, conversationService.UploadService(), channelService, llmClient, mediaArtifactClient, billingService, log)
+	imageStudioService.SetObjectStoreProvider(objectStoreProvider)
+	imageStudioHandler := imagestudiohttp.NewHandler(imageStudioService)
+	imageStudioModule := imagestudiohttp.NewModule(imageStudioHandler)
 	userHandler := userhttp.NewHandler(userService)
 	userModule := userhttp.NewModule(userHandler)
 	mcpService := appmcp.NewServiceWithRuntime(runtimeCfg, mcpRepo, mcpClient)
@@ -423,6 +431,7 @@ func NewApp() (*App, error) {
 		AuthService:       authService,
 		Channel:           channelModule,
 		Conversation:      conversationModule,
+		ImageStudio:       imageStudioModule,
 		MCP:               mcpModule,
 		Memory:            memoryModule,
 		Billing:           billingModule,

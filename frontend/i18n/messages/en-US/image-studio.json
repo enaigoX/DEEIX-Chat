@@ -1,0 +1,152 @@
+{
+  "title": "Image Studio",
+  "cloudTasks": "{count} cloud tasks",
+  "refresh": "Refresh",
+  "searchPlaceholder": "Search prompt or model",
+  "taskTypes": {
+    "generation": "Generate image",
+    "edit": "Edit image"
+  },
+  "filters": {
+    "all": "All",
+    "favorites": "Favorites",
+    "success": "Done",
+    "error": "Failed"
+  },
+  "empty": {
+    "title": "No image tasks yet",
+    "description": "Create or edit an image from the composer below."
+  },
+  "streaming": "Streaming",
+  "asset": {
+    "loading": "Loading image",
+    "failed": "Failed to load image"
+  },
+  "composer": {
+    "upload": "Upload image",
+    "removeFile": "Remove image",
+    "generationPlaceholder": "Describe the image...",
+    "editPlaceholder": "Describe the edit...",
+    "run": "Run",
+    "running": "Running"
+  },
+  "params": {
+    "advanced": "Advanced",
+    "reset": "Reset",
+    "count": "Images",
+    "compression": "Compression",
+    "disabled": "Unavailable",
+    "partialImages": "Partials",
+    "provider": {
+      "openai": "OpenAI image",
+      "google": "Google image",
+      "xai": "xAI image",
+      "generic": "Compatible image"
+    },
+    "size": {
+      "label": "Size",
+      "title": "Image size",
+      "description": "Choose image size, aspect ratio, or custom resolution.",
+      "auto": "Auto",
+      "autoDetail": "Chosen by model",
+      "tier": "Tier",
+      "customRatio": "Custom ratio",
+      "width": "Width",
+      "height": "Height",
+      "invalid": "Invalid"
+    },
+    "ratio": {
+      "square": "Square",
+      "landscape": "Landscape",
+      "portrait": "Portrait",
+      "wide": "Wide",
+      "vertical": "Vertical",
+      "classic": "Classic",
+      "poster": "Poster",
+      "ultrawide": "Ultrawide"
+    },
+    "quality": {
+      "label": "Quality",
+      "auto": "Auto",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "format": {
+      "label": "Format",
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "webp": "WebP"
+    },
+    "background": {
+      "label": "Background",
+      "auto": "Auto",
+      "transparent": "Transparent",
+      "opaque": "Opaque"
+    },
+    "moderation": {
+      "label": "Moderation",
+      "auto": "Auto",
+      "low": "Low"
+    },
+    "inputFidelity": {
+      "label": "Input fidelity",
+      "auto": "Auto",
+      "low": "Low",
+      "high": "High"
+    }
+  },
+  "status": {
+    "queued": "Queued",
+    "running": "Running",
+    "success": "Done",
+    "error": "Failed",
+    "unknown": "Unknown"
+  },
+  "card": {
+    "favorite": "Favorite",
+    "delete": "Delete",
+    "select": "Select task",
+    "deselect": "Deselect task",
+    "imageCount": "{count} img"
+  },
+  "selection": {
+    "selectAll": "Select all shown",
+    "selected": "{count} selected",
+    "clear": "Clear",
+    "deleteSelected": "Delete"
+  },
+  "deleteDialog": {
+    "title": "Delete image task?",
+    "description": "The generated originals and thumbnails will be permanently deleted. Input images are not affected.",
+    "cancel": "Cancel",
+    "confirm": "Delete"
+  },
+  "batchDeleteDialog": {
+    "title": "Delete selected image tasks?",
+    "description": "This permanently deletes generated originals and thumbnails for {count} selected tasks. Input images are not affected.",
+    "confirm": "Delete selected"
+  },
+  "detail": {
+    "title": "Image task",
+    "description": "Review generated assets, input images, and task metadata.",
+    "model": "Model",
+    "provider": "Provider",
+    "latency": "Latency",
+    "created": "Created",
+    "inputs": "Inputs",
+    "favorite": "Favorite",
+    "favorited": "Favorited",
+    "download": "Download",
+    "delete": "Delete"
+  },
+  "toast": {
+    "completed": "Image task completed",
+    "failed": "Image task failed",
+    "uploadFailed": "Upload failed",
+    "deleted": "Image task deleted",
+    "batchDeleted": "Deleted {count} image tasks",
+    "deleteFailed": "Delete failed",
+    "cleanupPartial": "Tasks deleted; {count} stored files need cleanup retry"
+  }
+}
